@@ -1,0 +1,61 @@
+"""TARS Skills v2 - 基础数据模型"""
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+
+class SkillType(Enum):
+    PLUGIN = "plugin"
+    PROMPT = "prompt"
+
+
+@dataclass
+class SkillParameter:
+    name: str
+    type: str = "string"
+    description: str = ""
+    required: bool = False
+    default: Optional[Any] = None
+
+
+@dataclass
+class Skill:
+    id: str
+    name: str
+    description: str
+    type: SkillType
+    version: str = "1.0.0"
+    author: str = ""
+    tags: List[str] = field(default_factory=list)
+    enabled: bool = True
+    source: str = "local"  # "local" | "skillhub"
+    permissions: List[str] = field(default_factory=list)
+    dependencies: List[str] = field(default_factory=list)
+    # PluginSkill
+    entry_point: Optional[str] = None
+    # PromptSkill
+    prompt_template: Optional[str] = None
+    parameters: List[SkillParameter] = field(default_factory=list)
+    # 内部状态
+    _dir_path: Optional[str] = field(default=None, repr=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "type": self.type.value,
+            "version": self.version,
+            "author": self.author,
+            "tags": self.tags,
+            "enabled": self.enabled,
+            "source": self.source,
+            "permissions": self.permissions,
+            "dependencies": self.dependencies,
+            "entry_point": self.entry_point,
+            "prompt_template": self.prompt_template,
+            "parameters": [
+                {"name": p.name, "type": p.type, "description": p.description, "required": p.required, "default": p.default}
+                for p in self.parameters
+            ],
+        }

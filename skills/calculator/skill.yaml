@@ -1,0 +1,12 @@
+id: calculator
+name: 计算器
+description: 精确的数学计算工具，支持四则运算、三角函数、对数、幂运算等
+type: plugin
+version: "1.0.0"
+author: TARS
+tags:
+  - math
+  - calculator
+  - utility
+entry_point: main.py
+permissions: []

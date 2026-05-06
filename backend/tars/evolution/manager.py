@@ -1,0 +1,224 @@
+"""
+Evolution Manager - 整合所有自进化模块的核心管理器
+"""
+import os
+import json
+from typing import Dict, Any, Optional, Callable
+from pathlib import Path
+from datetime import datetime
+
+from .evaluator import (
+    ResponseEvaluator, 
+    EvaluationResult, 
+    ConversationRecord,
+    FeedbackType
+)
+from .optimizer import PersonalityOptimizer, SubAgentOptimizer
+from .prompt_tuner import PromptTuner
+
+
+class EvolutionManager:
+    """自进化管理器 - 整合所有自进化功能"""
+    
+    def __init__(self, data_dir: Optional[Path] = None):
+        self.data_dir = data_dir or Path.home() / '.tars' / 'evolution'
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.evaluator = ResponseEvaluator()
+        self.personality_optimizer = PersonalityOptimizer()
+        self.subagent_optimizer = SubAgentOptimizer()
+        self.prompt_tuner = PromptTuner()
+        
+        self._enabled = True
+        self._auto_optimize = True
+        self._optimize_interval = 50  # 每50次对话优化一次
+        self._conversation_count = 0
+        
+        self._load_state()
+    
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+    
+    @enabled.setter
+    def enabled(self, value: bool):
+        self._enabled = value
+        self._save_state()
+    
+    @property
+    def auto_optimize(self) -> bool:
+        return self._auto_optimize
+    
+    @auto_optimize.setter
+    def auto_optimize(self, value: bool):
+        self._auto_optimize = value
+        self._save_state()
+    
+    def record_conversation(self, conversation_id: str, query: str, response: str,
+                          context: Dict[str, Any] = None,
+                          explicit_feedback: Optional[str] = None) -> EvaluationResult:
+        """记录对话并进行评估"""
+        
+        context = context or {}
+        
+        evaluation = self.evaluator.evaluate(
+            query=query,
+            response=response,
+            context=context,
+            explicit_feedback=explicit_feedback
+        )
+        
+        record = ConversationRecord(
+            conversation_id=conversation_id,
+            query=query,
+            response=response,
+            timestamp=datetime.now(),
+            evaluation=evaluation,
+            context=context,
+            tools_used=context.get('tools_used', []),
+            subagent_used=context.get('subagent_used')
+        )
+        
+        self.evaluator.add_conversation_record(record)
+        self._conversation_count += 1
+        
+        if 'prompt_type' in context:
+            self.prompt_tuner.record_feedback(
+                context['prompt_type'],
+                evaluation
+            )
+        
+        if self._auto_optimize and self._conversation_count % self._optimize_interval == 0:
+            self.optimize()
+        
+        self._save_state()
+        
+        return evaluation
+    
+    def optimize(self) -> Dict[str, Any]:
+        """触发一次完整的优化流程"""
+        
+        results = {
+            'timestamp': datetime.now().isoformat(),
+            'personality_optimized': False,
+            'subagent_optimized': False,
+            'prompts_tuned': False
+        }
+        
+        history = self.evaluator.history
+        
+        if len(history) >= 20:
+            current_personality = self._get_current_personality()
+            if current_personality:
+                optimized_params = self.personality_optimizer.optimize(
+                    current_personality,
+                    history
+                )
+                self._apply_personality_update(optimized_params)
+                results['personality_optimized'] = True
+                results['new_personality'] = optimized_params
+            
+            sa_weights = self.subagent_optimizer.optimize_task_delegation(history)
+            results['subagent_optimized'] = True
+            results['subagent_weights'] = sa_weights
+            
+            sa_personality = self.subagent_optimizer.optimize_personality_weights(history)
+            results['subagent_personality'] = sa_personality
+            
+            for prompt_type in ['master', 'code', 'writing', 'data', 'research', 'plan']:
+                self.prompt_tuner.tune_system_prompt(history, prompt_type)
+            results['prompts_tuned'] = True
+        
+        self._save_state()
+        
+        return results
+    
+    def get_personality_suggestions(self) -> Dict[str, float]:
+        """获取人格参数优化建议"""
+        
+        if len(self.evaluator.history) < 10:
+            return {}
+        
+        current_params = self._get_current_personality() or {}
+        suggested_params = self.personality_optimizer.optimize(
+            current_params,
+            self.evaluator.history
+        )
+        
+        suggestions = {}
+        for name, current in current_params.items():
+            suggested = suggested_params.get(name, current)
+            if abs(suggested - current) > 0.05:
+                suggestions[name] = suggested
+        
+        return suggestions
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取自进化系统的统计信息"""
+        
+        stats = self.evaluator.get_history_statistics()
+        
+        stats.update({
+            'enabled': self._enabled,
+            'auto_optimize': self._auto_optimize,
+            'conversation_count': self._conversation_count,
+            'subagent_recommendations': self.subagent_optimizer.get_recommendations(),
+            'prompt_history': {
+                pt: self.prompt_tuner.get_prompt_history(pt)
+                for pt in ['master', 'code', 'writing', 'data', 'research', 'plan']
+            }
+        })
+        
+        return stats
+    
+    def _get_current_personality(self) -> Optional[Dict[str, float]]:
+        """获取当前人格参数（从工作区或返回默认）"""
+        default_params = {
+            'honesty': 0.9,
+            'humor': 0.7,
+            'initiative': 0.8,
+            'empathy': 0.7,
+            'formality': 0.5,
+            'creativity': 0.6,
+            'conciseness': 0.5,
+            'technical_depth': 0.6,
+            'curiosity': 0.7,
+            'skepticism': 0.3
+        }
+        return default_params
+    
+    def _apply_personality_update(self, new_params: Dict[str, float]):
+        """应用人格参数更新（回调函数，实际应用由外部系统实现）"""
+        pass
+    
+    def _save_state(self):
+        """保存状态到文件"""
+        state_file = self.data_dir / 'state.json'
+        
+        state = {
+            'enabled': self._enabled,
+            'auto_optimize': self._auto_optimize,
+            'optimize_interval': self._optimize_interval,
+            'conversation_count': self._conversation_count
+        }
+        
+        with open(state_file, 'w', encoding='utf-8') as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    
+    def _load_state(self):
+        """从文件加载状态"""
+        state_file = self.data_dir / 'state.json'
+        
+        if not state_file.exists():
+            return
+        
+        try:
+            with open(state_file, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            
+            self._enabled = state.get('enabled', True)
+            self._auto_optimize = state.get('auto_optimize', True)
+            self._optimize_interval = state.get('optimize_interval', 50)
+            self._conversation_count = state.get('conversation_count', 0)
+        except Exception:
+            pass
