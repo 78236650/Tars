@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket 测试</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        #log { background: #000; padding: 10px; height: 300px; overflow-y: auto; margin-bottom: 20px; }
+        .sent { color: #4CAF50; }
+        .received { color: #2196F3; }
+        .error { color: #f44336; }
+        .info { color: #FFC107; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket 测试</h1>
+    <div id="status">状态: 未连接</div>
+    <button onclick="connect()">连接</button>
+    <button onclick="sendTest('执行 github 技能')">发送: 执行 github 技能</button>
+    <button onclick="sendTest('查询天气')">发送: 查询天气</button>
+    <button onclick="sendTest('你好')">发送: 你好</button>
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+
+        function addLog(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function connect() {
+            if (ws) ws.close();
+            
+            addLog('正在连接 ws://localhost:8000/ws...');
+            ws = new WebSocket('ws://localhost:8000/ws');
+
+            ws.onopen = () => {
+                addLog('✅ WebSocket 连接成功!', 'info');
+                status.textContent = '状态: 已连接';
+            };
+
+            ws.onmessage = (event) => {
+                addLog(`📥 收到: ${event.data.substring(0, 200)}...`, 'received');
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'text_chunk') {
+                        addLog(`   文本片段: ${data.content}`, 'received');
+                    }
+                } catch (e) {}
+            };
+
+            ws.onerror = (error) => {
+                addLog('❌ WebSocket 错误!', 'error');
+            };
+
+            ws.onclose = () => {
+                addLog('🔌 WebSocket 断开', 'info');
+                status.textContent = '状态: 已断开';
+                ws = null;
+            };
+        }
+
+        function sendTest(text) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addLog('❌ 未连接，请先点击"连接"', 'error');
+                return;
+            }
+
+            const msg = {
+                session_id: 'test_' + Date.now(),
+                content: text
+            };
+
+            addLog(`📤 发送: ${JSON.stringify(msg)}`, 'sent');
+            ws.send(JSON.stringify(msg));
+        }
+
+        // 自动连接
+        connect();
+    </script>
+</body>
+</html>
