@@ -254,6 +254,11 @@ class AgentV2:
         used_web_flag = {"value": False}
 
         async def on_tool_call(tool_name: str, arguments: Dict):
+            # 记录工具调用开始时间
+            import time
+            _tool_start = {tool_name: time.time()}
+            on_tool_call._timers = getattr(on_tool_call, '_timers', {})
+            on_tool_call._timers[tool_name] = _tool_start[tool_name]
             # 只读模式下拦截写操作
             if self._is_readonly_mode() and tool_name not in self.READONLY_TOOLS:
                 await channel.send(session_id, {
@@ -277,6 +282,9 @@ class AgentV2:
             })
 
         async def on_tool_result(tool_name: str, result):
+            import time
+            _timers = getattr(on_tool_call, '_timers', {})
+            duration = round(time.time() - _timers.get(tool_name, time.time()), 2) if tool_name in _timers else None
             await channel.send(session_id, {
                 "type": "tool_result",
                 "session_id": session_id,
@@ -284,6 +292,7 @@ class AgentV2:
                 "success": result.success,
                 "output": result.output,
                 "error": result.error,
+                "duration": duration,
                 "timestamp": now_iso(),
             })
 

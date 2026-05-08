@@ -16,10 +16,12 @@ const { locale, t, toggleLocale } = useI18n()
 const chatStore = useChatStore()
 
 const collapsed = ref(false)
+const searchQuery = ref('')
 
 type TabType = 'ollama' | 'custom' | 'openrouter'
 const activeTab = ref<TabType>('ollama')
 const switching = ref(false)
+const showModelPopover = ref(false)
 
 onMounted(async () => {
   const saved = localStorage.getItem('sidebar_collapsed')
@@ -127,6 +129,35 @@ const deleteSession = async (id: string, e: Event) => {
 }
 
 const truncateTitle = (s: string, n = 22) => s.length > n ? s.slice(0, n) + '...' : s
+
+const groupedSessions = computed(() => {
+  let list = chatStore.sessions
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter(s => s.title?.toLowerCase().includes(q))
+  }
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today.getTime() - 86400000)
+  
+  const groups: { label: string; items: typeof list }[] = []
+  const todayItems: typeof list = []
+  const yesterdayItems: typeof list = []
+  const olderItems: typeof list = []
+  
+  for (const s of list) {
+    const d = s.updated_at ? new Date(s.updated_at) : new Date()
+    if (d >= today) todayItems.push(s)
+    else if (d >= yesterday) yesterdayItems.push(s)
+    else olderItems.push(s)
+  }
+  
+  if (todayItems.length) groups.push({ label: '今天', items: todayItems })
+  if (yesterdayItems.length) groups.push({ label: '昨天', items: yesterdayItems })
+  if (olderItems.length) groups.push({ label: '更早', items: olderItems })
+  return groups
+})
+
 </script>
 
 <template>
@@ -136,9 +167,7 @@ const truncateTitle = (s: string, n = 22) => s.length > n ? s.slice(0, n) + '...
   >
     <div class="p-4 border-b border-slate-700">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shrink-0">
-          <span class="text-white font-bold text-lg">T</span>
-        </div>
+        <img src="/logo.png" alt="TARS" class="w-10 h-10 rounded-xl object-cover shrink-0" />
         <div v-if="!collapsed" class="overflow-hidden">
           <h1 class="text-lg font-semibold text-white truncate">TARS Agent</h1>
           <p class="text-sm text-slate-400">AI Assistant</p>
@@ -167,8 +196,8 @@ const truncateTitle = (s: string, n = 22) => s.length > n ? s.slice(0, n) + '...
     </nav>
 
     <!-- Session list - expanded mode -->
-    <div v-if="!collapsed" class="border-t border-slate-700 flex flex-col flex-1 min-h-0" style="max-height: 40%;">
-      <div class="p-2">
+    <div v-if="!collapsed" class="border-t border-slate-700 flex flex-col flex-1 min-h-0" >
+      <div class="p-2 space-y-2">
         <button
           @click="newChat"
           class="w-full px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm flex items-center justify-center gap-2 transition-colors"
@@ -178,29 +207,43 @@ const truncateTitle = (s: string, n = 22) => s.length > n ? s.slice(0, n) + '...
           </svg>
           {{ t('chat.newChat') }}
         </button>
+        <div class="relative">
+          <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索会话..."
+            class="w-full pl-8 pr-3 py-1.5 bg-slate-700/50 border border-slate-600 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+          />
+        </div>
       </div>
 
       <div class="overflow-y-auto px-2 pb-2 flex-1">
         <p v-if="chatStore.sessions.length === 0" class="text-xs text-slate-500 text-center py-4">
           {{ t('chat.noSessions') }}
         </p>
-        <button
-          v-for="session in chatStore.sessions"
-          :key="session.id"
-          @click="switchSession(session.id)"
-          class="group w-full px-3 py-2 mb-1 rounded-lg text-left text-sm flex items-center justify-between transition-colors"
-          :class="chatStore.currentSessionId === session.id
-            ? 'bg-blue-600 text-white'
-            : 'text-slate-300 hover:bg-slate-700'"
-        >
-          <span class="truncate flex-1">{{ truncateTitle(session.title) }}</span>
-          <span
-            @click="deleteSession(session.id, $event)"
-            class="opacity-0 group-hover:opacity-100 ml-2 text-slate-400 hover:text-red-400 transition-opacity cursor-pointer"
+        <template v-for="group in groupedSessions" :key="group.label">
+          <p class="text-[10px] text-slate-500 font-medium px-2 py-1.5 uppercase tracking-wider">{{ group.label }}</p>
+          <button
+            v-for="session in group.items"
+            :key="session.id"
+            @click="switchSession(session.id)"
+            class="group w-full px-3 py-2 mb-0.5 rounded-lg text-left text-sm flex items-center justify-between transition-colors"
+            :class="chatStore.currentSessionId === session.id
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-300 hover:bg-slate-700'"
           >
-            &times;
-          </span>
-        </button>
+            <span class="truncate flex-1">{{ truncateTitle(session.title) }}</span>
+            <span
+              @click="deleteSession(session.id, $event)"
+              class="opacity-0 group-hover:opacity-100 ml-2 text-slate-400 hover:text-red-400 transition-opacity cursor-pointer"
+            >
+              &times;
+            </span>
+          </button>
+        </template>
       </div>
     </div>
 
@@ -236,105 +279,69 @@ const truncateTitle = (s: string, n = 22) => s.length > n ? s.slice(0, n) + '...
       </button>
     </div>
 
-    <div v-if="!collapsed" class="p-4 border-t border-slate-700">
-      <div class="bg-slate-700 rounded-lg p-3 mb-3">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-slate-400">{{ t('sidebar.currentModel') }}</span>
-          <span class="text-xs px-2 py-0.5 rounded-full" :class="{
-            'bg-green-600/30 text-green-400': settingsStore.currentProvider.startsWith('custom:'),
-            'bg-blue-600/30 text-blue-400': settingsStore.currentProvider === 'ollama',
-            'bg-purple-600/30 text-purple-400': settingsStore.currentProvider === 'openrouter'
-          }">
-            {{ getProviderLabel }}
-          </span>
+    <!-- 模型选择 Popover（瘦身版） -->
+    <div v-if="!collapsed" class="border-t border-slate-700 p-3 relative">
+      <button
+        @click="showModelPopover = !showModelPopover"
+        class="w-full flex items-center justify-between px-3 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg transition-colors"
+      >
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            :class="{
+              'bg-green-400': settingsStore.currentProvider.startsWith('custom:'),
+              'bg-blue-400': settingsStore.currentProvider === 'ollama',
+              'bg-purple-400': settingsStore.currentProvider === 'openrouter'
+            }"
+          ></span>
+          <span class="text-xs text-slate-300 truncate">{{ settingsStore.currentModel || t('common.loading') }}</span>
         </div>
-        <div class="text-sm text-white font-medium truncate">
-          {{ settingsStore.currentModel || t('common.loading') }}
-        </div>
-      </div>
+        <svg class="w-4 h-4 text-slate-500 flex-shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
 
-      <div class="bg-slate-700/50 rounded-lg overflow-hidden">
-        <div class="flex border-b border-slate-600">
-          <button
-            v-for="tab in tabs"
-            :key="tab.key"
-            @click="activeTab = tab.key"
+      <!-- Popover -->
+      <div v-if="showModelPopover" class="absolute bottom-full left-3 right-3 mb-1 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div class="flex border-b border-slate-700">
+          <button v-for="tab in tabs" :key="tab.key" @click="activeTab = tab.key"
             class="flex-1 px-2 py-2 text-xs font-medium transition-colors"
-            :class="activeTab === tab.key
-              ? 'text-white bg-slate-700'
-              : 'text-slate-400 hover:text-white hover:bg-slate-700/50'"
-          >
-            {{ tab.label }}
-          </button>
+            :class="activeTab === tab.key ? 'text-white bg-slate-700' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'">{{ tab.label }}</button>
         </div>
-
-        <div class="max-h-48 overflow-y-auto">
+        <div class="max-h-44 overflow-y-auto">
           <template v-if="activeTab === 'ollama'">
-            <button
-              v-for="model in settingsStore.availableModels"
-              :key="model"
-              @click="switchModel(model)"
-              :disabled="switching"
+            <button v-for="model in settingsStore.availableModels" :key="model" @click="switchModel(model); showModelPopover = false" :disabled="switching"
               class="w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors"
-              :class="isCurrentModel(model)
-                ? 'bg-slate-600 border-l-4 border-green-500 text-white'
-                : 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent'"
-            >
+              :class="isCurrentModel(model) ? 'bg-slate-600 border-l-4 border-green-500 text-white' : 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent'">
               <span class="truncate">{{ model }}</span>
               <span v-if="isCurrentModel(model)" class="text-green-400 text-xs">✓</span>
             </button>
           </template>
-
           <template v-else-if="activeTab === 'custom'">
-            <button
-              v-for="model in settingsStore.customModels"
-              :key="model.id"
-              @click="switchCustomModel(model.id, model.name)"
-              :disabled="switching || !model.is_enabled"
+            <button v-for="model in settingsStore.customModels" :key="model.id" @click="switchCustomModel(model.id, model.name); showModelPopover = false" :disabled="switching || !model.is_enabled"
               class="w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors"
-              :class="isCurrentCustomModel(model.id)
-                ? 'bg-slate-600 border-l-4 border-green-500 text-white'
-                : model.is_enabled
-                  ? 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent'
-                  : 'text-slate-500 border-l-4 border-transparent cursor-not-allowed'"
-            >
-              <div class="truncate">
-                <span class="block truncate">{{ model.name }}</span>
-                <span class="text-xs text-slate-500 truncate">{{ model.model }}</span>
-              </div>
+              :class="isCurrentCustomModel(model.id) ? 'bg-slate-600 border-l-4 border-green-500 text-white' : model.is_enabled ? 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent' : 'text-slate-500 border-l-4 border-transparent cursor-not-allowed'">
+              <div class="truncate"><span class="block truncate">{{ model.name }}</span><span class="text-xs text-slate-500 truncate">{{ model.model }}</span></div>
               <span v-if="isCurrentCustomModel(model.id)" class="text-green-400 text-xs flex-shrink-0 ml-2">✓</span>
-              <span v-else-if="!model.is_enabled" class="text-red-400 text-xs flex-shrink-0 ml-2">{{ t('common.disabled') }}</span>
             </button>
-            <button
-              @click="router.push('/models')"
-              class="w-full px-3 py-2 text-sm text-left text-green-400 hover:bg-slate-600/50 flex items-center gap-2 transition-colors"
-            >
-              <span class="text-lg">+</span>
-              <span>{{ t('sidebar.addCustomModel') }}</span>
-            </button>
+            <button @click="router.push('/models')" class="w-full px-3 py-2 text-sm text-left text-green-400 hover:bg-slate-600/50 flex items-center gap-2 transition-colors"><span class="text-lg">+</span><span>{{ t('sidebar.addCustomModel') }}</span></button>
           </template>
-
           <template v-else-if="activeTab === 'openrouter'">
-            <div class="px-3 py-4 text-center text-slate-400 text-sm">
-              {{ t('sidebar.configureOpenrouter') }}
-            </div>
-            <button
-              @click="router.push('/settings')"
-              class="w-full px-3 py-2 text-sm text-blue-400 hover:bg-slate-600/50 text-left transition-colors"
-            >
-              {{ t('sidebar.goToSettings') }}
-            </button>
+            <div class="px-3 py-4 text-center text-slate-400 text-sm">{{ t('sidebar.configureOpenrouter') }}</div>
+            <button @click="router.push('/settings')" class="w-full px-3 py-2 text-sm text-blue-400 hover:bg-slate-600/50 text-left transition-colors">{{ t('sidebar.goToSettings') }}</button>
           </template>
         </div>
       </div>
     </div>
 
     <div v-else class="p-2 border-t border-slate-700">
-      <div class="bg-slate-700 rounded-lg p-2 mb-2">
-        <div class="text-xs text-slate-400 text-center mb-1">{{ t('nav.models') }}</div>
-        <div class="text-xs text-white truncate text-center">
-          {{ settingsStore.currentModel || '-' }}
-        </div>
+      <div class="text-center">
+        <span class="w-1.5 h-1.5 rounded-full inline-block"
+          :class="{
+            'bg-green-400': settingsStore.currentProvider.startsWith('custom:'),
+            'bg-blue-400': settingsStore.currentProvider === 'ollama',
+            'bg-purple-400': settingsStore.currentProvider === 'openrouter'
+          }"
+        ></span>
       </div>
     </div>
   </aside>

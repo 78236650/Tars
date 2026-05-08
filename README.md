@@ -1,4 +1,4 @@
-# TARS AI Agent v2.2.0
+# TARS AI Agent v2.3.0
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解。
 
@@ -83,19 +83,22 @@ TARS/
 │   │   ├── test_os_orchestration.py # OS 工具 + 编排测试（22 cases）
 │   │   └── test_default_skills.py  # 默认技能测试（18 cases）
 │   └── skills/                     # 本地 Skill 包目录
-└── frontend/                       # 前端（Vue 3 + TypeScript）
+└── frontend/                       # 前端（Vue 3 + TypeScript + TailwindCSS）
     └── src/
         ├── views/
-        │   ├── ChatView.vue        # 聊天页（含文件上传 + 计划卡片）
-        │   ├── ToolsView.vue       # 工具管理（Tab 布局）
+        │   ├── ChatView.vue        # 聊天页（快捷键 + 文件上传 + 命令菜单）
+        │   ├── ToolsView.vue       # 工具管理（Tab 布局 + SkillHub 目录）
+        │   ├── ModelsView.vue      # 模型管理
         │   └── SettingsView.vue    # 设置页
         ├── components/
         │   ├── chat/
-        │   │   ├── ChatPanel.vue   # 聊天面板（工具调用 + 计划可视化）
+        │   │   ├── ChatPanel.vue   # 聊天面板（★Markdown渲染 + 代码高亮 + 欢迎卡片）
         │   │   └── PlanCard.vue    # 任务计划执行卡片
+        │   ├── layout/
+        │   │   └── Sidebar.vue     # 侧栏（★搜索/分组/Popover模型切换）
         │   └── tools/              # 工具卡片/详情/添加
         ├── stores/
-        │   └── wsStore.ts          # WebSocket 全局状态（★v2.1.0）
+        │   └── wsStore.ts          # WebSocket 全局状态
         ├── api/index.ts            # API 层
         ├── i18n/index.ts           # 国际化（中/英）
         └── types/index.ts          # 类型定义
@@ -321,6 +324,8 @@ npm run dev
 - TailwindCSS
 - Pinia（状态管理）
 - Vite（构建）
+- marked（Markdown 渲染）
+- highlight.js（代码语法高亮）
 
 ## 测试
 
@@ -344,7 +349,22 @@ cd backend
 
 ## 版本历史
 
-### v2.2.0（当前）
+### v2.3.0（当前）
+- 🎨 **前端重设计** — 欢迎页快捷入口卡片 + 消息卡片式布局 + 命令彩色横幅
+- 📝 **Markdown 渲染** — marked.js + highlight.js 语法高亮（13 种语言按需加载）
+- 📋 **代码块复制按钮** — 一键复制代码，带 ✓ 反馈动画
+- 🔍 **侧栏瘦身** — 模型选择从大面板改为单行 Popover，会话列表释放全部空间
+- 🔎 **会话搜索/分组** — 实时搜索 + 今天/昨天/更早分组
+- ⌨️ **键盘快捷键** — Ctrl+Enter 发送 / Ctrl+/ 命令面板 / Ctrl+L 新会话
+- 📏 **输入框自适应高度** — 内容超过 1 行自动增高（最多 6 行）
+- 🖼️ **自定义 Logo** — 支持 PNG favicon + 侧栏/Header 图片 Logo
+- ⚡ **highlight.js 按需加载** — ChatView.js 从 1002KB 缩减到 132KB（-87%）
+- 🔧 **PLAN/BRAINSTORM 提示词精简** — prompt 从 103 字符减到 49 字符，防止 LLM 卡死
+- ⏱️ **工具调用耗时显示** — 前端工具卡片展示每个工具执行时长
+- 🏠 **默认 SOUL.md 更新** — 反映 TARS 工程助手定位 + 实际工具列表
+- 🔄 **ToolDispatcher 降级增强** — 空响应时自动去工具重试 + 追加总结请求
+
+### v2.2.0
 - 🧠 **记忆认知架构重做** — 场景画像 + 实体图 + 事件时间线 + 四路融合检索
 - 🗂️ **Semantic Memory（实体图）** — 确定性哈希 ID + aliases FTS5 合并，防止同名实体分裂
 - 🔀 **MemoryRouter** — 实体路/时间线路/向量路/关键词路四路融合 + HybridSearch 异常兜底

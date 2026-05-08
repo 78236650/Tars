@@ -1,6 +1,6 @@
 [project]
 name = "tars"
-version = "0.1.0"
+version = "2.3.0"
 description = "TARS AI Agent - 高度自主、可配置的 AI Agent"
 readme = "../README.md"
 requires-python = ">=3.11"

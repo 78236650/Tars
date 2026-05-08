@@ -18,6 +18,14 @@ const wsStore = useWsStore()
 const { t } = useI18n()
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[] }[]>([])
 const inputMessage = ref('')
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+const autoResize = () => {
+  const el = inputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+}
 
 // 斜杠命令
 const showCommands = ref(false)
@@ -238,6 +246,10 @@ const loadSessionMessages = async (sessionId: string) => {
   }
 }
 
+const quickStart = (text: string) => {
+  inputMessage.value = text
+}
+
 const sendMessage = async () => {
   if ((!inputMessage.value.trim() && attachments.value.length === 0) || !wsStore.isConnected) return
   if (!chatStore.currentSessionId) return
@@ -268,6 +280,7 @@ const sendMessage = async () => {
 
   inputMessage.value = ''
   attachments.value = []
+  if (inputRef.value) inputRef.value.style.height = 'auto'
 
   if (isFirstMessage && messageContent.trim()) {
     const newTitle = messageContent.trim().slice(0, 30)
@@ -282,12 +295,21 @@ const sendMessage = async () => {
 // 组合式 API 中 setup 顶层调用，组件挂载时执行
 const unsubscribe = setupWsHandler()
 
+// 键盘快捷键
+const handleKeydown = (e: KeyboardEvent) => {
+  const ctrl = e.ctrlKey || e.metaKey
+  if (ctrl && e.key === 'Enter') { e.preventDefault(); sendMessage() }
+  if (ctrl && (e.key === '/' || e.key === 'k')) { e.preventDefault(); toggleCommands() }
+  if (ctrl && e.key === 'l') { e.preventDefault(); inputMessage.value = '/clear'; sendMessage() }
+}
+
 onMounted(async () => {
   settingsStore.loadModels()
   await chatStore.initIfEmpty()
   if (chatStore.currentSessionId) {
     await loadSessionMessages(chatStore.currentSessionId)
   }
+  document.addEventListener('keydown', handleKeydown)
 })
 
 watch(() => chatStore.currentSessionId, async (newId, oldId) => {
@@ -299,8 +321,8 @@ watch(() => chatStore.currentSessionId, async (newId, oldId) => {
 })
 
 onUnmounted(() => {
-  // 仅取消消息订阅，WebSocket 连接由 wsStore 全局保持
   unsubscribe()
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -310,9 +332,7 @@ onUnmounted(() => {
     <main class="flex-1 flex flex-col">
       <header class="flex items-center justify-between px-6 py-4 border-b border-slate-700">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <span class="text-white font-bold text-lg">T</span>
-          </div>
+          <img src="/logo.png" alt="TARS" class="w-10 h-10 rounded-lg object-cover" />
           <div>
             <h1 class="text-lg font-semibold text-white">TARS Agent</h1>
             <div class="flex items-center gap-2">
@@ -321,20 +341,9 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-lg">
-            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z"/>
-            </svg>
-            <span class="text-sm text-slate-300">{{ settingsStore.currentModel || t('common.loading') }}</span>
-            <span class="text-xs px-1.5 py-0.5 bg-blue-600/30 text-blue-400 rounded">
-              {{ settingsStore.currentProvider.startsWith('custom:') ? 'Custom' : settingsStore.currentProvider.toUpperCase() }}
-            </span>
-          </div>
-          <button 
-            @click="router.push('/settings')"
-            class="p-2 rounded-lg hover:bg-slate-700 transition-colors"
-          >
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-500">{{ settingsStore.currentModel || '' }}</span>
+          <button @click="router.push('/settings')" class="p-2 rounded-lg hover:bg-slate-700 transition-colors" title="设置">
             <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -343,7 +352,7 @@ onUnmounted(() => {
         </div>
       </header>
       
-      <ChatPanel :messages="messages" :is-generating="wsStore.isGenerating" />
+      <ChatPanel :messages="messages" :is-generating="wsStore.isGenerating" @quick-start="quickStart" />
 
       <footer class="px-6 py-4 border-t border-slate-700">
         <!-- 附件预览区 -->
@@ -409,9 +418,11 @@ onUnmounted(() => {
 
           <div class="flex-1 relative">
             <textarea
+              ref="inputRef"
               v-model="inputMessage"
+              @input="autoResize"
               :placeholder="t('chat.placeholder')"
-              class="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              class="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none overflow-hidden"
               rows="1"
             ></textarea>
           </div>
