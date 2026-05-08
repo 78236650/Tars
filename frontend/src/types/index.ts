@@ -144,6 +144,9 @@ export interface SkillHubPackage {
   permissions: string[]
   github_url: string
   stars: number
+  installed?: boolean
+  tars_version_min?: string
+  usage?: string
 }
 
 export interface ToolCallEvent {

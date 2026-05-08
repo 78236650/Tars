@@ -28,4 +28,6 @@ parameters:
     description: 编程语言偏好
     required: false
     default: ""
+tars_version_min: "2.0.0"
+usage: "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，增强 TARS 的编程能力。你无需主动调用"
 permissions: []

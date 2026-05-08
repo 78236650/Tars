@@ -24,16 +24,29 @@ Assistant: {assistant_msg}
 操作类型：
 - {{"op": "update_core", "block": "<persona|user_profile|project_context|working_principles>", "action": "append|replace", "old": "<被替换的旧文本>", "new": "<新文本>"}}
 - {{"op": "archive", "content": "<简洁事实>", "category": "<fact|preference|decision|domain_knowledge>", "importance": <0.0-1.0>, "source": "<conversation|web>"}}
+- {{"op": "forget", "block": "<persona|user_profile|project_context|working_principles>", "line_contains": "<行中包含的关键词>"}}
 - {{"op": "noop"}}
 
-规则：
+archive 质量规则（重要）：
+- ❌ 不要 archive 一次性操作步骤（如"创建了 main.py"、"运行了 uvicorn"、"启动了服务"）
+- ❌ 不要 archive 临时性回答（如"任务预计 1 小时"、"文件放在 /tmp"）
+- ❌ 不要 archive 对当前对话上下文显而易见的内容
+- ✅ archive 用户身份/技术栈/偏好 → importance>=0.8
+- ✅ archive 域名知识/核心概念/行业术语 → importance>=0.7, category="domain_knowledge"
+- ✅ archive 项目关键决策/架构选择 → importance>=0.7, category="decision"
+- 每条 archive 内容控制在 2 句话以内，用中文
+
+update_core 规则：
 - 用户明确反馈的协作准则 → working_principles
 - 用户身份/技术栈/偏好 → user_profile
 - 项目目标/进展变化 → project_context
 - 风格反馈 → persona
-- 一次性事实/对话片段 → archive
-- 若使用了 web 搜索且学到领域知识 → archive 时 source="web"，category="domain_knowledge"
-- 无明显新信息 → 输出 [{{"op": "noop"}}]
+
+forget 规则：
+- 项目上下文中有明显已完成的旧任务 → forget project_context
+- 过时的协作准则（如不再适用的规则）→ forget working_principles
+
+若本轮对话无明显新信息 → 输出 [{{"op": "noop"}}]
 
 只输出 JSON 数组。"""
 
@@ -127,6 +140,14 @@ class Reflector:
         kind = op.get("op")
         if kind == "noop":
             return False
+        if kind == "forget":
+            block = op.get("block", "")
+            if block not in BLOCK_NAMES:
+                return False
+            line_contains = op.get("line_contains", "").strip()
+            if not line_contains:
+                return False
+            return self.core.db.forget_core_line(block, line_contains)
         if kind == "update_core":
             block = op.get("block", "")
             if block not in BLOCK_NAMES:

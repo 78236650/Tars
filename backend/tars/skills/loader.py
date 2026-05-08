@@ -64,6 +64,9 @@ class SkillLoader:
                 source=data.get("source", "local"),
                 permissions=data.get("permissions", []),
                 dependencies=data.get("dependencies", []),
+                tars_version_min=data.get("tars_version_min"),
+                requires_packages=data.get("requires_packages", []),
+                usage=data.get("usage"),
                 entry_point=data.get("entry_point"),
                 prompt_template=data.get("prompt_template"),
                 parameters=parameters,
@@ -102,6 +105,12 @@ class SkillLoader:
             "permissions": skill.permissions,
             "dependencies": skill.dependencies,
         }
+        if skill.tars_version_min:
+            data["tars_version_min"] = skill.tars_version_min
+        if skill.requires_packages:
+            data["requires_packages"] = skill.requires_packages
+        if skill.usage:
+            data["usage"] = skill.usage
         if skill.entry_point:
             data["entry_point"] = skill.entry_point
         if skill.prompt_template:

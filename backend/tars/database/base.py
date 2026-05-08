@@ -360,47 +360,82 @@ class Database:
             updated_at=now
         )
 
+    @staticmethod
+    def _has_cjk(text: str) -> bool:
+        """检查文本是否包含 CJK 字符"""
+        for ch in text:
+            cp = ord(ch)
+            if (0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF or
+                0x3000 <= cp <= 0x303F or 0xFF00 <= cp <= 0xFFEF or
+                0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF or
+                0xAC00 <= cp <= 0xD7AF):
+                return True
+        return False
+
     def search_memories(self, query: str, limit: int = 5) -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
 
-        # 转义 FTS5 特殊字符，防止 SQL 注入和语法错误
-        # 需要转义的字符: " * ^ - : ( )
-        safe_query = query.replace('"', ' ').replace('*', ' ').replace('^', ' ').replace(':', ' ').replace('(', ' ').replace(')', ' ').replace('-', ' ').strip()
-        if not safe_query:
-            return []
-
-        # 简化查询：如果完全匹配失败，使用前缀匹配
-        try:
-            cursor.execute("""
-                SELECT m.id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
-                FROM memories m
-                JOIN memories_fts fts ON m.rowid = fts.rowid
-                WHERE memories_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-            """, (safe_query, limit))
-        except sqlite3.OperationalError:
-            # 如果 FTS 查询失败，尝试简单 LIKE 查询
-            cursor.execute("""
-                SELECT id, content, category, importance, created_at, updated_at, last_accessed
-                FROM memories
-                WHERE content LIKE ?
-                ORDER BY importance DESC, updated_at DESC
-                LIMIT ?
-            """, (f"%{query}%", limit))
+        # 转义 FTS5 特殊字符
+        safe_query = query.replace('"', ' ').replace('*', ' ').replace('^', ' ')
+        safe_query = safe_query.replace(':', ' ').replace('(', ' ').replace(')', ' ').replace('-', ' ').strip()
+        has_cjk = self._has_cjk(query)
 
         memories = []
-        for row in cursor.fetchall():
-            memories.append(Memory(
-                id=row[0],
-                content=row[1],
-                category=row[2],
-                importance=row[3],
-                created_at=datetime.fromisoformat(row[4]),
-                updated_at=datetime.fromisoformat(row[5]),
-                last_accessed=datetime.fromisoformat(row[6]) if row[6] else None
-            ))
+        # 1. 尝试 FTS5 搜索
+        if safe_query:
+            try:
+                cursor.execute("""
+                    SELECT m.id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
+                    FROM memories m
+                    JOIN memories_fts fts ON m.rowid = fts.rowid
+                    WHERE memories_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """, (safe_query, limit))
+                for row in cursor.fetchall():
+                    memories.append(Memory(
+                        id=row[0], content=row[1], category=row[2],
+                        importance=row[3], created_at=datetime.fromisoformat(row[4]),
+                        updated_at=datetime.fromisoformat(row[5]),
+                        last_accessed=datetime.fromisoformat(row[6]) if row[6] else None,
+                    ))
+            except sqlite3.OperationalError:
+                pass
+
+        # 2. FTS5 无结果 + 含 CJK → LIKE fallback
+        if not memories and has_cjk:
+            try:
+                cursor.execute("""
+                    SELECT id, content, category, importance, created_at, updated_at, last_accessed
+                    FROM memories WHERE content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
+                """, (f"%{query}%", limit))
+                for row in cursor.fetchall():
+                    memories.append(Memory(
+                        id=row[0], content=row[1], category=row[2],
+                        importance=row[3], created_at=datetime.fromisoformat(row[4]),
+                        updated_at=datetime.fromisoformat(row[5]),
+                        last_accessed=datetime.fromisoformat(row[6]) if row[6] else None,
+                    ))
+            except sqlite3.OperationalError:
+                pass
+
+        # 3. 空结果兜底：通用 LIKE
+        if not memories:
+            try:
+                cursor.execute("""
+                    SELECT id, content, category, importance, created_at, updated_at, last_accessed
+                    FROM memories WHERE content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
+                """, (f"%{query}%", limit))
+                for row in cursor.fetchall():
+                    memories.append(Memory(
+                        id=row[0], content=row[1], category=row[2],
+                        importance=row[3], created_at=datetime.fromisoformat(row[4]),
+                        updated_at=datetime.fromisoformat(row[5]),
+                        last_accessed=datetime.fromisoformat(row[6]) if row[6] else None,
+                    ))
+            except sqlite3.OperationalError:
+                pass
 
         for mem in memories:
             self._update_memory_access(mem.id)
@@ -522,6 +557,62 @@ class Database:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
         conn.commit()
+
+    def decay_importance(self):
+        """重要性自然衰减：未被访问的记忆重要性随时间微降"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        now = get_local_now()
+        # 超过 24 小时未访问的记忆，importance 每日衰减 0.01，不低于 0.1
+        cursor.execute("""
+            UPDATE memories
+            SET importance = MAX(0.1, importance - 0.01 * CAST((julianday(?) - julianday(COALESCE(last_accessed, created_at))) AS INTEGER))
+            WHERE COALESCE(last_accessed, created_at) < ?
+        """, (now.isoformat(), (now - timedelta(hours=24)).isoformat()))
+        count = cursor.rowcount
+        conn.commit()
+        return count
+
+    def cleanup_old_memories(self, min_importance: float = 0.25, max_age_days: int = 15) -> int:
+        """清理过期记忆：重要性低于阈值 + 超过指定天数未访问"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        now = get_local_now()
+        cutoff = now - timedelta(days=max_age_days)
+        cursor.execute("""
+            DELETE FROM memories
+            WHERE importance < ?
+              AND COALESCE(last_accessed, created_at) < ?
+        """, (min_importance, cutoff.isoformat()))
+        deleted = cursor.rowcount
+        if deleted > 0:
+            # 重建 FTS 索引
+            cursor.execute("DELETE FROM memories_fts")
+            cursor.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+        conn.commit()
+        return deleted
+
+    def forget_core_line(self, block: str, line_contains: str) -> bool:
+        """从 core memory 区块中删除匹配的行"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT content FROM core_memory_blocks WHERE name = ?", (block,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        content = row[0]
+        lines = content.split("\n")
+        new_lines = [l for l in lines if line_contains not in l]
+        if len(new_lines) == len(lines):
+            return False
+        new_content = "\n".join(new_lines)
+        now = get_local_now().isoformat()
+        cursor.execute(
+            "UPDATE core_memory_blocks SET content = ?, updated_at = ? WHERE name = ?",
+            (new_content, now, block),
+        )
+        conn.commit()
+        return True
 
     def _update_memory_access(self, memory_id: str):
         now = get_local_now()

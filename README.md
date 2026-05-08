@@ -1,4 +1,4 @@
-# TARS AI Agent v2.0.0
+# TARS AI Agent v2.1.0
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解。
 
@@ -27,7 +27,14 @@ TARS/
 │   │   │       ├── network.py      # 网络诊断
 │   │   │       ├── memory.py       # 记忆管理
 │   │   │       ├── cronjob.py      # 定时任务
-│   │   │       └── web.py          # 网页获取
+│   │   │       ├── web_search.py   # 网页搜索
+│   │   │       ├── web_fetch.py    # 网页抓取
+│   │   │       └── python_exec.py  # Python 沙箱执行（★v2.1.0）
+│   │   ├── commands/               # 斜杠命令系统（★v2.1.0）
+│   │   │   ├── base.py             # Command + CommandResult
+│   │   │   ├── registry.py         # CommandRegistry 注册中心
+│   │   │   ├── parser.py           # CommandParser（/xxx args 解析）
+│   │   │   └── builtin.py          # 7 个内置命令
 │   │   ├── memory/                 # 记忆系统 V3（Letta 混合模式）
 │   │   │   ├── core_memory.py      # 4 块 Core Memory + 编辑工具
 │   │   │   ├── archival.py         # Archival Memory（写入 + 去重）
@@ -87,6 +94,8 @@ TARS/
         │   │   ├── ChatPanel.vue   # 聊天面板（工具调用 + 计划可视化）
         │   │   └── PlanCard.vue    # 任务计划执行卡片
         │   └── tools/              # 工具卡片/详情/添加
+        ├── stores/
+        │   └── wsStore.ts          # WebSocket 全局状态（★v2.1.0）
         ├── api/index.ts            # API 层
         ├── i18n/index.ts           # 国际化（中/英）
         └── types/index.ts          # 类型定义
@@ -131,17 +140,76 @@ TARS/
 - **task_planner** — LLM 生成多步执行计划，系统自动按步骤执行
 - **TaskExecutor** — 自动重试 + 失败决策（retry/skip/abort）+ 占位符替换
 
+## v2.1.0 新特性
+
+### 斜杠命令系统
+
+在聊天输入框输入 `/` 或点击输入栏左侧紫色 `/` 按钮，弹出命令菜单：
+
+| 命令 | 说明 | 效果 |
+|------|------|------|
+| `/plan <任务>` | 规划模式 | 注入规划约束到 system prompt，只分析不写代码 |
+| `/yolo` | 执行模式 | 注入执行约束，直接动手快速实现 |
+| `/brainstorm <主题>` | 头脑风暴 | 发散思维，列举方向+选 top3 |
+| `/subagent <code\|writing\|data\|research> <任务>` | 委派子代理 | 任务路由到专业子代理执行 |
+| `/skill <技能名>` | 激活技能 | 启用指定 PromptSkill |
+| `/clear` | 新对话 | 创建新会话，清空上下文 |
+| `/help` | 帮助 | 显示所有命令列表 |
+
+命令系统架构：`CommandParser` 解析 `/xxx args` → `Command.execute()` 返回 `prompt_injection` + `frontend_message` + `action`。
+
+### Python 沙箱执行 (`python_exec`)
+
+Agent 可写 Python 代码并在沙箱子进程中运行，返回 stdout/stderr/exit_code。
+
+```python
+# TARS 对话中自动调用的示例
+python_exec(code="import pandas as pd\ndf = pd.read_csv('data.csv')\nprint(df.describe())")
+```
+
+**已装 Python 包**：`pandas` `opnpyxl` `Pillow` `pypdf` `python-docx`
+
+**适用场景**：读取 CSV/Excel/PDF、数据分析、图片处理、格式转换、快速原型。
+
+### 记忆系统强化
+
+**调出（Recall）：**
+- **核心记忆去重** — `CoreMemoryManager.append()` 自动检测重复行，避免同一内容堆积
+- **行数上限** — 每个核心记忆区块最多 30 行，超出自动删除最旧行
+- **CJK 中文降级搜索** — FTS5 无法切分中文时自动降级为 `LIKE '%关键词%'` 搜索
+- **检索调试日志** — `[HybridSearch] query="..." semantic=N keyword=N top=N | 命中预览`
+
+**遗忘（Forgetting）：**
+- **重要性自然衰减** — 超过 24h 未访问的 Archival 记忆，importance 每日 -0.01（下限 0.1）
+- **过期记忆清理** — 启动时自动删除 `imp < 0.25` 且 15 天未访问的记忆
+- **Reflector forget** — 反思器可主动删除过时的 core memory 行（`op: "forget"`）
+- **FTS 索引重建** — 删除后自动重建全文索引
+
+### SkillHub 改进
+
+- **本地技能目录** — `GET /api/skillhub/catalog` 返回预置技能列表（无需搜索）
+- **安装状态标注** — 目录/搜索结果标注 `installed: true/false`
+- **安装后用法说明** — 返回 `usage` 字段告知用户技能如何生效
+- **兼容性校验** — 安装前检查 `tars_version_min` + `requires_packages`
+
+### 前端改进
+
+- **WebSocket 持久连接** — `wsStore` Pinia store 全局管理，切换页面不断连
+- **Enter 键换行** — 输入框 Enter 自然换行，仅点击 Send 按钮提交
+- **命令下拉菜单** — `/` 按钮悬浮弹出 7 个命令，点击自动填入
+
 ## 记忆系统 V3（Letta 混合模式）
 
 TARS 采用三层记忆架构：
 
-1. **Core Memory（4 块固定区块）** — 注入 system prompt：
+1. **Core Memory（4 块固定区块）** — 注入 system prompt，支持 append/replace/forget：
    - `persona` Agent 人格定位
    - `user_profile` 用户画像（身份/技术栈/偏好）
    - `project_context` 当前项目上下文
    - `working_principles` 协作准则累积
-2. **Archival Memory（长期记忆）** — embedding 检索 + Ebbinghaus 衰减
-3. **Reflector（反思器）** — 每轮对话后异步更新 core + archival
+2. **Archival Memory（长期记忆）** — embedding 语义检索 + FTS5 关键词 + Ebbinghaus 衰减评分
+3. **Reflector（反思器）** — 每轮对话后异步更新 core + archival，支持 forget 操作清理过时内容
+4. **遗忘机制** — 重要性自然衰减（每日 -0.01）+ 过期自动清理（imp<0.25 & 15天未访问）
 
 Agent 通过 `core_memory_append` / `core_memory_replace` 工具自主编辑核心记忆；反思器作为兜底每轮触发。
 Web 工具搜索结果通过反思器自动沉淀为 `source=web` 的 archival 记忆。
@@ -155,11 +223,14 @@ Web 工具搜索结果通过反思器自动沉淀为 `source=web` 的 archival �
 ```bash
 cd backend
 
-# 安装依赖
+# 创建虚拟环境并安装依赖
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
+pip install pandas openpyxl Pillow sentence-transformers
 
-# 启动服务（需重启以加载新模块）
-python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --reload
+# 启动服务
+venv/bin/python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### 前端启动
@@ -207,7 +278,8 @@ npm run dev
 
 | 方法 | 路径 | 描述 |
 |------|------|------|
-| GET | `/api/skillhub/search?q=xxx` | 搜索技能 |
+| GET | `/api/skillhub/catalog` | 本地技能目录（★v2.1.0） |
+| GET | `/api/skillhub/search?q=xxx` | 搜索技能（本地目录优先） |
 | GET | `/api/skillhub/detail/{id}` | 包详情 |
 | POST | `/api/skillhub/install` | 安装 |
 | POST | `/api/skillhub/uninstall` | 卸载 |
@@ -272,7 +344,15 @@ cd backend
 
 ## 版本历史
 
-### v2.0.0（当前）
+### v2.1.0（当前）
+- 🚀 **Python 沙箱执行** (`python_exec`) — Agent 可写 Python 代码并执行，支持 pandas/numpy/Pillow 等
+- ⚡ **斜杠命令系统** — `/plan` `/yolo` `/brainstorm` `/subagent` `/skill` `/clear` `/help`，前端 `/` 按钮下拉菜单
+- 🧠 **记忆系统强化** — 核心记忆自动去重 + 行数上限；CJK 中文 LIKE 降级搜索；遗忘机制（重要性衰减 + 过期清理 + Reflector forget）
+- 🏪 **SkillHub 改进** — 本地技能目录 (`/catalog`)；安装状态标注；安装后用法说明；兼容性校验
+- 🔗 **WebSocket 持久连接** — wsStore 全局管理，切换页面不断连
+- ⌨️ **输入优化** — Enter 键换行，仅鼠标点击提交
+
+### v2.0.0
 - 工具系统全面重构（ToolDispatcher + Function Calling）
 - 技能插件系统（PluginSkill + PromptSkill + skill.yaml）
 - SkillHub 市场（GitHub Releases）

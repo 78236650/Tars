@@ -1,0 +1,62 @@
+[
+  {
+    "id": "tars-official/calculator",
+    "name": "计算器",
+    "description": "精确的数学计算工具，支持四则运算、三角函数、对数、幂运算等",
+    "author": "TARS",
+    "version": "1.0.0",
+    "type": "plugin",
+    "tags": ["math", "calculator", "utility"],
+    "permissions": [],
+    "tars_version_min": "2.0.0",
+    "usage": "此技能注册为工具 'calculator'，可在对话中说 '帮我算一下 2+2' 来触发"
+  },
+  {
+    "id": "tars-official/code-assistant",
+    "name": "代码助手",
+    "description": "专业的编程助手，擅长代码编写、调试、审查和重构",
+    "author": "TARS",
+    "version": "1.0.0",
+    "type": "prompt",
+    "tags": ["code", "programming", "development"],
+    "permissions": [],
+    "tars_version_min": "2.0.0",
+    "usage": "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，增强 TARS 的编程能力"
+  },
+  {
+    "id": "tars-official/planner",
+    "name": "任务规划",
+    "description": "将复杂任务分解为可执行的步骤，制定计划和时间估算",
+    "author": "TARS",
+    "version": "1.0.0",
+    "type": "prompt",
+    "tags": ["planning", "task", "project"],
+    "permissions": [],
+    "tars_version_min": "2.0.0",
+    "usage": "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，让 TARS 具备专业任务规划能力"
+  },
+  {
+    "id": "tars-official/summarizer",
+    "name": "摘要提取",
+    "description": "从长文本、文档、网页中提取关键信息和摘要",
+    "author": "TARS",
+    "version": "1.0.0",
+    "type": "prompt",
+    "tags": ["summary", "extract", "document"],
+    "permissions": [],
+    "tars_version_min": "2.0.0",
+    "usage": "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，让 TARS 具备专业摘要提取能力"
+  },
+  {
+    "id": "tars-official/translator",
+    "name": "翻译助手",
+    "description": "高质量多语言翻译，保持语境和语气",
+    "author": "TARS",
+    "version": "1.0.0",
+    "type": "prompt",
+    "tags": ["translate", "language", "i18n"],
+    "permissions": [],
+    "tars_version_min": "2.0.0",
+    "usage": "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，让 TARS 具备专业翻译能力"
+  }
+]

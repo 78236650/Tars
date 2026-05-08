@@ -74,12 +74,14 @@ class ToolDispatcher:
         on_tool_call: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
         max_rounds: int = 5,
+        tools: Optional[List[Dict]] = None,
     ) -> AsyncGenerator[str, None]:
-        """带工具调用的对话，自动处理多轮工具调用循环"""
+        """带工具调用的对话，自动处理多轮工具调用循环。
+        tools 参数可选，传入时覆盖默认的全部工具 schema。"""
         if not self.provider:
             raise RuntimeError("ToolDispatcher 未设置 provider")
 
-        tools_schemas = self.registry.get_function_schemas()
+        tools_schemas = tools if tools is not None else self.registry.get_function_schemas()
         use_native = self.supports_native_tools(model_name) and tools_schemas
 
         working_messages = list(messages)

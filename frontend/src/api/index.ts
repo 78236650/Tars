@@ -126,6 +126,7 @@ export const skillsApi = {
 }
 
 export const skillhubApi = {
+  getCatalog: () => api.get('/skillhub/catalog'),
   search: (query: string) => api.get('/skillhub/search', { params: { q: query } }),
   getDetail: (id: string) => api.get(`/skillhub/detail/${id}`),
   install: (skillId: string) => api.post('/skillhub/install', { skill_id: skillId }),

@@ -32,4 +32,6 @@ parameters:
     description: 摘要长度偏好（short/medium/long）
     required: false
     default: medium
+tars_version_min: "2.0.0"
+usage: "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，让 TARS 具备专业摘要提取能力。你无需主动调用"
 permissions: []

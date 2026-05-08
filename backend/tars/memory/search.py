@@ -18,15 +18,20 @@ class HybridSearch:
         scored: dict = {}  # mem_id -> (mem, score)
 
         # 1. 语义搜索（如有 embedding）
+        semantic_hits = 0
         if self.embedding_provider:
             try:
                 self._semantic_score(query, scored)
+                semantic_hits = len(scored)
             except Exception as e:
                 print(f"[HybridSearch] 语义搜索失败: {e}")
 
         # 2. FTS 关键词搜索作为补充
+        kw_hits = 0
         try:
+            prev_count = len(scored)
             self._keyword_score(query, scored)
+            kw_hits = len(scored) - prev_count
         except Exception:
             pass
 
@@ -40,6 +45,16 @@ class HybridSearch:
                 self.db.reinforce_memory(mem.id)
             except Exception:
                 pass
+
+        # 5. 检索日志
+        top_preview = ", ".join(
+            f"[{m.category}]{m.content[:30]}" for m in results[:3]
+        ) if results else "无命中"
+        print(
+            f"[HybridSearch] query=\"{query[:40]}\" "
+            f"semantic={semantic_hits} keyword={kw_hits} "
+            f"top={len(results)} | {top_preview}"
+        )
 
         return results
 

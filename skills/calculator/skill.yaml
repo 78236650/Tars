@@ -9,4 +9,6 @@ tags:
   - calculator
   - utility
 entry_point: main.py
+tars_version_min: "2.0.0"
+usage: "此技能注册为工具 'calculator'，可在对话中说 '帮我算一下 2+2' 来触发 TARS 调此工具"
 permissions: []

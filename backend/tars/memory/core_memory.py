@@ -48,18 +48,60 @@ class CoreMemoryManager:
         conn.commit()
         return True
 
+    def _is_duplicate_line(self, current: str, content: str) -> bool:
+        """检查 content 是否与 current 中某一行几乎相同（去重）"""
+        c = content.strip()
+        if not c:
+            return True
+        # 精确匹配
+        if c in current:
+            return True
+        # 按行比较，忽略首尾空格
+        for line in current.split("\n"):
+            if line.strip() == c:
+                return True
+            # 子串包含检测（新内容被某行完全包含）
+            if len(c) > 10 and c in line:
+                return True
+            if len(line.strip()) > 10 and line.strip() in c:
+                return True
+        return False
+
+    def _enforce_line_limit(self, content: str, max_lines: int = 30) -> str:
+        """限制最大行数，删除最旧的行"""
+        lines = content.split("\n")
+        if len(lines) <= max_lines:
+            return content
+        # 保留最后 max_lines 行
+        return "\n".join(lines[-max_lines:])
+
     def append(self, block: str, content: str) -> bool:
+        content = content.strip()
+        if not content:
+            return False
         current = self.get(block)
+        # 去重检查
+        if self._is_duplicate_line(current, content):
+            return False  # 静默跳过，不报错
         sep = "\n" if current and not current.endswith("\n") else ""
-        new = current + sep + content.strip()
+        new = current + sep + content
+        new = self._enforce_line_limit(new)
         return self.set(block, new)
 
     def replace(self, block: str, old: str, new: str) -> bool:
         current = self.get(block)
-        if old in current:
+        old = old.strip()
+        new = new.strip()
+        if not new:
+            return False
+        if old and old in current:
             updated = current.replace(old, new, 1)
+        elif old:
+            # old 不存在 → 当作追加（带去重）
+            return self.append(block, new)
         else:
-            updated = (current + ("\n" if current else "") + new).strip()
+            # 无 old → 追加
+            return self.append(block, new)
         return self.set(block, updated)
 
     def render_for_prompt(self) -> str:
@@ -113,10 +155,14 @@ class CoreMemoryAppendTool(BaseTool):
             return ToolResult(success=False, output="", error=f"无效的区块名: {block}")
         if not content:
             return ToolResult(success=False, output="", error="content 不能为空")
+        # 先检查是否重复
+        current = self.manager.get(block)
+        if self.manager._is_duplicate_line(current, content):
+            return ToolResult(success=True, output=f"(已存在，跳过) {block}: {content[:50]}")
         ok = self.manager.append(block, content)
         if ok:
             return ToolResult(success=True, output=f"已追加到 {block}: {content[:50]}")
-        return ToolResult(success=False, output="", error="追加失败")
+        return ToolResult(success=False, output="", error="追加失败（可能达到上限）")
 
 
 class CoreMemoryReplaceTool(BaseTool):

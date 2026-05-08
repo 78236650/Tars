@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
+import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
@@ -13,12 +14,29 @@ const router = useRouter()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
+const wsStore = useWsStore()
 const { t } = useI18n()
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[] }[]>([])
 const inputMessage = ref('')
-const isConnected = ref(false)
-const isGenerating = ref(false)
-let ws: WebSocket | null = null
+
+// 斜杠命令
+const showCommands = ref(false)
+const commands = [
+  { name: '/plan', desc: '规划模式，分解任务', usage: '/plan ' },
+  { name: '/yolo', desc: '执行模式，直接动手', usage: '/yolo' },
+  { name: '/brainstorm', desc: '头脑风暴，发散思维', usage: '/brainstorm ' },
+  { name: '/subagent', desc: '委派子代理执行', usage: '/subagent code ' },
+  { name: '/skill', desc: '激活一个技能', usage: '/skill ' },
+  { name: '/clear', desc: '清空对话，新会话', usage: '/clear' },
+  { name: '/help', desc: '显示所有命令', usage: '/help' },
+]
+const selectCommand = (cmd: typeof commands[0]) => {
+  inputMessage.value = cmd.usage
+  showCommands.value = false
+}
+const toggleCommands = () => {
+  showCommands.value = !showCommands.value
+}
 
 // 文件上传相关
 const attachments = ref<{ file_id: string; name: string; type: string; mime_type: string; size: number; preview: string }[]>([])
@@ -27,20 +45,15 @@ const uploading = ref(false)
 const MAX_FILES = 5
 const MAX_SIZE = 20 * 1024 * 1024
 
-const connectWebSocket = () => {
-  if (ws) return
+// WebSocket 由 wsStore 全局管理，ChatView 订阅消息即可
+const setupWsHandler = () => {
+  wsStore.connect()
 
-  ws = new WebSocket(`ws://localhost:8000/ws`)
-
-  ws.onopen = () => {
-    isConnected.value = true
-  }
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
+  const wsHandler = {
+    onMessage: (data: any) => {
 
     if (data.type === 'text_chunk') {
-      isGenerating.value = true
+      wsStore.isGenerating = true
       if (chatStore.currentSessionId && data.session_id !== chatStore.currentSessionId) {
         return
       }
@@ -59,7 +72,7 @@ const connectWebSocket = () => {
     } else if (data.type === 'tool_calling') {
       console.log('[ChatView] 工具调用:', data.tool, data.parameters)
     } else if (data.type === 'tool_result') {
-      isGenerating.value = true
+      wsStore.isGenerating = true
       const toolMsg = {
         id: data.session_id + '_tool',
         role: 'assistant',
@@ -82,13 +95,13 @@ const connectWebSocket = () => {
     } else if (data.type === 'file_processing') {
       // 可选：显示文件处理中状态
     } else if (data.type === 'done') {
-      isGenerating.value = false
+      wsStore.isGenerating = false
       const lastMsg = messages.value[messages.value.length - 1]
       if (lastMsg && lastMsg.id?.startsWith('streaming-')) {
         lastMsg.id = `msg-${Date.now()}`
       }
     } else if (data.type === 'error') {
-      isGenerating.value = false
+      wsStore.isGenerating = false
       messages.value.push({
         id: data.session_id,
         role: 'system',
@@ -96,9 +109,9 @@ const connectWebSocket = () => {
         timestamp: data.timestamp
       })
     } else if (data.type === 'generation_start') {
-      isGenerating.value = true
+      wsStore.isGenerating = true
     } else if (data.type === 'generation_end') {
-      isGenerating.value = false
+      wsStore.isGenerating = false
       const lastMsg = messages.value[messages.value.length - 1]
       if (lastMsg && lastMsg.id?.startsWith('streaming-')) {
         lastMsg.id = `msg-${Date.now()}`
@@ -130,34 +143,37 @@ const connectWebSocket = () => {
       }
     } else if (data.type === 'plan_step_failed') {
       const decision = confirm(`步骤 ${data.step_id} 失败: ${data.error}\n\n点击确定重试，取消中止`)
-      ws?.send(JSON.stringify({
+      wsStore.send({
         type: 'user_decision',
         session_id: data.session_id,
         step_id: data.step_id,
         decision: decision ? 'retry' : 'abort',
-      }))
+      })
     } else if (data.type === 'plan_complete') {
-      isGenerating.value = false
+      wsStore.isGenerating = false
+    } else if (data.type === 'command_result') {
+      messages.value.push({
+        id: Date.now().toString() + '_cmd',
+        role: 'system',
+        content: data.message,
+        timestamp: data.timestamp,
+      })
+    } else if (data.type === 'session_changed') {
+      if (data.new_session_id) {
+        chatStore.currentSessionId = data.new_session_id
+      }
     } else if (data.type === 'confirmation_required') {
       const ok = confirm(`需要确认:\n${data.message}`)
-      ws?.send(JSON.stringify({
+      wsStore.send({
         type: 'user_decision',
         session_id: data.session_id,
         decision: ok ? 'allow' : 'deny',
-      }))
+      })
+    }
     }
   }
 
-  ws.onclose = () => {
-    isConnected.value = false
-    isGenerating.value = false
-    ws = null
-    setTimeout(connectWebSocket, 3000)
-  }
-
-  ws.onerror = () => {
-    isConnected.value = false
-  }
+  return wsStore.subscribe(wsHandler)
 }
 
 const handleFileSelect = () => {
@@ -223,7 +239,7 @@ const loadSessionMessages = async (sessionId: string) => {
 }
 
 const sendMessage = async () => {
-  if ((!inputMessage.value.trim() && attachments.value.length === 0) || !ws) return
+  if ((!inputMessage.value.trim() && attachments.value.length === 0) || !wsStore.isConnected) return
   if (!chatStore.currentSessionId) return
 
   const sessionId = chatStore.currentSessionId
@@ -238,7 +254,7 @@ const sendMessage = async () => {
     attachments: attachments.value.length > 0 ? [...attachments.value] : undefined,
   })
 
-  isGenerating.value = true
+  wsStore.isGenerating = true
 
   const payload: any = {
     session_id: sessionId,
@@ -248,7 +264,7 @@ const sendMessage = async () => {
     payload.file_ids = attachments.value.map(a => a.file_id)
   }
 
-  ws.send(JSON.stringify(payload))
+  wsStore.send(payload)
 
   inputMessage.value = ''
   attachments.value = []
@@ -263,13 +279,15 @@ const sendMessage = async () => {
   }
 }
 
+// 组合式 API 中 setup 顶层调用，组件挂载时执行
+const unsubscribe = setupWsHandler()
+
 onMounted(async () => {
   settingsStore.loadModels()
   await chatStore.initIfEmpty()
   if (chatStore.currentSessionId) {
     await loadSessionMessages(chatStore.currentSessionId)
   }
-  connectWebSocket()
 })
 
 watch(() => chatStore.currentSessionId, async (newId, oldId) => {
@@ -281,9 +299,8 @@ watch(() => chatStore.currentSessionId, async (newId, oldId) => {
 })
 
 onUnmounted(() => {
-  if (ws) {
-    ws.close()
-  }
+  // 仅取消消息订阅，WebSocket 连接由 wsStore 全局保持
+  unsubscribe()
 })
 </script>
 
@@ -299,8 +316,8 @@ onUnmounted(() => {
           <div>
             <h1 class="text-lg font-semibold text-white">TARS Agent</h1>
             <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
-              <span class="text-sm text-slate-400">{{ isConnected ? t('chat.connected') : t('chat.disconnected') }}</span>
+              <span class="w-2 h-2 rounded-full" :class="wsStore.isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+              <span class="text-sm text-slate-400">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</span>
             </div>
           </div>
         </div>
@@ -326,7 +343,7 @@ onUnmounted(() => {
         </div>
       </header>
       
-      <ChatPanel :messages="messages" :is-generating="isGenerating" />
+      <ChatPanel :messages="messages" :is-generating="wsStore.isGenerating" />
 
       <footer class="px-6 py-4 border-t border-slate-700">
         <!-- 附件预览区 -->
@@ -355,6 +372,32 @@ onUnmounted(() => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
             </svg>
           </button>
+
+          <!-- 命令按钮 -->
+          <div class="relative">
+            <button
+              @click="toggleCommands"
+              class="p-3 rounded-xl hover:bg-slate-700 transition-colors"
+              title="命令"
+            >
+              <span class="text-lg font-bold text-purple-400">/</span>
+            </button>
+            <div
+              v-if="showCommands"
+              class="absolute bottom-full left-0 mb-2 w-64 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden z-50"
+            >
+              <div class="px-3 py-2 border-b border-slate-700 text-xs text-slate-400 font-medium">斜杠命令</div>
+              <button
+                v-for="cmd in commands"
+                :key="cmd.name"
+                @click="selectCommand(cmd)"
+                class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-700 text-left transition-colors"
+              >
+                <span class="text-sm font-mono text-purple-400 flex-shrink-0">{{ cmd.name }}</span>
+                <span class="text-xs text-slate-400 truncate">{{ cmd.desc }}</span>
+              </button>
+            </div>
+          </div>
           <input
             ref="fileInputRef"
             type="file"
@@ -367,7 +410,6 @@ onUnmounted(() => {
           <div class="flex-1 relative">
             <textarea
               v-model="inputMessage"
-              @keydown.enter.exact.prevent="sendMessage"
               :placeholder="t('chat.placeholder')"
               class="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               rows="1"
@@ -375,7 +417,7 @@ onUnmounted(() => {
           </div>
           <button
             @click="sendMessage"
-            :disabled="(!inputMessage.trim() && attachments.length === 0) || !isConnected"
+            :disabled="(!inputMessage.trim() && attachments.length === 0) || !wsStore.isConnected"
             class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-xl text-white font-medium transition-colors"
           >
             Send
