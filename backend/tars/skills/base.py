@@ -40,6 +40,14 @@ class Skill:
     # PromptSkill
     prompt_template: Optional[str] = None
     parameters: List[SkillParameter] = field(default_factory=list)
+    # v2.2 SkillRouter
+    trigger_intents: List[str] = field(default_factory=list)
+    trigger_entities: List[str] = field(default_factory=list)
+    trigger_keywords: List[str] = field(default_factory=list)
+    trigger_conditions: str = "any"
+    priority: int = 50
+    lifecycle: str = "per_turn"
+    hooks: Dict[str, str] = field(default_factory=dict)
     # 内部状态
     _dir_path: Optional[str] = field(default=None, repr=False)
 

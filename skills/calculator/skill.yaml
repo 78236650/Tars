@@ -9,6 +9,12 @@ tags:
   - calculator
   - utility
 entry_point: main.py
-tars_version_min: "2.0.0"
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["data.analyze", "coding.explain"]
+  keywords: ["计算", "算", "数学", "求和", "平均"]
+  conditions: "any"
+priority: 30
+lifecycle: "per_turn"
 usage: "此技能注册为工具 'calculator'，可在对话中说 '帮我算一下 2+2' 来触发 TARS 调此工具"
 permissions: []

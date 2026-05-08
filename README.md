@@ -1,4 +1,4 @@
-# TARS AI Agent v2.1.0
+# TARS AI Agent v2.2.0
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解。
 
@@ -344,7 +344,18 @@ cd backend
 
 ## 版本历史
 
-### v2.1.0（当前）
+### v2.2.0（当前）
+- 🧠 **记忆认知架构重做** — 场景画像 + 实体图 + 事件时间线 + 四路融合检索
+- 🗂️ **Semantic Memory（实体图）** — 确定性哈希 ID + aliases FTS5 合并，防止同名实体分裂
+- 🔀 **MemoryRouter** — 实体路/时间线路/向量路/关键词路四路融合 + HybridSearch 异常兜底
+- ⚡ **SkillRouter** — 基于意图+实体+关键词的动态技能激活，替代永久注入
+- 🪝 **Skill Hooks** — on_activate/pre_llm/post_llm 三阶段钩子 + SkillContext
+- 🔍 **Scene Analyzer** — 同步意图识别 + fast_path 跳过 + semantic cache
+- 📝 **Reflector 重做** — upsert_entity/upsert_relation/log_episode 分流写入 + project_context 自动派生
+- 🆘 **紧急写入通道** — `archival_insert` 工具，用户说"记住X"时同步写入
+- 🗑️ **遗忘机制** — 重要性自然衰减 + 过期自动清理 + Reflector forget
+
+### v2.1.0
 - 🚀 **Python 沙箱执行** (`python_exec`) — Agent 可写 Python 代码并执行，支持 pandas/numpy/Pillow 等
 - ⚡ **斜杠命令系统** — `/plan` `/yolo` `/brainstorm` `/subagent` `/skill` `/clear` `/help`，前端 `/` 按钮下拉菜单
 - 🧠 **记忆系统强化** — 核心记忆自动去重 + 行数上限；CJK 中文 LIKE 降级搜索；遗忘机制（重要性衰减 + 过期清理 + Reflector forget）

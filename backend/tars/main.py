@@ -27,6 +27,7 @@ from tars.tools.builtin import (
 from tars.tools.builtin.web_search import WebSearchTool
 from tars.tools.builtin.web_fetch import WebFetchTool
 from tars.tools.builtin.python_exec import PythonExecTool
+from tars.memory.archival_insert_tool import ArchivalInsertTool
 from tars.tools.sandbox import WorkspaceSandbox
 from tars.skills import skill_registry, SkillLoader
 from tars.skillhub import SkillHubClient, SkillInstaller
@@ -39,7 +40,7 @@ from tars.api.files import router as files_router, init_file_storage
 from tars.api.sessions import router as sessions_router, init_sessions_api
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="2.1.0")
+app = FastAPI(title="TARS Agent", version="2.2.0")
 
 # CORS 配置
 app.add_middleware(
@@ -78,6 +79,7 @@ tool_registry.register(CronJobTool(db=db))
 tool_registry.register(WebSearchTool())
 tool_registry.register(WebFetchTool())
 tool_registry.register(PythonExecTool(workspace_dir=str(project_dir.parent)))
+tool_registry.register(ArchivalInsertTool(db=db))
 
 # 任务规划工具
 task_planner_tool = TaskPlannerTool()
@@ -714,6 +716,15 @@ async def startup_event():
     stats = memory_manager.cleanup()
     if stats["decayed"] or stats["deleted"]:
         print(f"[Startup] 记忆遗忘: importance衰减={stats['decayed']} 删除={stats['deleted']}")
+    # v2.2: 清理过期 Working Context + 启动迁移 worker
+    try:
+        db.cleanup_working_contexts()
+    except Exception:
+        pass
+    try:
+        memory_manager.start_migration_worker()
+    except Exception:
+        pass
     print(f"[Startup] 已注册 {len(tool_registry.list_all())} 个工具: {tool_registry.list_names()}")
     print(f"[Startup] 已加载 {len(skill_registry.list_all())} 个技能")
 

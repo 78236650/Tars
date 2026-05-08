@@ -28,6 +28,12 @@ parameters:
     description: 编程语言偏好
     required: false
     default: ""
-tars_version_min: "2.0.0"
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["coding.write", "coding.debug", "coding.review", "coding.refactor", "coding.explain"]
+  keywords: ["代码", "编程", "debug", "重构", "写一个", "帮我写", "bug"]
+  conditions: "any"
+priority: 60
+lifecycle: "per_turn"
 usage: "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，增强 TARS 的编程能力。你无需主动调用"
 permissions: []

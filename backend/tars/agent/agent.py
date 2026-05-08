@@ -58,6 +58,25 @@ class AgentV2:
         self.command_parser = CommandParser(self.command_registry)
         self._active_mode: Optional[str] = None  # "plan" | "yolo" | "brainstorm" | None
 
+        # v2.2 Working Context + Scene Analyzer（异步，不接主流程）
+        from ..memory.working_context import WorkingContextManager
+        from ..config.memory import config as mem_config
+        self.wc_manager = WorkingContextManager(self.db)
+        self.mem_config = mem_config
+        self._pending_scene_ids = {}  # session_id -> (user_msg, assistant_msg)
+
+        # v2.2 MemoryRouter + SkillRouter（feature flag 控制）
+        if mem_config.router_enabled:
+            from ..memory.router import MemoryRouter
+            self.memory_router = MemoryRouter(self.db, self.memory_manager.embedding_provider)
+        else:
+            self.memory_router = None
+        if mem_config.skill_router_enabled:
+            from ..skills.router import SkillRouter
+            self.skill_router = SkillRouter(self.skill_registry, mem_config)
+        else:
+            self.skill_router = None
+
         if provider:
             self.provider = provider
         else:
@@ -195,8 +214,15 @@ class AgentV2:
         # 3. 获取历史消息
         history = self.db.get_messages(session_id)
 
-        # 4. 获取记忆上下文
-        memory_context = self.memory_manager.get_context_for_query(user_content)
+        # 4. 获取记忆上下文（v2.2: 优先 MemoryRouter，否则老路）
+        if self.memory_router and self.mem_config.router_enabled:
+            wc = self.wc_manager.get(session_id)
+            ctx = self.memory_router.retrieve(user_content, wc)
+            memory_context = self.memory_router.build_injection(ctx)
+            if wc:
+                memory_context = f"## 当前意图: {wc.get('current_intent','unknown')}\n\n{memory_context}"
+        else:
+            memory_context = self.memory_manager.get_context_for_query(user_content)
 
         # 5. 构建 system prompt（含人格 + 记忆 + PromptSkill + 命令提示词）
         system_prompt = self.workspace.build_context()
@@ -330,6 +356,10 @@ class AgentV2:
             "model": self.current_model,
         })
 
+        # 12. v2.2: 异步 Scene Analyzer（不阻塞对话）
+        if hasattr(self, 'wc_manager'):
+            asyncio.create_task(self._run_scene_analyzer(session_id, user_content, full_response))
+
     # ========= 模式权限控制 =========
 
     READONLY_TOOLS = {"weather", "file", "file_list", "memory", "web_search", "web_fetch"}
@@ -342,6 +372,15 @@ class AgentV2:
         if not self._is_readonly_mode():
             return None
         return [t.to_function_schema() for t in self.tool_registry.list_all() if t.name in self.READONLY_TOOLS]
+
+    async def _run_scene_analyzer(self, session_id: str, user_msg: str, assistant_msg: str):
+        """v2.2: 异步运行 Scene Analyzer，结果写入 Working Context"""
+        try:
+            from ..analysis.scene_analyzer import SceneAnalyzer
+            analyzer = SceneAnalyzer(self.provider, self.wc_manager, self.db)
+            await analyzer.analyze(session_id, user_msg, assistant_msg)
+        except Exception as e:
+            print(f"[Agent] SceneAnalyzer 失败: {e}")
 
     def get_subagent_info(self) -> dict:
         return self.subagent_manager.get_all_subagents()

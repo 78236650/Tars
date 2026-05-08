@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gomoku Game</title>
+    <style>
+        /* 添加基本样式 */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+
+        .board {
+            width: 500px;
+            height: 500px;
+            border: 3px solid black;
+            display: flex;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="board" id="board"></div>
+
+    <!-- 加载游戏脚本 -->
+    <script src="/js/gomoku.js"></script>
+</body>
+</html>
