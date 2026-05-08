@@ -250,6 +250,26 @@ class Reflector:
             except Exception:
                 pass
 
+        # 3. FTS5 未命中 → 语义相似度搜索
+        if not row:
+            try:
+                from tars.memory.deduplicator import jaccard_similarity
+                cur.execute("SELECT id, name, aliases, attributes, attributes_history, importance FROM entities WHERE type=?", (etype,))
+                all_entities = cur.fetchall()
+                best_sim = 0.6  # 阈值
+                best_row = None
+                for erow in all_entities:
+                    sim = jaccard_similarity(name.lower(), erow[1].lower())
+                    if sim > best_sim:
+                        best_sim = sim
+                        best_row = erow
+                if best_row:
+                    merged_into = best_row[0]
+                    row = best_row
+                    print(f"[AliasMerge] {name} -> {best_row[0]} ({best_row[1]}) via semantic sim={best_sim:.2f}")
+            except Exception:
+                pass
+
         if row:
             old_name = row[1]
             old_aliases = json.loads(row[2] or "[]")
