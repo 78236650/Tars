@@ -205,6 +205,74 @@ class Database:
             )
         """)
 
+        # === v2.2 记忆认知架构新表 ===
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entities (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                aliases TEXT DEFAULT '[]',
+                attributes TEXT DEFAULT '{}',
+                attributes_history TEXT DEFAULT '[]',
+                importance REAL DEFAULT 0.5,
+                last_accessed TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)")
+        # FTS5 表用于别名搜索
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS entities_aliases_fts USING fts5(
+                aliases, content='entities', content_rowid='rowid'
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_entity TEXT NOT NULL,
+                to_entity TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                confidence REAL DEFAULT 0.5,
+                source_memory_id INTEGER,
+                created_at TEXT NOT NULL,
+                UNIQUE(from_entity, to_entity, predicate)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS working_contexts (
+                session_id TEXT PRIMARY KEY,
+                focus_entities TEXT DEFAULT '[]',
+                current_intent TEXT DEFAULT 'unknown',
+                intent_confidence REAL DEFAULT 0,
+                open_threads TEXT DEFAULT '[]',
+                active_skills TEXT DEFAULT '[]',
+                last_scene_snapshot TEXT DEFAULT '{}',
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dead_letter_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                op TEXT NOT NULL,
+                error TEXT,
+                retry_count INTEGER DEFAULT 0,
+                session_id TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        # v2.2 memories 表加列
+        for col_name in ["event_time", "entity_refs", "supersedes"]:
+            try:
+                cursor.execute(f"ALTER TABLE memories ADD COLUMN {col_name} TEXT")
+            except sqlite3.OperationalError:
+                pass
+
         conn.commit()
 
     def create_session(self, user_id: str = "default", title: str = "New Session") -> Session:
@@ -759,4 +827,75 @@ class Database:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM cronjobs WHERE id = ?", (cronjob_id,))
+        conn.commit()
+
+    # ============ v2.2 Working Context ============
+
+    def get_working_context(self, session_id: str) -> dict:
+        conn = self._get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM working_contexts WHERE session_id = ?", (session_id,))
+        row = cur.fetchone()
+        if not row:
+            return {}
+        import json
+        return {
+            "session_id": row[0],
+            "focus_entities": json.loads(row[1] or "[]"),
+            "current_intent": row[2] or "unknown",
+            "intent_confidence": row[3] or 0,
+            "open_threads": json.loads(row[4] or "[]"),
+            "active_skills": json.loads(row[5] or "[]"),
+            "last_scene_snapshot": json.loads(row[6] or "{}"),
+            "updated_at": row[7],
+        }
+
+    def upsert_working_context(self, session_id: str, **kwargs):
+        conn = self._get_conn()
+        cur = conn.cursor()
+        import json
+        now = get_local_now().isoformat()
+        cur.execute("SELECT session_id FROM working_contexts WHERE session_id = ?", (session_id,))
+        exists = cur.fetchone()
+        if exists:
+            sets = []
+            vals = []
+            for k in ["focus_entities", "current_intent", "intent_confidence",
+                       "open_threads", "active_skills", "last_scene_snapshot"]:
+                if k in kwargs:
+                    v = kwargs[k]
+                    sets.append(f"{k} = ?")
+                    vals.append(json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v)
+            sets.append("updated_at = ?"); vals.append(now)
+            vals.append(session_id)
+            cur.execute(f"UPDATE working_contexts SET {', '.join(sets)} WHERE session_id = ?", vals)
+        else:
+            cur.execute(
+                "INSERT INTO working_contexts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id,
+                 json.dumps(kwargs.get("focus_entities", []), ensure_ascii=False),
+                 kwargs.get("current_intent", "unknown"),
+                 kwargs.get("intent_confidence", 0),
+                 json.dumps(kwargs.get("open_threads", []), ensure_ascii=False),
+                 json.dumps(kwargs.get("active_skills", []), ensure_ascii=False),
+                 json.dumps(kwargs.get("last_scene_snapshot", {}), ensure_ascii=False),
+                 now),
+            )
+        conn.commit()
+
+    def cleanup_working_contexts(self, max_age_hours: int = 72):
+        conn = self._get_conn()
+        cur = conn.cursor()
+        cutoff = (get_local_now() - timedelta(hours=max_age_hours)).isoformat()
+        cur.execute("DELETE FROM working_contexts WHERE updated_at < ?", (cutoff,))
+        conn.commit()
+
+    def add_dead_letter(self, op: str, error: str, session_id: str = None):
+        conn = self._get_conn()
+        cur = conn.cursor()
+        now = get_local_now().isoformat()
+        cur.execute(
+            "INSERT INTO dead_letter_queue (op, error, session_id, created_at) VALUES (?, ?, ?, ?)",
+            (op, error, session_id, now),
+        )
         conn.commit()

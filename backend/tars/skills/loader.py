@@ -52,6 +52,9 @@ class SkillLoader:
                     default=p.get("default"),
                 ))
 
+            trigger = data.get("trigger", {}) or {}
+            hooks = data.get("hooks", {}) or {}
+
             skill = Skill(
                 id=data.get("id", skill_dir.name),
                 name=data.get("name", skill_dir.name),
@@ -70,6 +73,13 @@ class SkillLoader:
                 entry_point=data.get("entry_point"),
                 prompt_template=data.get("prompt_template"),
                 parameters=parameters,
+                trigger_intents=trigger.get("intents", []),
+                trigger_entities=trigger.get("entities", []),
+                trigger_keywords=trigger.get("keywords", []),
+                trigger_conditions=trigger.get("conditions", "any"),
+                priority=data.get("priority", 50),
+                lifecycle=data.get("lifecycle", "per_turn"),
+                hooks=hooks,
                 _dir_path=str(skill_dir),
             )
 

@@ -89,6 +89,7 @@ class ToolDispatcher:
         if not use_native and tools_schemas:
             working_messages = self._inject_tool_prompt(working_messages)
 
+        tools_called = []
         for _ in range(max_rounds):
             if use_native:
                 response = await self._call_with_native_tools(
@@ -106,9 +107,22 @@ class ToolDispatcher:
                 text = self._extract_text(response, use_native)
                 if text:
                     yield text
+                    return
+                if tools_called:
+                    # LLM 未生成文本但之前调用了工具 → 兜底摘要
+                    summary = "已执行: " + ", ".join(tools_called)
+                    yield summary
+                    return
+                # LLM 完全无输出 → 降级重试（不带工具，避免工具过多导致卡死）
+                if use_native and tools_schemas and _ == 0:
+                    fallback = await self._call_with_prompt_fallback(working_messages, stream)
+                    fb_text = self._extract_text(fallback, False)
+                    if fb_text:
+                        yield fb_text
                 return
 
             tool_name, arguments = tool_call
+            tools_called.append(tool_name)
 
             if on_tool_call:
                 await on_tool_call(tool_name, arguments)

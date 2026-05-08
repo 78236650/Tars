@@ -24,7 +24,7 @@ class MemoryManager:
         self.core = CoreMemoryManager(db)
         self.archival = ArchivalManager(db, embedding_provider)
         self.search = HybridSearch(db, embedding_provider)
-        self.reflector = Reflector(provider, self.core, self.archival)
+        self.reflector = Reflector(provider, self.core, self.archival, db=db)
 
     def set_provider(self, provider):
         self.provider = provider
@@ -64,6 +64,42 @@ class MemoryManager:
         decayed = self.db.decay_importance()
         deleted = self.db.cleanup_old_memories()
         return {"decayed": decayed, "deleted": deleted}
+
+    def start_migration_worker(self):
+        """启动后台热回填 worker（低优先级，每 30s 取 10 条旧记忆回填 entity_refs）"""
+        import asyncio
+        import threading
+
+        async def _worker():
+            while True:
+                try:
+                    conn = self.db._get_conn()
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT id, content, created_at FROM memories WHERE entity_refs IS NULL LIMIT 10"
+                    )
+                    rows = cur.fetchall()
+                    for row in rows:
+                        # 简易回填：用创建时间作为 event_time
+                        cur.execute(
+                            "UPDATE memories SET event_time=?, entity_refs='[]' WHERE id=?",
+                            (row[2], row[0]),
+                        )
+                    if rows:
+                        conn.commit()
+                        print(f"[Migration] backfilled {len(rows)} old memories")
+                except Exception as e:
+                    print(f"[Migration] worker error: {e}")
+                await asyncio.sleep(30)
+
+        def _run():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_worker())
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        print("[Migration] background worker started")
 
     def get_tools(self) -> List:
         """返回需要注册到 ToolRegistry 的工具列表"""

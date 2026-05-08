@@ -39,6 +39,12 @@ parameters:
     description: 规划范围（day/week/sprint）
     required: false
     default: ""
-tars_version_min: "2.0.0"
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["planning.decompose", "planning.estimate", "planning.prioritize"]
+  keywords: ["规划", "计划", "分解", "方案", "步骤", "安排"]
+  conditions: "any"
+priority: 70
+lifecycle: "per_turn"
 usage: "此技能为提示词模板，安装后自动注入到每次对话的 system prompt 中，让 TARS 具备专业任务规划能力。你无需主动调用"
 permissions: []
