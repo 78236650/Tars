@@ -22,7 +22,7 @@ class PlanCommand(Command):
     def execute(self, args: str) -> CommandResult:
         task = args or "当前任务"
         return CommandResult(
-            prompt_injection=f"## PLAN MODE\n只做分析和规划，禁止写代码。用Markdown清单输出3-6个步骤。\n完成后说「输入 /yolo 开始执行」。\n\n任务：{task}",
+            prompt_injection=f"## PLAN MODE\n分析拆解任务，禁止写代码。输出3-6步Markdown清单。\n任务：{task}",
             frontend_message=f"🟡 PLAN MODE — {task[:40]}",
         )
 
@@ -45,7 +45,7 @@ class BrainstormCommand(Command):
     def execute(self, args: str) -> CommandResult:
         topic = args or "当前话题"
         return CommandResult(
-            prompt_injection=f"## BRAINSTORM MODE\n发散思维，不限可行性。列5-10个方向，每个2-3句展开，最后选top3。不写代码。\n主题：{topic}",
+            prompt_injection=f"## BRAINSTORM MODE\n发散思维，列5-10个方向，禁止写代码。\n主题：{topic}",
             frontend_message=f"💡 BRAINSTORM — {topic[:40]}",
         )
 

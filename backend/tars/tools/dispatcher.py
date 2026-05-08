@@ -111,14 +111,37 @@ class ToolDispatcher:
                 if tools_called:
                     # LLM 未生成文本但之前调用了工具 → 兜底摘要
                     summary = "已执行: " + ", ".join(tools_called)
+                    # 二次尝试：不带工具，只要求 LLM 根据工具结果总结
+                    alt_msgs = list(working_messages)
+                    alt_msgs.append({"role": "user", "content": "根据以上工具执行结果，请用简短中文总结完成情况。"})
+                    try:
+                        fallback2 = await self._call_with_prompt_fallback(alt_msgs, stream)
+                        fb2_text = self._extract_text(fallback2, False)
+                        if fb2_text and len(fb2_text) > 10:
+                            yield fb2_text
+                            return
+                    except Exception:
+                        pass
                     yield summary
                     return
                 # LLM 完全无输出 → 降级重试（不带工具，避免工具过多导致卡死）
-                if use_native and tools_schemas and _ == 0:
-                    fallback = await self._call_with_prompt_fallback(working_messages, stream)
-                    fb_text = self._extract_text(fallback, False)
-                    if fb_text:
-                        yield fb_text
+                if use_native and tools_schemas:
+                    alt_msgs = list(working_messages)
+                    # 移除系统消息中的工具描述以缩短 prompt
+                    if alt_msgs and alt_msgs[0].get("role") == "system":
+                        sys_content = alt_msgs[0]["content"]
+                        # 截断工具部分
+                        tool_idx = sys_content.find("## 可用工具")
+                        if tool_idx > 0:
+                            alt_msgs[0] = {**alt_msgs[0], "content": sys_content[:tool_idx].strip()}
+                    try:
+                        fallback = await self._call_with_prompt_fallback(alt_msgs, stream)
+                        fb_text = self._extract_text(fallback, False)
+                        if fb_text and len(fb_text) > 10:
+                            yield fb_text
+                            return
+                    except Exception:
+                        pass
                 return
 
             tool_name, arguments = tool_call

@@ -14,6 +14,8 @@
 | ⚡ **技能插件** | PluginSkill（Python 代码插件）+ PromptSkill（Prompt 模板）+ skill.yaml 标准化格式 |
 | 📦 **SkillHub 市场** | 基于 GitHub Releases 的技能市场，支持搜索、安装、卸载、更新 |
 | 📤 **多模态** | 支持图片和文档上传，多模态模型直接理解图片，非多模态模型自动 OCR 降级 |
+| 🎨 **Markdown 渲染** | marked.js + highlight.js 代码语法高亮 + 代码块一键复制 |
+| ⌨️ **键盘快捷键** | Ctrl+Enter 发送 / Ctrl+/ 命令面板 / Ctrl+L 新会话 |
 
 ---
 
@@ -388,6 +390,6 @@ cd backend
 
 ---
 
-*文档版本: v2.1*  
+*文档版本: v2.3*  
 *创建日期: 2026-05-06*  
-*更新日期: 2026-05-07*
+*更新日期: 2026-05-09*
