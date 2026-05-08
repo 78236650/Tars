@@ -65,18 +65,6 @@ class AgentV2:
         self.mem_config = mem_config
         self._pending_scene_ids = {}  # session_id -> (user_msg, assistant_msg)
 
-        # v2.2 MemoryRouter + SkillRouter（feature flag 控制）
-        if mem_config.router_enabled:
-            from ..memory.router import MemoryRouter
-            self.memory_router = MemoryRouter(self.db, self.memory_manager.embedding_provider)
-        else:
-            self.memory_router = None
-        if mem_config.skill_router_enabled:
-            from ..skills.router import SkillRouter
-            self.skill_router = SkillRouter(self.skill_registry, mem_config)
-        else:
-            self.skill_router = None
-
         if provider:
             self.provider = provider
         else:
@@ -84,6 +72,18 @@ class AgentV2:
 
         # 记忆管理器（新版，支持 LLM 提取 + 语义搜索）
         self.memory_manager = memory_manager or MemoryManager(self.db, provider=self.provider)
+
+        # v2.2 MemoryRouter + SkillRouter（feature flag 控制，依赖 memory_manager）
+        if self.mem_config.router_enabled:
+            from ..memory.router import MemoryRouter
+            self.memory_router = MemoryRouter(self.db, self.memory_manager.embedding_provider)
+        else:
+            self.memory_router = None
+        if self.mem_config.skill_router_enabled:
+            from ..skills.router import SkillRouter
+            self.skill_router = SkillRouter(self.skill_registry, self.mem_config)
+        else:
+            self.skill_router = None
 
         self.dispatcher = ToolDispatcher(self.tool_registry, self.provider)
 
