@@ -59,6 +59,12 @@ class MemoryManager:
     def search_memories(self, query: str, limit: int = 5):
         return self.search.search(query, limit)
 
+    def cleanup(self) -> dict:
+        """执行遗忘清理：衰减 + 删除过期记忆。返回清理统计。"""
+        decayed = self.db.decay_importance()
+        deleted = self.db.cleanup_old_memories()
+        return {"decayed": decayed, "deleted": deleted}
+
     def get_tools(self) -> List:
         """返回需要注册到 ToolRegistry 的工具列表"""
         return [

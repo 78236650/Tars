@@ -50,6 +50,14 @@ class AgentV2:
         self.file_parser = file_parser
         self.task_executor = task_executor
 
+        # 斜杠命令系统
+        from ..commands import CommandRegistry, CommandParser
+        from ..commands.builtin import register_all
+        self.command_registry = CommandRegistry()
+        register_all(self.command_registry)
+        self.command_parser = CommandParser(self.command_registry)
+        self._active_mode: Optional[str] = None  # "plan" | "yolo" | "brainstorm" | None
+
         if provider:
             self.provider = provider
         else:
@@ -92,7 +100,89 @@ class AgentV2:
             return []
 
     async def handle_message(self, session_id: str, user_content: str, channel: Channel, file_ids: Optional[List[str]] = None):
-        """处理用户消息 - 使用 ToolDispatcher，支持文件附件"""
+        """处理用户消息 - 使用 ToolDispatcher，支持文件附件和斜杠命令"""
+        # 0. 拦截斜杠命令
+        cmd_result = self.command_parser.execute(user_content)
+        new_sid = None
+
+        if cmd_result:
+            # 设置活跃模式
+            cmd_name = user_content.strip().split()[0][1:] if user_content.startswith("/") else ""
+            if cmd_name in ("plan", "yolo", "brainstorm"):
+                self._active_mode = cmd_name
+            elif cmd_name == "clear":
+                self._active_mode = None
+
+            # 处理 action
+            if cmd_result.action == "new_session":
+                new_session = self.db.create_session()
+                new_sid = new_session.id
+                session_id = new_sid
+                await channel.send(session_id, {
+                    "type": "session_changed",
+                    "session_id": session_id,
+                    "new_session_id": new_sid,
+                    "timestamp": now_iso(),
+                })
+            elif cmd_result.action == "invoke_subagent":
+                agent_type = cmd_result.action_params.get("agent_type", "")
+                task = cmd_result.action_params.get("task", "")
+                try:
+                    sub_result = await self.subagent_manager.invoke_subagent(agent_type, task)
+                    self.db.add_message(session_id, "user", user_content)
+                    self.db.add_message(session_id, "assistant", f"[subagent:{agent_type}] {sub_result}")
+                    await channel.send(session_id, {
+                        "type": "text_chunk",
+                        "session_id": session_id,
+                        "content": f"[subagent:{agent_type}] {sub_result}",
+                        "timestamp": now_iso(),
+                    })
+                    await channel.send(session_id, {
+                        "type": "done", "session_id": session_id,
+                        "timestamp": now_iso(), "model": self.current_model,
+                    })
+                    return
+                except Exception as e:
+                    await channel.send(session_id, {
+                        "type": "error", "session_id": session_id,
+                        "message": f"子代理调用失败: {e}", "code": "subagent_error",
+                        "timestamp": now_iso(),
+                    })
+                    return
+            elif cmd_result.action == "activate_skill":
+                skill_id = cmd_result.action_params.get("skill_id", "")
+                skill = self.skill_registry.get(skill_id)
+                if not skill:
+                    for s in self.skill_registry.list_all():
+                        if s.name == skill_id or skill_id in s.id:
+                            skill = s
+                            break
+                if skill:
+                    self.skill_registry.enable(skill.id)
+                    cmd_result.frontend_message = f"⚡ 技能 {skill.name} 已激活 ✓"
+                else:
+                    cmd_result.frontend_message = f"❌ 技能 {skill_id} 不存在"
+
+            # 发送前端消息
+            if cmd_result.frontend_message:
+                await channel.send(session_id, {
+                    "type": "command_result",
+                    "session_id": session_id,
+                    "command": user_content.split()[0] if user_content.startswith("/") else "",
+                    "message": cmd_result.frontend_message,
+                    "timestamp": now_iso(),
+                })
+
+            # /help 和 /clear 不调用 LLM
+            if cmd_result.action in ("new_session",) or (not cmd_result.prompt_injection and cmd_result.frontend_message and cmd_result.action != "invoke_subagent"):
+                self.db.add_message(session_id, "user", user_content)
+                self.db.add_message(session_id, "assistant", cmd_result.frontend_message)
+                await channel.send(session_id, {
+                    "type": "done", "session_id": session_id,
+                    "timestamp": now_iso(), "model": self.current_model,
+                })
+                return
+
         # 1. 获取或创建会话
         session = self.db.get_session(session_id)
         if not session:
@@ -108,13 +198,15 @@ class AgentV2:
         # 4. 获取记忆上下文
         memory_context = self.memory_manager.get_context_for_query(user_content)
 
-        # 5. 构建 system prompt（含人格 + 记忆 + PromptSkill）
+        # 5. 构建 system prompt（含人格 + 记忆 + PromptSkill + 命令提示词）
         system_prompt = self.workspace.build_context()
-        prompt_injection = self.skill_executor.build_prompt_injection()
-        if prompt_injection:
-            system_prompt += f"\n\n{prompt_injection}"
+        skill_injection = self.skill_executor.build_prompt_injection()
+        if skill_injection:
+            system_prompt += f"\n\n{skill_injection}"
         if memory_context:
             system_prompt += f"\n\n{memory_context}"
+        if cmd_result and cmd_result.prompt_injection:
+            system_prompt += f"\n\n{cmd_result.prompt_injection}"
 
         # 6. 构建消息列表
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -136,6 +228,18 @@ class AgentV2:
         used_web_flag = {"value": False}
 
         async def on_tool_call(tool_name: str, arguments: Dict):
+            # 只读模式下拦截写操作
+            if self._is_readonly_mode() and tool_name not in self.READONLY_TOOLS:
+                await channel.send(session_id, {
+                    "type": "tool_result",
+                    "session_id": session_id,
+                    "tool": tool_name,
+                    "success": False,
+                    "output": "",
+                    "error": f"当前处于 {self._active_mode.upper()} 模式，{tool_name} 工具不可用。输入 /yolo 切换执行模式。",
+                    "timestamp": now_iso(),
+                })
+                return  # 不执行工具
             if tool_name in ("web", "web_search", "web_fetch"):
                 used_web_flag["value"] = True
             await channel.send(session_id, {
@@ -166,6 +270,7 @@ class AgentV2:
                 stream=True,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
+                tools=self._get_allowed_tool_schemas(),
             ):
                 full_response += chunk
                 await channel.send(session_id, {
@@ -224,6 +329,19 @@ class AgentV2:
             "timestamp": now_iso(),
             "model": self.current_model,
         })
+
+    # ========= 模式权限控制 =========
+
+    READONLY_TOOLS = {"weather", "file", "file_list", "memory", "web_search", "web_fetch"}
+
+    def _is_readonly_mode(self) -> bool:
+        return self._active_mode in ("plan", "brainstorm")
+
+    def _get_allowed_tool_schemas(self) -> Optional[List[Dict]]:
+        """只读模式返回过滤后的工具 schema，否则返回 None（用全部）"""
+        if not self._is_readonly_mode():
+            return None
+        return [t.to_function_schema() for t in self.tool_registry.list_all() if t.name in self.READONLY_TOOLS]
 
     def get_subagent_info(self) -> dict:
         return self.subagent_manager.get_all_subagents()

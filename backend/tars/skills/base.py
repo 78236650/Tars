@@ -31,6 +31,10 @@ class Skill:
     source: str = "local"  # "local" | "skillhub"
     permissions: List[str] = field(default_factory=list)
     dependencies: List[str] = field(default_factory=list)
+    # 兼容性元数据
+    tars_version_min: Optional[str] = None      # 最低 TARS 版本要求
+    requires_packages: List[str] = field(default_factory=list)  # Python 包依赖
+    usage: Optional[str] = None                  # 人类可读的用法说明
     # PluginSkill
     entry_point: Optional[str] = None
     # PromptSkill
@@ -52,6 +56,9 @@ class Skill:
             "source": self.source,
             "permissions": self.permissions,
             "dependencies": self.dependencies,
+            "tars_version_min": self.tars_version_min,
+            "requires_packages": self.requires_packages,
+            "usage": self.usage,
             "entry_point": self.entry_point,
             "prompt_template": self.prompt_template,
             "parameters": [

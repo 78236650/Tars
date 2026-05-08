@@ -1,6 +1,7 @@
 # TARS Soul - 人格定义系统
 # Phase 4: SOUL 人格层
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -119,6 +120,10 @@ def build_system_prompt(soul: Soul) -> str:
     
     prompt_parts.append("## Behavior Rules")
     for i, rule in enumerate(soul.behavior_rules, 1):
-        prompt_parts.append(f"{i}. {rule}")
+        # 去掉规则文本中已有的编号前缀（如 "1. "、"1. " 等）
+        clean = rule.strip()
+        # 匹配 "数字. " 或 "数字. " 开头的文本
+        clean = re.sub(r'^\d+\.\s*', '', clean)
+        prompt_parts.append(f"{i}. {clean}")
     
     return '\n'.join(prompt_parts)

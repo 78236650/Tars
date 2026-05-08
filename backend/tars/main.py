@@ -26,6 +26,7 @@ from tars.tools.builtin import (
 )
 from tars.tools.builtin.web_search import WebSearchTool
 from tars.tools.builtin.web_fetch import WebFetchTool
+from tars.tools.builtin.python_exec import PythonExecTool
 from tars.tools.sandbox import WorkspaceSandbox
 from tars.skills import skill_registry, SkillLoader
 from tars.skillhub import SkillHubClient, SkillInstaller
@@ -38,7 +39,7 @@ from tars.api.files import router as files_router, init_file_storage
 from tars.api.sessions import router as sessions_router, init_sessions_api
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="2.0.0")
+app = FastAPI(title="TARS Agent", version="2.1.0")
 
 # CORS 配置
 app.add_middleware(
@@ -76,6 +77,7 @@ tool_registry.register(MemoryTool(db=db))
 tool_registry.register(CronJobTool(db=db))
 tool_registry.register(WebSearchTool())
 tool_registry.register(WebFetchTool())
+tool_registry.register(PythonExecTool(workspace_dir=str(project_dir.parent)))
 
 # 任务规划工具
 task_planner_tool = TaskPlannerTool()
@@ -101,7 +103,7 @@ skillhub_installer = SkillInstaller(
     client=skillhub_client,
     skill_loader=skill_loader,
 )
-init_skillhub_api(skillhub_client, skillhub_installer)
+init_skillhub_api(skillhub_client, skillhub_installer, skill_registry, str(project_dir / "data" / "skillhub_catalog.json"))
 
 # ========= 初始化文件上传 =========
 uploads_dir = project_dir / "uploads"
@@ -708,6 +710,10 @@ def init_skills():
 async def startup_event():
     """启动事件"""
     await init_scheduler()
+    # 遗忘清理
+    stats = memory_manager.cleanup()
+    if stats["decayed"] or stats["deleted"]:
+        print(f"[Startup] 记忆遗忘: importance衰减={stats['decayed']} 删除={stats['deleted']}")
     print(f"[Startup] 已注册 {len(tool_registry.list_all())} 个工具: {tool_registry.list_names()}")
     print(f"[Startup] 已加载 {len(skill_registry.list_all())} 个技能")
 
