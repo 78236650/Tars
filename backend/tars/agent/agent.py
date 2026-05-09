@@ -231,6 +231,18 @@ class AgentV2:
             system_prompt += f"\n\n{skill_injection}"
         if memory_context:
             system_prompt += f"\n\n{memory_context}"
+        # v2.4: TaskDetector 自动检测任务意图（/plan 之外）
+        is_slash_plan = user_content.startswith("/plan")
+        try:
+            from ..orchestration.detector import detect_task_intent, build_detector_prompt
+            mode = detect_task_intent(user_content, is_slash_plan=is_slash_plan)
+            if mode.value != "none":
+                detector_prompt = build_detector_prompt(user_content, mode)
+                if detector_prompt:
+                    system_prompt += f"\n\n{detector_prompt}"
+        except ImportError:
+            pass
+
         if cmd_result and cmd_result.prompt_injection:
             system_prompt += f"\n\n{cmd_result.prompt_injection}"
 

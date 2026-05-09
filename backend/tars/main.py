@@ -38,6 +38,7 @@ from tars.api.skills import router as skills_router
 from tars.api.skillhub import router as skillhub_router, init_skillhub_api
 from tars.api.files import router as files_router, init_file_storage
 from tars.api.sessions import router as sessions_router, init_sessions_api
+from tars.api.tasks import router as tasks_router, init_tasks_api
 
 # 初始化应用
 app = FastAPI(title="TARS Agent", version="2.2.0")
@@ -147,7 +148,9 @@ app.include_router(skills_router)
 app.include_router(skillhub_router)
 app.include_router(files_router)
 app.include_router(sessions_router)
+app.include_router(tasks_router)
 init_sessions_api(db)
+init_tasks_api(db, agent)
 
 # ================ API 路由 ================
 
