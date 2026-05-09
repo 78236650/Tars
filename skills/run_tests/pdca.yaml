@@ -1,0 +1,25 @@
+version: "1.0"
+workspace:
+  mode: resolve
+  require_git: true
+  detect: [package_manager, git_branch]
+steps:
+  - id: 1
+    description: "检测测试框架"
+    tool: shell
+    arguments:
+      cmd: "{{workspace.pm}} test --help 2>&1 | head -20"
+    verify:
+      type: exit_code
+      expected: 0
+  - id: 2
+    description: "运行测试"
+    tool: shell
+    arguments:
+      cmd: "{{workspace.pm}} test"
+    verify:
+      type: exit_code
+      expected: 0
+act:
+  max_retries: 2
+  on_final_failure: ask_user
