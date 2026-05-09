@@ -1,8 +1,9 @@
 # 任务自动化设计（E1）
 
 - **日期**：2026-05-09
-- **版本**：v1.0
+- **版本**：v1.1
 - **状态**：草稿
+- **更新**：增加 PDCA 循环理论 + Check/Act 验证机制
 
 ## 一、背景与目标
 
@@ -27,7 +28,132 @@ TARS v2.3 已具备：
 - 不做跨系统工作流（如 Zapier 风格）
 - 不做复杂依赖图解析
 
-## 二、总体架构
+## 二、理论基础
+
+### 2.1 PDCA 循环
+
+本设计引入 **PDCA 循环**（Plan-Do-Check-Act）作为任务执行的理论框架：
+
+| 阶段 | 含义 | 在本系统中的实现 |
+|------|------|------------------|
+| **Plan（计划）** | 分析问题，制定行动方案 | TaskPlanner 生成执行步骤 |
+| **Do（执行）** | 按计划执行 | TaskExecutor 执行每个步骤 |
+| **Check（检查）** | 验证执行结果 | 步骤执行后验证结果 |
+| **Act（行动）** | 根据结果调整 | 失败时决定重试/跳过/中止 |
+
+**为什么选择 PDCA**：
+- 简单易懂，易于实现
+- 每步都有反馈循环，适合自动化场景
+- 避免盲目执行，提供"检查"保障
+
+### 2.2 当前设计与 PDCA 的对应
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        PDCA 循环                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   Plan ──────→ Do ──────→ Check ──────→ Act               │
+│     ↑                                            │          │
+│     │                                            │          │
+│     └────────────────────────────────────────────┘          │
+│                         循环迭代                            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+在 TARS 中的实现：
+
+Plan：TaskPlanner 生成 { step: "git pull", verify: "检查文件是否存在" }
+Do：  TaskExecutor 执行 git pull
+Check：验证执行结果（退出码、输出内容）
+Act：  成功 → 下一步骤；失败 → 重试/跳过/中止
+```
+
+### 2.3 步骤验证机制（Check）
+
+每个步骤包含**执行**和**验证**两部分：
+
+```json
+{
+  "step_order": 1,
+  "description": "git pull 拉取最新代码",
+  "command": "git pull origin main",
+  "verify": {
+    "type": "exit_code",      // 或 "output_contains" / "file_exists"
+    "expected": 0,
+    "error_msg": "拉取代码失败"
+  }
+}
+```
+
+**验证类型**：
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `exit_code` | 检查退出码 | git pull 成功返回 0 |
+| `output_contains` | 输出包含关键字 | 包含 "Already up to date" |
+| `output_not_contains` | 输出不包含错误 | 不包含 "error" |
+| `file_exists` | 文件存在 | package.json 存在 |
+| `file_not_exists` | 文件不存在 | 无 node_modules（构建前清理） |
+| `custom` | 自定义验证 | 调用 LLM 判断结果 |
+
+**验证失败处理（Act）**：
+
+```
+验证失败
+    │
+    ├── 重试（Retry）— 最多 3 次
+    │       │
+    │       └── 成功 → 继续下一步
+    │       └── 失败 → 进入跳过/中止判断
+    │
+    ├── 跳过（Skip）— 用户选择或自动判断
+    │       │
+    │       └── 标记为 skipped，继续下一步
+    │
+    └── 中止（Abort）— 任务失败
+            │
+            └── 更新任务状态为 failed
+```
+
+### 2.4 增强的数据模型
+
+**task_steps 表新增验证字段**：
+
+```sql
+ALTER TABLE task_steps ADD COLUMN verify_type TEXT;      -- exit_code/output_contains/file_exists
+ALTER TABLE task_steps ADD COLUMN verify_expected TEXT;  -- 期望值
+ALTER TABLE task_steps ADD COLUMN verify_msg TEXT;        -- 失败提示
+ALTER TABLE task_steps ADD COLUMN retry_count INTEGER DEFAULT 0;
+```
+
+**TaskPlanner 输出格式增强**：
+
+```json
+{
+  "steps": [
+    {
+      "description": "git pull 拉取最新代码",
+      "command": "git pull origin main",
+      "verify": {
+        "type": "exit_code",
+        "expected": 0
+      }
+    },
+    {
+      "description": "npm install 安装依赖",
+      "command": "npm install",
+      "verify": {
+        "type": "output_not_contains",
+        "expected": "ERR!",
+        "error_msg": "依赖安装失败"
+      }
+    }
+  ]
+}
+```
+
+## 三、总体架构
 
 ```
 用户消息
@@ -334,5 +460,6 @@ WebSocket 推送 step_updated
 
 ---
 
-*文档版本: v1.0*
+*文档版本: v1.1*
 *日期: 2026-05-09*
+*更新: 增加 PDCA 循环理论 + Check/Act 验证机制*
