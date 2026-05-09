@@ -143,34 +143,55 @@ TARS v2.3 已有：
 
 ## 四、TaskDetector
 
-### 4.1 触发规则（v1.4 明确版）
+### 4.1 触发规则（v1.4.1 三档版）
 
 ```python
 TRIGGER_KEYWORDS = ["部署", "构建", "发布", "测试", "deploy", "build", "release", "test"]
+QUESTION_MARKERS = ["?", "？", "是什么", "为什么", "怎么回事", "是啥", "啥意思", "what", "why", "how"]
 
-def detect_task_intent(user_msg: str, is_slash_plan: bool) -> bool:
-    # /plan 直接触发，绕过长度判断
+class TriggerMode(str, Enum):
+    NONE = "none"           # 不触发
+    HARD = "hard"           # 硬指令：强制调用 task_planner
+    SOFT = "soft"           # 软提示：让主 LLM 自判是否调
+
+def detect_task_intent(user_msg: str, is_slash_plan: bool) -> TriggerMode:
+    # /plan 命令 → 硬指令（零歧义）
     if is_slash_plan:
-        return True
-    # 关键词匹配 + 消息长度 > 50 字符
+        return TriggerMode.HARD
+
     msg_lower = user_msg.lower()
     has_kw = any(kw in msg_lower for kw in TRIGGER_KEYWORDS)
-    return has_kw and len(user_msg) > 50
+    if not has_kw or len(user_msg) <= 50:
+        return TriggerMode.NONE
+
+    # 关键词命中 + 长度达标
+    # 含疑问词 → 软提示（可能是询问而非执行意图）
+    # 不含疑问词 → 硬指令（明确的执行意图）
+    has_question = any(q in msg_lower for q in QUESTION_MARKERS)
+    return TriggerMode.SOFT if has_question else TriggerMode.HARD
 ```
 
-### 4.2 触发时机
+**设计理由**：v1.4 初版的"一律软提示"多了一轮 LLM 不确定判断；但"一律硬指令"会误触发"上次 deploy **怎么回事**"这类询问。三档方案用疑问词作为判别——零 LLM 额外调用，规则纯确定。
 
-在 Agent 主循环中、CommandParser 之后、主 LLM 之前调用。命中时：
+### 4.2 触发时机与注入
 
-1. 在 system prompt 注入"检测到用户可能需要任务自动化，若合适请调用 `task_planner` 工具"
-2. 不自动弹窗——让主 LLM 自己判断是否调 tool
-3. 主 LLM 调了 `task_planner` → 经 `pop_pending_plan()` 被 Agent 捕获并触发 TaskExecutor
+在 Agent 主循环、CommandParser 之后、主 LLM 之前调用：
+
+| 模式 | 行为 |
+|---|---|
+| `NONE` | 什么都不做，消息正常进主 LLM |
+| `SOFT` | 在 system prompt 注入：`"检测到可能的任务意图。若用户确实需要多步骤执行，可调用 task_planner 工具。"` |
+| `HARD` | 在 system prompt 注入：`"用户需要为此任务制定执行计划。请立即调用 task_planner 工具。"` |
+
+主 LLM 调了 `task_planner` → `pop_pending_plan()` 被 Agent 捕获 → 触发 TaskExecutor。
+
+**不采用前端弹确认框直通方案**：理由是会绕过主 LLM 的自然语言理解能力（多轮上下文、话题延续等），并且需要在前端加独立交互流程，复杂度不划算。
 
 ### 4.3 与 Scene Analyzer 的关系
 
-v2.2 记忆重做引入了 Scene Analyzer（每轮意图分析）。若 v2.2 已上线：
-- Scene Analyzer 的 `intent ∈ planning.*` 可直接作为触发信号（替代关键词匹配）
-- v2.2 未上线时，走本节 4.1 的关键词方案
+v2.2 记忆重做引入了 Scene Analyzer。若 v2.2 已上线：
+- Scene Analyzer 的 `intent ∈ planning.*` 可**替代**本节 4.1 的关键词匹配（更准）
+- 疑问词判别逻辑保留，防止 `planning.explain` 类意图误触发
 
 **顺序依赖**：本设计**不依赖** v2.2 上线，关键词方案独立可行。
 
