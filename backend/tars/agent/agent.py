@@ -168,8 +168,32 @@ class AgentV2:
                         "timestamp": now_iso(),
                     })
                     return
+            elif cmd_result.action == "skill_permissions":
+                skill_id = cmd_result.action_params.get("skill_id", "")
+                try:
+                    from ..skills.permission_engine import permission_engine
+                    declared = permission_engine.get_declared_permissions(skill_id)
+                    granted = permission_engine.get_skill_permissions(skill_id)
+                    lines = [f"技能 {skill_id} 权限:", f"声明: {', '.join(sorted(declared)) or '无'}",
+                             f"已授权: {', '.join(sorted(granted)) or '无'}"]
+                    cmd_result.frontend_message = "\n".join(lines)
+                except Exception as e:
+                    cmd_result.frontend_message = f"❌ 查询失败: {e}"
+
+            elif cmd_result.action == "skill_revoke":
+                skill_id = cmd_result.action_params.get("skill_id", "")
+                perm = cmd_result.action_params.get("permission", "")
+                try:
+                    from ..skills.permission_engine import permission_engine
+                    ok = permission_engine.revoke_permission(skill_id, perm)
+                    cmd_result.frontend_message = f"{'✅' if ok else '❌'} 已撤销 {skill_id} 的 {perm} 权限"
+                except Exception as e:
+                    cmd_result.frontend_message = f"❌ 撤销失败: {e}"
+
             elif cmd_result.action == "activate_skill":
                 skill_id = cmd_result.action_params.get("skill_id", "")
+                # 设置活跃技能（用于权限检查）
+                self._active_skill_id = skill_id
                 skill = self.skill_registry.get(skill_id)
                 if not skill:
                     for s in self.skill_registry.list_all():
@@ -272,6 +296,22 @@ class AgentV2:
         used_web_flag = {"value": False}
 
         async def on_tool_call(tool_name: str, arguments: Dict):
+            # v2.5: 权限检查
+            if hasattr(self, '_active_skill_id') and self._active_skill_id:
+                from ..skills.permission_engine import permission_engine
+                allowed, reason = permission_engine.can_call(self._active_skill_id, tool_name)
+                if not allowed:
+                    await channel.send(session_id, {
+                        "type": "tool_result",
+                        "session_id": session_id,
+                        "tool": tool_name,
+                        "success": False,
+                        "output": "",
+                        "error": f"权限不足: {reason}",
+                        "timestamp": now_iso(),
+                    })
+                    return
+
             # 记录工具调用开始时间
             import time
             _tool_start = {tool_name: time.time()}

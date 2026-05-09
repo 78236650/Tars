@@ -72,12 +72,33 @@ class SubagentCommand(Command):
 
 class SkillCommand(Command):
     def __init__(self):
-        super().__init__("skill", "激活一个技能", "/skill <技能名>")
+        super().__init__("skill", "技能管理：激活/权限/撤销", "/skill [permissions|revoke] <技能名>")
 
     def execute(self, args: str) -> CommandResult:
+        parts = args.strip().split(maxsplit=1)
+        sub = parts[0].lower() if parts else ""
+        rest = parts[1] if len(parts) > 1 else ""
+
+        # /skill permissions <id>
+        if sub == "permissions":
+            return CommandResult(
+                frontend_message=f"🔐 查询技能权限...",
+                action="skill_permissions",
+                action_params={"skill_id": rest},
+            )
+        # /skill revoke <id> <perm>
+        if sub == "revoke":
+            rparts = rest.split(maxsplit=1)
+            return CommandResult(
+                frontend_message=f"🔓 撤销权限中...",
+                action="skill_revoke",
+                action_params={"skill_id": rparts[0] if rparts else "", "permission": rparts[1] if len(rparts) > 1 else ""},
+            )
+
+        # 默认：激活技能
         skill_id = args.strip()
         if not skill_id:
-            return CommandResult(frontend_message="❌ 请指定技能名，例如 /skill calculator")
+            return CommandResult(frontend_message="用法: /skill [permissions|revoke] <技能名>\n例: /skill deploy\n    /skill permissions deploy\n    /skill revoke deploy shell")
         return CommandResult(
             frontend_message=f"⚡ 技能 {skill_id} 已激活",
             action="activate_skill",
