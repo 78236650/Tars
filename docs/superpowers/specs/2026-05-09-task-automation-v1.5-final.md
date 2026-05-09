@@ -1,19 +1,19 @@
 # 任务自动化设计（v2.4）— v1.5 最终版
 
 - **日期**：2026-05-09
-- **版本**：v1.5（Kiro 整合 + DeepSeek TUI 终审）
+- **版本**：v1.5.1（Kiro 整合 + DeepSeek TUI 终审 + Kiro 微调）
 - **状态**：定稿，可进入实施
-- **上游版本**：v1.2（原始）→ v1.3（DeepSeek 6 项修正）→ v1.4（Kiro 3 项补强）
+- **上游版本**：v1.2（原始）→ v1.3（DeepSeek 6 项修正）→ v1.4（Kiro 3 项补强）→ v1.5（4 开放问题归档）→ v1.5.1（触发三档 + workspace 兜底警示）
 - **本版增量**：解决 4 个开放问题 + 明确实施路径
 
-## v1.4 → v1.5 变更
+## v1.4 → v1.5 → v1.5.1 变更
 
-| # | 问题 | v1.4 状态 | v1.5 决定 |
-|---|------|----------|----------|
-| 1 | TaskDetector 重复判断 | 关键词→注入提示→LLM 再判 | **关键词命中直通**，不绕 LLM |
-| 2 | WebSocket 推送路径 | 未指定通道 | 复用现有 `Channel.send()` |
-| 3 | `get_session_workspace` 不存在 | open question | 加项目根目录兜底（`backend/..`）|
-| 4 | `expected_artifacts` 成本 | open question | **可选字段**，不填时 executor 自动采集 |
+| # | 问题 | v1.4 状态 | v1.5 决定 | v1.5.1 微调 |
+|---|------|----------|----------|------------|
+| 1 | TaskDetector 重复判断 | 关键词→注入提示→LLM 再判 | 关键词命中直通 | **三档**：`/plan` + 无疑问词 → 硬指令；含疑问词 → 软提示 |
+| 2 | WebSocket 推送路径 | 未指定通道 | 复用 `Channel.send()` | 同 v1.5 |
+| 3 | `get_session_workspace` 不存在 | open question | `Path(__file__)` 兜底 | **保留方案，加警示**：兜底指向 TARS 仓库根，非用户项目；首次任务强制用户确认 |
+| 4 | `expected_artifacts` 成本 | open question | 可选字段 | 同 v1.5 |
 
 ---
 
@@ -73,13 +73,18 @@
 ```
 用户消息 ──┬──► /plan 命令（CommandParser 拦截）
           │
-          └──► TaskDetector（关键词 + /plan 命令）
-                   │ 命中
-                   ▼
-          注入 prompt："调用 task_planner 工具制定计划"
-          （v1.5：不留给 LLM 二判，直通）
-                   │
-                   ▼
+          └──► TaskDetector（关键词 + 疑问词判别）
+                   │ mode
+             ┌─────┼─────┐
+           NONE  SOFT    HARD
+             │    │       │
+          正常 LLM自判   硬指令注入
+           主  是否调   "请调 task_planner"
+           LLM  tool      │
+                │         │
+                └─── 主 LLM ───►调 task_planner
+                         │
+                         ▼
           TaskPlannerTool.execute()（已有）
                    │
           pop_pending_plan() → TaskStateStore.save()（新）
@@ -95,39 +100,53 @@
           artifacts 采集 → Channel.send("task_completed")
 ```
 
-## 四、TaskDetector（v1.5 修正 #1）
+## 四、TaskDetector（v1.5.1 三档版）
 
 ### 4.1 触发规则
 
+v1.5 的"关键词命中直通"会误触发询问类消息（"上次 deploy **怎么回事**"/"为什么要做 **release** 管理"）。v1.5.1 加一层疑问词判别，纯规则零 LLM 调用：
+
 ```python
 TRIGGER_KEYWORDS = ["部署","构建","发布","测试","deploy","build","release","test"]
+QUESTION_MARKERS = ["?","？","是什么","为什么","怎么回事","是啥","啥意思",
+                    "what","why","how","怎样"]
 
-def detect_task_intent(user_msg: str, is_slash_plan: bool) -> bool:
-    # /plan 直接触发，绕过长度判断
+class TriggerMode(str, Enum):
+    NONE = "none"    # 不触发
+    HARD = "hard"    # 硬指令：强制调 task_planner
+    SOFT = "soft"    # 软提示：LLM 自判是否调
+
+def detect_task_intent(user_msg: str, is_slash_plan: bool) -> TriggerMode:
+    # /plan 命令 → 硬指令（零歧义）
     if is_slash_plan:
-        return True
+        return TriggerMode.HARD
+
     msg_lower = user_msg.lower()
     has_kw = any(kw in msg_lower for kw in TRIGGER_KEYWORDS)
-    return has_kw and len(user_msg) > 50
+    if not has_kw or len(user_msg) <= 50:
+        return TriggerMode.NONE
+
+    # 含疑问词 → 软提示；否则 → 硬指令
+    has_question = any(q in msg_lower for q in QUESTION_MARKERS)
+    return TriggerMode.SOFT if has_question else TriggerMode.HARD
 ```
 
-### 4.2 命中后行为（v1.5 直通）
+### 4.2 命中后行为
 
-命中后**直接**在 system prompt 追加：
-
-```
-检测到任务意图。请调用 task_planner 工具为以下任务制定执行计划：{user_msg}
-```
-
-不走"LLM 自己判断是否调 tool"的中间步骤。v1.4 的"注入提示让 LLM 判断"被移除。
+| 模式 | 行为 |
+|---|---|
+| `NONE` | 什么都不做，消息正常进主 LLM |
+| `SOFT` | system prompt 注入：`"检测到可能的任务意图。若用户确实需要多步骤执行，可调用 task_planner 工具。"` |
+| `HARD` | system prompt 注入：`"检测到任务意图。请调用 task_planner 工具为以下任务制定执行计划：{user_msg}"` |
 
 ### 4.3 与 Scene Analyzer 的关系
 
-- v2.2 Scene Analyzer 上线后：`intent ∈ planning.*` 可作为**额外触发源**（与关键词匹配等效）
+- v2.2 Scene Analyzer 上线后：`intent ∈ planning.*` 可作为**额外触发源**（与关键词等效）
+- `planning.explain` 类意图走 SOFT 而非 HARD，防止"解释一下部署流程"被误当执行
 - v2.2 未上线：走本节 4.1 关键词方案
 - **本设计不依赖 v2.2 上线**
 
-## 五、Workspace 上下文（v1.5 修正 #3）
+## 五、Workspace 上下文（v1.5.1 加警示）
 
 ### 5.1 路径解析 4 级优先级
 
@@ -137,15 +156,17 @@ def resolve_workspace_path(session_id, api_override=None):
     if api_override and Path(api_override).exists():
         return api_override, "api"
 
-    # 2. Workspace Manager（如已实现）
+    # 2. Workspace Manager（若接口已实现）
     ws = workspace_manager.get_session_workspace(session_id)
     if ws:
         return ws, "workspace_manager"
 
-    # 3. 项目根目录兜底（v1.5 新增：backend/.. = TARS/）
+    # 3. TARS 仓库根目录兜底
+    #    警示：这是 TARS 自己的仓库根，不是用户的目标项目。
+    #    只用于防 crash；命中时必须强标识 + 前端二次确认。
     project_root = Path(__file__).resolve().parent.parent.parent
-    if project_root.exists():
-        return str(project_root), "project_root"
+    if project_root.exists() and (project_root / ".git").exists():
+        return str(project_root), "tars_repo_root"
 
     # 4. ~/.tars/workspaces/{slug}/
     slug = f"{datetime.now():%Y%m%d_%H%M%S}_{title_to_slug(title)}"
@@ -155,6 +176,19 @@ def resolve_workspace_path(session_id, api_override=None):
         run(["git", "init"], cwd=path)
     return str(path), "tars_fallback"
 ```
+
+### 5.2 前端确认强化（v1.5.1 新增）
+
+不同 `workspace_source` 的前端展示策略：
+
+| source | 展示 | 首次任务确认 |
+|---|---|---|
+| `api` | 绿色标签"用户指定" | 否（用户已明示） |
+| `workspace_manager` | 绿色标签"当前项目" | 否 |
+| `tars_repo_root` | **黄色警告标签"TARS 仓库根（请确认）"** | **必须确认** |
+| `tars_fallback` | 蓝色标签"临时工作区" | 否（安全隔离） |
+
+任务创建时 session 级别缓存"已确认的 workspace"——同一 session 内后续任务沿用，不重复弹窗。
 
 ## 六、数据持久化
 
@@ -267,19 +301,19 @@ CREATE TABLE task_steps (
 
 ## 十五、版本速查
 
-| 议题 | v1.2 | v1.3 | v1.4 | v1.5 |
-|------|------|------|------|------|
-| 触发 | LLM 判断 | 关键词+长度 | 同 v1.3 | **直通**，不绕 LLM |
-| Workspace | ~/.tars/ | os.getcwd()⚠️ | WM 三级 | **加项目根目录兜底** |
-| 验证 | ✅ 6种 | 未提 | ✅ 保留 | 同 v1.4 |
-| 推送 | 未指定 | 未指定 | 未指定 | **复用 Channel.send()** |
-| artifacts | 未提 | 新增字段 | 双层来源 | **可选字段** |
-| 前端 | /tasks | 抽屉 | 抽屉+响应式 | 同 v1.4 |
-| 分期 | Phase 1-3 | 未分期 | 4期 | 同 v1.4 |
+| 议题 | v1.2 | v1.3 | v1.4 | v1.5 | v1.5.1 |
+|------|------|------|------|------|--------|
+| 触发 | LLM 判断 | 关键词+长度 | 同 v1.3 | 直通 | **三档（疑问词判别）** |
+| Workspace | ~/.tars/ | os.getcwd()⚠️ | WM 三级 | TARS 根兜底 | **兜底+前端强确认** |
+| 验证 | ✅ 6种 | 未提 | ✅ 保留 | 同 v1.4 | 同 v1.5 |
+| 推送 | 未指定 | 未指定 | 未指定 | **复用 Channel.send()** | 同 v1.5 |
+| artifacts | 未提 | 新增字段 | 双层来源 | **可选字段** | 同 v1.5 |
+| 前端 | /tasks | 抽屉 | 抽屉+响应式 | 同 v1.4 | **workspace_source 分色标签** |
+| 分期 | Phase 1-3 | 未分期 | 4期 | 同 v1.4 | 同 v1.5 |
 
 ---
 
-*文档版本: v1.5 最终版*
-*审阅链: 用户(v1.2) → DeepSeek TUI(v1.3) → Kiro(v1.4) → DeepSeek TUI 终审(v1.5)*
+*文档版本: v1.5.1 最终版*
+*审阅链: 用户(v1.2) → DeepSeek TUI(v1.3) → Kiro(v1.4) → DeepSeek TUI 终审(v1.5) → Kiro 微调(v1.5.1)*
 *日期: 2026-05-09*
 *状态: 定稿，可进入实施*
