@@ -1,4 +1,4 @@
-"""任务执行器 v2.4 — 集成 StepVerifier + ActPolicy + ArtifactsCollector"""
+"""任务执行器 v2.4 — 集成 StepVerifier + ActPolicy + ArtifactsCollector + 危险命令拦截"""
 import asyncio
 import json
 import re
@@ -15,6 +15,11 @@ from ..tools.base import ToolResult
 
 def now_iso():
     return datetime.now(timezone(timedelta(hours=8))).isoformat()
+
+
+DANGEROUS_COMMANDS = [
+    "rm -rf", "mkfs", "dd if=", "> /dev/sd", "chmod -R 777 /", "kill -9 1",
+]
 
 
 class TaskExecutor:
@@ -123,6 +128,24 @@ class TaskExecutor:
         last_result = None
 
         while True:
+            # 危险命令检查
+            cmd_str = str(args.get("cmd", args.get("command", ""))) + json.dumps(args, ensure_ascii=False)
+            is_dangerous = any(dc in cmd_str for dc in DANGEROUS_COMMANDS)
+            if is_dangerous:
+                await channel.send(session_id, {
+                    "type": "confirmation_needed",
+                    "session_id": session_id,
+                    "step_id": step.id,
+                    "command": cmd_str[:200],
+                    "risk_level": "critical" if ("rm -rf" in cmd_str or "> /dev/sd" in cmd_str) else "high",
+                    "message": f"危险命令: {cmd_str[:100]}",
+                    "timestamp": now_iso(),
+                })
+                # 等待确认（复用现有决策机制）
+                decision = await self.act_policy.ask_user(step_dict, session_id, channel)
+                if decision != ActDecision.RETRY:
+                    return ToolResult(success=False, output="", error="用户拒绝执行危险命令")
+
             # Do
             try:
                 last_result = await tool.execute(**args)
@@ -135,6 +158,13 @@ class TaskExecutor:
             if verify_result.passed:
                 step.status = StepStatus.COMPLETED
                 step.output = last_result.output
+                await channel.send(session_id, {
+                    "type": "step_verified",
+                    "session_id": session_id,
+                    "step_id": step.id,
+                    "message": verify_result.message,
+                    "timestamp": now_iso(),
+                })
                 return last_result
 
             # Act: verify failed → retry or ask user
@@ -165,6 +195,13 @@ class TaskExecutor:
                 step.status = StepStatus.SKIPPED
                 return ToolResult(success=True, output="用户跳过此步骤")
             # ABORT
+            await channel.send(session_id, {
+                "type": "task_aborted",
+                "session_id": session_id,
+                "step_id": step.id,
+                "error": verify_result.message,
+                "timestamp": now_iso(),
+            })
             return ToolResult(success=False, output="", error=f"用户中止: {verify_result.message}")
 
     async def _ask_user_decision(self, step: TaskStep, session_id: str, channel) -> str:

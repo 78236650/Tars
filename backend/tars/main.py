@@ -728,6 +728,19 @@ async def startup_event():
         memory_manager.start_migration_worker()
     except Exception:
         pass
+    # v2.4: 崩溃恢复 — 扫描未完成任务，置为 paused
+    try:
+        conn = db._get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id, title FROM tasks WHERE status IN ('running','pending')")
+        stale = cur.fetchall()
+        if stale:
+            cur.execute("UPDATE tasks SET status = 'paused' WHERE status IN ('running','pending')")
+            conn.commit()
+            print(f"[Startup] 崩溃恢复: {len(stale)} 个未完成任务已置为 paused: {[s[1][:20] for s in stale]}")
+    except Exception as e:
+        print(f"[Startup] 崩溃恢复扫描失败: {e}")
+
     print(f"[Startup] 已注册 {len(tool_registry.list_all())} 个工具: {tool_registry.list_names()}")
     print(f"[Startup] 已加载 {len(skill_registry.list_all())} 个技能")
 
