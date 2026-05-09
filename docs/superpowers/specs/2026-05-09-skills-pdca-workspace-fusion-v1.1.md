@@ -2,7 +2,7 @@
 
 - **日期**：2026-05-09
 - **版本**：v1.1（重写）
-- **状态**：草案，待审阅
+- **状态**：✅ 已实施（v2.5 五期全部完成）
 - **上游**：v1.0（`skills-pdca-workspace-fusion-v1.0.md`）
 - **本版性质**：推翻 v1.0 的私有 SOP 硬脚本方案，完全对齐 Anthropic **Agent Skills** 规范；保留 v2.4 PDCA/Workspace 作为**可选挂件**
 
