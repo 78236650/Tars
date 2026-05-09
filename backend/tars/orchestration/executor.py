@@ -1,10 +1,14 @@
-"""任务执行器 — 按计划执行步骤，支持重试、占位符替换、失败决策"""
+"""任务执行器 v2.4 — 集成 StepVerifier + ActPolicy + ArtifactsCollector"""
 import asyncio
+import json
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 from .models import TaskPlan, TaskStep, StepStatus
+from .verifier import StepVerifier, verifier as default_verifier
+from .act_policy import ActPolicy, ActDecision
+from .artifacts_collector import ArtifactsCollector
 from ..tools.registry import ToolRegistry
 from ..tools.base import ToolResult
 
@@ -14,16 +18,23 @@ def now_iso():
 
 
 class TaskExecutor:
-    """按计划执行步骤"""
+    """v2.4 执行器：Check → Act + artifacts 追踪"""
 
-    def __init__(self, tool_registry: ToolRegistry, max_retries: int = 2):
+    def __init__(self, tool_registry: ToolRegistry):
         self.tool_registry = tool_registry
-        self.max_retries = max_retries
+        self.verifier = default_verifier
+        self.act_policy = ActPolicy()
         self._pending_decisions: Dict[str, asyncio.Future] = {}
 
-    async def execute(self, plan: TaskPlan, session_id: str, channel) -> Dict[int, ToolResult]:
-        """执行计划，返回每步的结果"""
+    async def execute(self, plan: TaskPlan, session_id: str, channel,
+                      workspace_path: str = ".") -> Dict[int, ToolResult]:
+        """执行计划，返回每步的结果。
+
+        流程：Do → Check → {pass → next / fail → Act(retry×3 → ask → abort/skip)}
+        """
         results: Dict[int, ToolResult] = {}
+        collector = ArtifactsCollector(workspace_path)
+        collector.take_snapshot()
 
         await channel.send(session_id, {
             "type": "plan_created",
@@ -33,40 +44,34 @@ class TaskExecutor:
         })
 
         for step in plan.steps:
-            await channel.send(session_id, {
-                "type": "plan_step_start",
-                "session_id": session_id,
-                "step_id": step.id,
-                "description": step.description,
-                "tool": step.tool,
-                "timestamp": now_iso(),
-            })
-
-            step.status = StepStatus.RUNNING
+            step_dict = step.to_dict()
             resolved_args = self._resolve_placeholders(step.arguments, results)
 
-            result = await self._execute_with_retry(step, resolved_args, session_id, channel)
-            results[step.id] = result
+            # 执行（带 Check + Act）
+            step_result = await self._execute_step_with_act(
+                step, step_dict, resolved_args, session_id, channel, workspace_path
+            )
+            results[step.id] = step_result
 
-            if result.success:
+            if step_result.success:
                 step.status = StepStatus.COMPLETED
-                step.output = result.output
+                step.output = step_result.output
             else:
                 step.status = StepStatus.FAILED
-                step.error = result.error
+                step.error = step_result.error
 
             await channel.send(session_id, {
                 "type": "plan_step_complete",
                 "session_id": session_id,
                 "step_id": step.id,
-                "success": result.success,
-                "output": result.output[:500] if result.output else "",
-                "error": result.error,
+                "success": step_result.success,
+                "output": (step_result.output or "")[:500],
+                "error": step_result.error,
                 "timestamp": now_iso(),
             })
 
-            # 失败决策
-            if not result.success:
+            # 失败后用户决策
+            if not step_result.success:
                 decision = await self._ask_user_decision(step, session_id, channel)
                 if decision == "abort":
                     await channel.send(session_id, {
@@ -80,42 +85,87 @@ class TaskExecutor:
                     step.status = StepStatus.SKIPPED
                     continue
 
+        # 采集 artifacts
+        artifacts = collector.collect_new_files()
+        for step in plan.steps:
+            artifacts.extend(ArtifactsCollector.collect_from_step(step.to_dict()))
+        artifacts = list(set(artifacts))
+
         await channel.send(session_id, {
             "type": "plan_complete",
             "session_id": session_id,
             "status": "completed",
             "steps": [s.to_dict() for s in plan.steps],
+            "artifacts": artifacts,
             "timestamp": now_iso(),
         })
         return results
 
-    async def _execute_with_retry(self, step: TaskStep, args: Dict, session_id: str, channel) -> ToolResult:
-        """执行工具，失败自动重试"""
+    async def _execute_step_with_act(self, step: TaskStep, step_dict: dict,
+                                       args: Dict, session_id: str, channel,
+                                       workspace_path: str) -> ToolResult:
+        """单步执行完整流程：Do → Check → Act"""
         tool = self.tool_registry.get(step.tool)
         if not tool:
             return ToolResult(success=False, output="", error=f"工具 '{step.tool}' 不存在")
 
-        last_result = None
-        for attempt in range(self.max_retries + 1):
-            if attempt > 0:
-                step.retries = attempt
-                await channel.send(session_id, {
-                    "type": "plan_step_retry",
-                    "session_id": session_id,
-                    "step_id": step.id,
-                    "attempt": attempt,
-                    "timestamp": now_iso(),
-                })
-                await asyncio.sleep(1)
+        await channel.send(session_id, {
+            "type": "plan_step_start",
+            "session_id": session_id,
+            "step_id": step.id,
+            "description": step.description,
+            "tool": step.tool,
+            "timestamp": now_iso(),
+        })
 
+        step.status = StepStatus.RUNNING
+        retries_done = 0
+        last_result = None
+
+        while True:
+            # Do
             try:
                 last_result = await tool.execute(**args)
-                if last_result.success:
-                    return last_result
             except Exception as e:
                 last_result = ToolResult(success=False, output="", error=str(e))
 
-        return last_result or ToolResult(success=False, output="", error="未知错误")
+            # Check
+            verify_result = self.verifier.check(step_dict, last_result, workspace_path)
+
+            if verify_result.passed:
+                step.status = StepStatus.COMPLETED
+                step.output = last_result.output
+                return last_result
+
+            # Act: verify failed → retry or ask user
+            step.retries = retries_done
+            step.error = verify_result.message
+            step.status = StepStatus.FAILED
+
+            if self.act_policy.should_retry(retries_done):
+                retries_done += 1
+                wait = self.act_policy.backoff_seconds(retries_done)
+                await channel.send(session_id, {
+                    "type": "step_retrying",
+                    "session_id": session_id,
+                    "step_id": step.id,
+                    "attempt": retries_done,
+                    "error": verify_result.message,
+                    "timestamp": now_iso(),
+                })
+                await asyncio.sleep(wait)
+                continue
+
+            # 超出自动重试 → 询问用户
+            decision = await self.act_policy.ask_user(step_dict, session_id, channel)
+            if decision == ActDecision.RETRY:
+                retries_done += 1
+                continue
+            if decision == ActDecision.SKIP:
+                step.status = StepStatus.SKIPPED
+                return ToolResult(success=True, output="用户跳过此步骤")
+            # ABORT
+            return ToolResult(success=False, output="", error=f"用户中止: {verify_result.message}")
 
     async def _ask_user_decision(self, step: TaskStep, session_id: str, channel) -> str:
         """发 plan_step_failed 等用户决策。超时默认 abort。"""
