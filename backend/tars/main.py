@@ -97,6 +97,7 @@ skill_loader = SkillLoader(
     tool_registry=tool_registry,
     skill_registry=skill_registry,
 )
+skill_loader._db = db  # v2.5: 权限数据写入 skills_v3
 skill_loader.load_all()
 
 # ========= 初始化 SkillHub =========
