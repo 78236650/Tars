@@ -46,12 +46,17 @@ class SkillLoader:
             if not smd:
                 return None
 
+            # 若目录下有 main.py，按 PLUGIN 型加载（保留 v2.2 Python 技能能力）
+            entry_path = skill_dir / "main.py"
+            is_plugin = entry_path.exists()
+
             skill = Skill(
                 id=smd.name,
                 name=smd.name,
                 description=smd.description,
-                type=SkillType("prompt"),  # SKILL.md 默认 prompt 型
+                type=SkillType("plugin") if is_plugin else SkillType("prompt"),
                 prompt_template=smd.body,
+                entry_point="main.py" if is_plugin else None,
                 permissions=smd.permissions,
                 tars_version_min=smd.tars_version_min,
                 requires_packages=smd.requires_packages,
@@ -62,9 +67,14 @@ class SkillLoader:
             if self.skill_registry:
                 self.skill_registry.register(skill)
 
+            # PluginSkill: 加载 Python 代码并注册为 Tool
+            if is_plugin and self.tool_registry:
+                tool = load_plugin_tool(entry_path)
+                if tool:
+                    self.tool_registry.register(tool)
+
             # 存到 skills_v3 表
             try:
-                from ..database.base import Database
                 db = getattr(self, '_db', None)
                 if db:
                     import json, datetime

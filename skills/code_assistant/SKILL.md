@@ -3,7 +3,7 @@ name: code_assistant
 description: 编程助手，擅长代码编写、调试、审查和重构。使用此技能当用户提出编程相关需求（写代码、debug、代码审查、重构），即使未明确要求"写代码"也应激活。
 ---
 
-# Code Assistant
+# Code Assistant（代码助手）
 
 专业的编程助手。
 
