@@ -18,19 +18,87 @@ class SkillLoader:
         self.skill_registry = skill_registry
 
     def load_all(self) -> List[Skill]:
-        """加载 skills/ 下所有子目录中的 skill.yaml"""
+        """加载 skills/ 下所有子目录中的 skill.yaml + SKILL.md"""
         loaded = []
         if not self.skills_dir.exists():
             return loaded
 
         for item in self.skills_dir.iterdir():
-            if item.is_dir():
+            if item.is_dir() and not item.name.startswith("."):
+                # SKILL.md 优先（v2.5），fallback skill.yaml
+                md_path = item / "SKILL.md"
                 yaml_path = item / "skill.yaml"
-                if yaml_path.exists():
+                if md_path.exists():
+                    skill = self._load_skill_md(md_path, item)
+                elif yaml_path.exists():
                     skill = self._load_skill(yaml_path, item)
-                    if skill:
-                        loaded.append(skill)
+                else:
+                    continue
+                if skill:
+                    loaded.append(skill)
         return loaded
+
+    def _load_skill_md(self, md_path: Path, skill_dir: Path) -> Optional[Skill]:
+        """解析 SKILL.md（v2.5 Agent Skills 规范）"""
+        try:
+            from .skill_md_parser import parse_skill_md
+            smd = parse_skill_md(str(md_path))
+            if not smd:
+                return None
+
+            skill = Skill(
+                id=smd.name,
+                name=smd.name,
+                description=smd.description,
+                type=SkillType("prompt"),  # SKILL.md 默认 prompt 型
+                prompt_template=smd.body,
+                permissions=smd.permissions,
+                tars_version_min=smd.tars_version_min,
+                requires_packages=smd.requires_packages,
+                source="local",
+                _dir_path=str(skill_dir),
+            )
+
+            if self.skill_registry:
+                self.skill_registry.register(skill)
+
+            # 存到 skills_v3 表
+            try:
+                from ..database.base import Database
+                db = getattr(self, '_db', None)
+                if db:
+                    import json, datetime
+                    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).isoformat()
+                    conn = db._get_conn()
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT OR REPLACE INTO skills_v3 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (smd.name, smd.name, smd.description, "local",
+                         str(skill_dir), int(smd.has_pdca), int(smd.has_scripts),
+                         json.dumps(smd.permissions, ensure_ascii=False),
+                         json.dumps(smd.permissions, ensure_ascii=False),
+                         now, 1),
+                    )
+                    conn.commit()
+            except Exception:
+                pass
+
+            return skill
+        except Exception as e:
+            print(f"[SkillLoader] 加载 SKILL.md {md_path} 失败: {e}")
+            return None
+
+    def get_progressive_disclosure(self) -> str:
+        """返回渐进披露文本——所有已启用技能的 name + description 列表"""
+        skills = self.skill_registry.list_enabled() if self.skill_registry else []
+        if not skills:
+            return ""
+
+        lines = ["## 可用技能 (Skills)", ""]
+        for s in skills:
+            desc = getattr(s, 'description', '') or ''
+            lines.append(f"- **{s.name}**: {desc}")
+        return "\n".join(lines)
 
     def _load_skill(self, yaml_path: Path, skill_dir: Path) -> Optional[Skill]:
         """解析 skill.yaml 并加载"""

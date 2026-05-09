@@ -137,6 +137,7 @@ agent = AgentV2(
     memory_manager=memory_manager,
     task_executor=task_executor,
 )
+agent.skill_loader = skill_loader
 memory_manager.set_provider(agent.provider)
 connection_manager = ConnectionManager()
 connection_manager.set_agent(agent)
