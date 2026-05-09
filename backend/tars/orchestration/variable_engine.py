@@ -1,25 +1,35 @@
-"""变量替换引擎 — v2.5 workspace 变量 + shlex.quote 安全
+"""变量替换引擎 — v2.5 workspace 变量 + 按需 shlex.quote
 
 支持变量：
 - {{workspace.path}}    — 工作区路径
 - {{workspace.pm}}      — 包管理器 (npm/pnpm/yarn/pip)
 - {{workspace.branch}}  — git 当前分支
-- {{step_N.output}}     — 前序步骤输出（v2.4 已有）
+- {{step_N.output}}     — 前序步骤输出（保留原样给 executor._resolve_placeholders 处理）
 - {{env.HOME}}          — 白名单环境变量
+
+安全策略：
+- 仅在 shell 参数上启用 shlex.quote（防命令注入）
+- 非 shell 参数（如 file_write.path）保留原始值
+- {{step_N.*}} 原样保留，让 executor 在运行时用真实步骤结果替换
 """
 import os
 import re
 import shlex
+import subprocess
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 # 环境变量白名单
 SAFE_ENV_VARS = {"HOME", "USER", "PATH", "SHELL", "LANG", "PWD"}
 
+# 按 tool name 决定哪些参数要 shlex.quote
+SHELL_QUOTE_PARAMS: Dict[str, set] = {
+    "shell": {"cmd", "command"},
+    "bash": {"cmd", "command"},
+}
+
 
 class VariableEngine:
-    """运行时变量替换"""
-
     def __init__(self, workspace_path: str):
         self.workspace_path = workspace_path
         self._pm = None
@@ -37,31 +47,48 @@ class VariableEngine:
             self._branch = self._detect_branch()
         return self._branch
 
-    def resolve(self, text: str, step_results: Dict[int, Any] = None) -> str:
-        """替换文本中的所有 {{...}} 变量"""
+    def resolve(self, text: str, quote_for_shell: bool = False) -> str:
+        """替换文本中的 {{workspace.*}} / {{env.*}} 变量。
+
+        {{step_N.*}} 保留原样，让 executor 后续替换。
+        quote_for_shell=True 时对注入值做 shlex.quote。
+        """
         if not text or "{{" not in text:
             return text
 
         def replacer(match):
             var = match.group(1).strip()
-            value = self._lookup(var, step_results or {})
-            # shlex.quote 防命令注入
-            return shlex.quote(str(value))
+            # step_N.* 保留原样
+            if var.startswith("step_"):
+                return match.group(0)
+            value = self._lookup(var)
+            if value is None:
+                return match.group(0)  # 未识别的变量原样保留
+            value = str(value)
+            return shlex.quote(value) if quote_for_shell else value
 
         return re.sub(r'\{\{(.*?)\}\}', replacer, text)
 
-    def resolve_dict(self, data: Any, step_results: Dict[int, Any] = None) -> Any:
-        """递归替换 dict/list 中的所有变量"""
-        if isinstance(data, str):
-            return self.resolve(data, step_results)
-        if isinstance(data, dict):
-            return {k: self.resolve_dict(v, step_results) for k, v in data.items()}
-        if isinstance(data, list):
-            return [self.resolve_dict(v, step_results) for v in data]
-        return data
+    def resolve_dict(self, data: Any, tool_name: str = "") -> Any:
+        """递归替换 dict/list。按 tool_name 判断是否需要 shlex.quote。
 
-    def _lookup(self, var: str, step_results: dict) -> str:
-        var = var.strip()
+        在 agent.py 里对每个 step 调用时，传入 step.tool 即可。
+        """
+        quote_params = SHELL_QUOTE_PARAMS.get(tool_name, set())
+
+        def _walk(value: Any, parent_key: str = "") -> Any:
+            if isinstance(value, str):
+                is_shell_param = parent_key in quote_params
+                return self.resolve(value, quote_for_shell=is_shell_param)
+            if isinstance(value, dict):
+                return {k: _walk(v, k) for k, v in value.items()}
+            if isinstance(value, list):
+                return [_walk(v, parent_key) for v in value]
+            return value
+
+        return _walk(data)
+
+    def _lookup(self, var: str):
         if var == "workspace.path":
             return self.workspace_path
         if var == "workspace.pm":
@@ -72,40 +99,28 @@ class VariableEngine:
             env_key = var[4:]
             if env_key in SAFE_ENV_VARS:
                 return os.environ.get(env_key, "")
-            return ""
-        # 兜底：v2.4 {{step_N.output}}
-        if var.startswith("step_"):
-            return self._resolve_step_ref(var, step_results)
-        return f"{{{{{var}}}}}"
-
-    def _resolve_step_ref(self, var: str, results: dict) -> str:
-        m = re.match(r'step_(\d+)\.(.+)', var)
-        if not m:
-            return f"{{{{{var}}}}}"
-        step_id = int(m.group(1))
-        field = m.group(2)
-        result = results.get(step_id)
-        if not result:
-            return f"{{{{{var}}}}}"
-        return getattr(result, field, "") or ""
+            return ""  # 非白名单环境变量返回空串
+        return None  # 未识别
 
     def _detect_pm(self) -> str:
         root = Path(self.workspace_path)
         checks = [
             ("pnpm", "pnpm-lock.yaml"), ("yarn", "yarn.lock"),
             ("npm", "package-lock.json"), ("npm", "package.json"),
-            ("pip", "requirements.txt"), ("poetry", "pyproject.toml"),
+            ("poetry", "poetry.lock"), ("poetry", "pyproject.toml"),
+            ("pip", "requirements.txt"),
         ]
         for pm, file in checks:
             if (root / file).exists():
                 return pm
-        return "npm"  # 默认
+        return "npm"
 
     def _detect_branch(self) -> str:
-        import subprocess
         try:
-            r = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                              cwd=self.workspace_path, capture_output=True, text=True)
+            r = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=self.workspace_path, capture_output=True, text=True, timeout=5,
+            )
             return r.stdout.strip() or "main"
         except Exception:
             return "main"
