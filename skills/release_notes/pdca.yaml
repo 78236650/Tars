@@ -1,0 +1,35 @@
+version: "1.0"
+workspace:
+  mode: resolve
+  require_git: true
+  detect: [git_branch]
+
+plan:
+  hint: "从 git log 生成 release notes，更新 CHANGELOG.md"
+
+steps:
+  - id: 1
+    description: "提取最近提交"
+    tool: shell
+    arguments:
+      cmd: "git log --oneline -20 --no-decorate"
+    verify:
+      type: output_contains
+      expected: ""
+
+  - id: 2
+    description: "更新 CHANGELOG.md"
+    tool: file_write
+    arguments:
+      path: "CHANGELOG.md"
+      content: "## Release Notes\n\n从 git log 生成（此步骤由 LLM 补充具体内容）"
+    verify:
+      type: file_exists
+      expected: "CHANGELOG.md"
+    expected_artifacts:
+      - "CHANGELOG.md"
+
+act:
+  max_retries: 2
+  retry_backoff_s: [1, 2]
+  on_final_failure: skip
