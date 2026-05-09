@@ -387,17 +387,33 @@ class AgentV2:
                         "timestamp": now,
                     })
 
-                    # 执行计划
+                    # 执行计划（v2.4: 危险命令检查已集成在 executor 内）
                     results = await self.task_executor.execute(plan, session_id, channel, workspace_path=ws_path)
 
-                    # 采集 artifacts 并更新 SQLite
+                    # 采集 artifacts
                     from ..orchestration.artifacts_collector import ArtifactsCollector
                     collector = ArtifactsCollector(ws_path)
-                    artifacts = collector.collect_new_files() if collector._snapshot is None else []
+                    collector.take_snapshot()
+                    artifacts = collector.collect_new_files()
+                    # 补充 planner 预声明
+                    for s in plan.steps:
+                        artifacts.extend(ArtifactsCollector.collect_from_step({
+                            "expected_artifacts": [], "arguments": s.arguments,
+                        }))
+                    artifacts = list(set(artifacts))
+
+                    # output_summary: 最后成功步骤的 output 前 200 字符
+                    last_output = ""
+                    for s in reversed(plan.steps):
+                        if s.status.value == "completed" and s.output:
+                            last_output = s.output[:200]
+                            break
+                    output_summary = last_output or "任务完成，无显式输出"
+
                     cur.execute(
                         "UPDATE tasks SET status = 'completed', artifacts = ?, output_summary = ?, completed_at = ?, updated_at = ? WHERE id = ?",
                         (json.dumps(artifacts, ensure_ascii=False),
-                         "", now_iso(), now_iso(), task_id),
+                         output_summary, now_iso(), now_iso(), task_id),
                     )
                     for s in plan.steps:
                         cur.execute(

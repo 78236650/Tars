@@ -35,6 +35,12 @@ const toggleExpand = (taskId: string) => {
     expandedTasks.value.delete(taskId)
   } else {
     expandedTasks.value.add(taskId)
+    // tars_repo_root 首次展开时弹确认
+    const task = props.tasks.find(t => t.id === taskId)
+    if (task && task.workspace_source === 'tars_repo_root' && !sessionStorage.getItem('ws_confirmed_' + taskId)) {
+      confirmNeeded.value = taskId
+      sessionStorage.setItem('ws_confirmed_' + taskId, '1')
+    }
   }
 }
 
@@ -66,6 +72,15 @@ const wsSourceStyle = (source: string): string => {
   }
   return styles[source] || 'bg-slate-700 text-slate-300'
 }
+
+const confirmNeeded = ref<string | null>(null)
+const doConfirmWorkspace = () => { confirmNeeded.value = null }
+const doRejectWorkspace = () => { confirmNeeded.value = null }
+
+const onPause = (taskId: string) => { emit('pause', taskId) }
+const onResume = (taskId: string) => { emit('resume', taskId) }
+const onCancel = (taskId: string) => { emit('cancel', taskId) }
+const onRetry = (taskId: string) => { emit('retry', taskId) }
 
 const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n) + '...' : s
 
@@ -161,6 +176,14 @@ const runningTasks = computed(() => props.tasks.filter(t => t.status === 'runnin
               {{ task.output_summary }}
             </div>
 
+            <!-- tars_repo_root 确认弹窗 -->
+            <div v-if="confirmNeeded === task.id" class="mt-2 p-2 bg-amber-900/20 border border-amber-700/40 rounded text-xs">
+              <p class="text-amber-300 mb-2">⚠️ 工作区指向 TARS 仓库根目录，非用户项目目录。确认继续？</p>
+              <div class="flex gap-2">
+                <button @click="doConfirmWorkspace" class="px-2 py-1 rounded bg-amber-600/30 text-amber-300 hover:bg-amber-600/50">确认</button>
+                <button @click="doRejectWorkspace" class="px-2 py-1 rounded bg-slate-600/30 text-slate-400 hover:bg-slate-600/50">取消</button>
+              </div>
+            </div>
             <!-- Action buttons -->
             <div class="flex items-center gap-2 mt-3 pt-2 border-t border-slate-700/50">
               <template v-if="task.status === 'running'">
