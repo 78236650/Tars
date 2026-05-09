@@ -330,6 +330,14 @@ class Database:
             )
         """)
 
+        # v2.5 tasks 表加列
+        for col, coltype in [("skill_id", "TEXT"), ("pdca_ref", "TEXT")]:
+            try:
+                cursor.execute(f"ALTER TABLE tasks ADD COLUMN {col} {coltype}")
+            except sqlite3.OperationalError:
+                pass
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_skill ON tasks(skill_id)")
+
         conn.commit()
 
     def create_session(self, user_id: str = "default", title: str = "New Session") -> Session:

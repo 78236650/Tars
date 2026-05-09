@@ -180,6 +180,14 @@ class AgentV2:
                 except Exception as e:
                     cmd_result.frontend_message = f"❌ 查询失败: {e}"
 
+            elif cmd_result.action == "skill_disable":
+                skill_id = cmd_result.action_params.get("skill_id", "")
+                skill = self.skill_registry.get(skill_id)
+                if skill:
+                    self.skill_registry.disable(skill.id)
+                    self._active_skill_id = None
+                cmd_result.frontend_message = f"🔕 技能 {skill_id} 已关闭"
+
             elif cmd_result.action == "skill_revoke":
                 skill_id = cmd_result.action_params.get("skill_id", "")
                 perm = cmd_result.action_params.get("permission", "")
@@ -393,6 +401,19 @@ class AgentV2:
                     import json, uuid
                     from ..orchestration.workspace_resolver import resolve_workspace_path
                     ws_path, ws_source = resolve_workspace_path(session_id, title=plan.goal[:30])
+
+                    # v2.5: require_git 检查（来自 pdca.yaml workspace.require_git）
+                    if pdca_config and pdca_config.workspace.get("require_git"):
+                        git_dir = ws_path + "/.git"
+                        if not __import__('os').path.isdir(git_dir):
+                            await channel.send(session_id, {
+                                "type": "task_aborted",
+                                "session_id": session_id,
+                                "step_id": 0,
+                                "error": f"技能要求 git 仓库但 {ws_path} 不是 git 目录",
+                                "timestamp": now,
+                            })
+                            return
 
                     # 持久化任务到 SQLite
                     task_id = str(uuid.uuid4())
