@@ -94,6 +94,13 @@ class SkillCommand(Command):
                 action="skill_revoke",
                 action_params={"skill_id": rparts[0] if rparts else "", "permission": rparts[1] if len(rparts) > 1 else ""},
             )
+        # /skill off <id>
+        if sub == "off":
+            return CommandResult(
+                frontend_message=f"🔕 技能 {rest} 已关闭",
+                action="skill_disable",
+                action_params={"skill_id": rest},
+            )
 
         # 默认：激活技能
         skill_id = args.strip()

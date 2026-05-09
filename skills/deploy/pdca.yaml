@@ -39,6 +39,15 @@ steps:
     expected_artifacts:
       - "dist/"
 
+
+  - id: 4
+    description: "部署到目标环境"
+    tool: shell
+    arguments:
+      cmd: "echo Deploy step -- customize in pdca.yaml"
+    verify:
+      type: exit_code
+      expected: 0
 act:
   max_retries: 3
   retry_backoff_s: [1, 2, 4]
