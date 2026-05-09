@@ -138,6 +138,21 @@ agent = AgentV2(
     task_executor=task_executor,
 )
 agent.skill_loader = skill_loader
+
+# v2.5: 初始化权限引擎
+from tars.skills.permission_engine import permission_engine
+permission_engine.db = db
+# 默认授予已声明权限（local 技能信任）
+for skill in skill_registry.list_all():
+    try:
+        declared = permission_engine.get_declared_permissions(skill.id)
+        dangerous = {"shell", "network", "file_write"}
+        if len(declared & dangerous) >= 3:
+            print(f"[Startup] ⚠️ 技能 {skill.id} 声明了危险组合权限: {declared & dangerous}")
+        permission_engine.grant_all(skill.id)
+    except Exception:
+        pass
+
 memory_manager.set_provider(agent.provider)
 connection_manager = ConnectionManager()
 connection_manager.set_agent(agent)

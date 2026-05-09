@@ -191,6 +191,20 @@ async def cancel_task(task_id: str):
     return {"success": True, "message": "任务已取消"}
 
 
+# ========= v2.5 权限查询 =========
+
+@router.get("/skills/{skill_id}/permissions")
+async def get_skill_permissions(skill_id: str):
+    from ..skills.permission_engine import permission_engine
+    declared = permission_engine.get_declared_permissions(skill_id)
+    granted = permission_engine.get_skill_permissions(skill_id)
+    return {
+        "skill_id": skill_id,
+        "declared": sorted(declared),
+        "granted": sorted(granted),
+    }
+
+
 @router.post("/{task_id}/retry")
 async def retry_task(task_id: str):
     conn = db._get_conn()
