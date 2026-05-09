@@ -224,8 +224,14 @@ class AgentV2:
         else:
             memory_context = self.memory_manager.get_context_for_query(user_content)
 
-        # 5. 构建 system prompt（含人格 + 记忆 + PromptSkill + 命令提示词）
+        # 5. 构建 system prompt（含人格 + 记忆 + 渐进披露技能 + 命令提示词）
         system_prompt = self.workspace.build_context()
+        # v2.5: 渐进披露——只注入 name + description
+        if hasattr(self.skill_loader, 'get_progressive_disclosure'):
+            disclosure = self.skill_loader.get_progressive_disclosure()
+            if disclosure:
+                system_prompt += f"\n\n{disclosure}"
+        # v2.3 legacy: 旧的 prompt 注入（兼容未迁移技能）
         skill_injection = self.skill_executor.build_prompt_injection()
         if skill_injection:
             system_prompt += f"\n\n{skill_injection}"

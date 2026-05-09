@@ -313,6 +313,23 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_task_steps_task ON task_steps(task_id, step_order)")
 
+        # === v2.5 Agent Skills ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS skills_v3 (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'local',
+                dir_path TEXT NOT NULL,
+                has_pdca INTEGER DEFAULT 0,
+                has_scripts INTEGER DEFAULT 0,
+                permissions TEXT DEFAULT '[]',
+                granted_permissions TEXT DEFAULT '[]',
+                installed_at TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1
+            )
+        """)
+
         conn.commit()
 
     def create_session(self, user_id: str = "default", title: str = "New Session") -> Session:
