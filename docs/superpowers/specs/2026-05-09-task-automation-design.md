@@ -1,9 +1,9 @@
 # 任务自动化设计（E1）
 
 - **日期**：2026-05-09
-- **版本**：v1.2
+- **版本**：v1.3
 - **状态**：草稿
-- **更新**：增加 PDCA 循环 + TaskWorkspace 机制（默认本地目录，自动初始化 git 仓库）
+- **更新**：融合 Agent Skills（Skills as SOP）+ PDCA 执行控制框架 + TaskWorkspace
 
 ## 一、背景与目标
 
@@ -28,48 +28,197 @@ TARS v2.3 已具备：
 - 不做跨系统工作流（如 Zapier 风格）
 - 不做复杂依赖图解析
 
+---
+
 ## 二、理论基础
 
-### 2.1 PDCA 循环
+### 2.1 框架概述
 
-本设计引入 **PDCA 循环**（Plan-Do-Check-Act）作为任务执行的理论框架：
+本设计融合两大理念：
+
+| 框架 | 层级 | 作用 |
+|------|------|------|
+| **Agent Skills** | 任务定义层 | 定义"怎么做"（SOP 标准操作程序） |
+| **PDCA 循环** | 执行控制层 | 循环执行 + 验证反馈 |
+
+**核心思想**：Skills = SOP（最佳实践模板），TaskExecutor 按 PDCA 循环执行。
+
+### 2.2 Agent Skills 理念
+
+**来源**：Anthropic Claude Code 2025年10月引入，2026年已成为开放标准（agentskills.io）
+
+**核心理念**：
+- **Skills vs Tools**：Tools = "能做什么"；Skills = "怎么做得更好"
+- **Progressive Disclosure**：按需加载，只在需要时注入完整上下文
+- **SOP 即代码**：将领域知识封装为可执行的技能包
+
+### 2.3 PDCA 循环
+
+**PDCA 循环**（Plan-Do-Check-Act）作为执行控制框架：
 
 | 阶段 | 含义 | 在本系统中的实现 |
 |------|------|------------------|
-| **Plan（计划）** | 分析问题，制定行动方案 | TaskPlanner 生成执行步骤 |
+| **Plan（计划）** | 分析问题，制定行动方案 | 加载/生成 Skill SOP |
 | **Do（执行）** | 按计划执行 | TaskExecutor 执行每个步骤 |
-| **Check（检查）** | 验证执行结果 | 步骤执行后验证结果 |
+| **Check（检查）** | 验证执行结果 | Skill 定义的验证条件 |
 | **Act（行动）** | 根据结果调整 | 失败时决定重试/跳过/中止 |
 
-**为什么选择 PDCA**：
-- 简单易懂，易于实现
-- 每步都有反馈循环，适合自动化场景
-- 避免盲目执行，提供"检查"保障
-
-### 2.2 当前设计与 PDCA 的对应
+### 2.4 Skills + PDCA 融合
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        PDCA 循环                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   Plan ──────→ Do ──────→ Check ──────→ Act               │
-│     ↑                                            │          │
-│     │                                            │          │
-│     └────────────────────────────────────────────┘          │
-│                         循环迭代                            │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-
-在 TARS 中的实现：
-
-Plan：TaskPlanner 生成 { step: "git pull", verify: "检查文件是否存在" }
-Do：  TaskExecutor 执行 git pull
-Check：验证执行结果（退出码、输出内容）
-Act：  成功 → 下一步骤；失败 → 重试/跳过/中止
+┌──────────────────────────────────────────────────────────────┐
+│                    Agent Skills（任务定义层）                  │
+│                                                              │
+│  SKILL.md                                                    │
+│    ├── name/description     → 触发条件匹配                    │
+│    ├── steps               → Plan 生成步骤                   │
+│    ├── verify              → Check 验证条件                   │
+│    └── fallback            → Act 失败处理                     │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    PDCA 循环（执行控制层）                     │
+│                                                              │
+│  Plan ───→ Do ───→ Check ───→ Act                          │
+│    ↑                  │      │                              │
+│    │                  │      └── 验证失败？→ 重试/跳过/中止  │
+│    └──────────────────┴──────────────────────────────────    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### 2.3 步骤验证机制（Check）
+### 2.5 Progressive Disclosure 实现
+
+Agent Skills 的按需加载机制：
+
+| 阶段 | Token 预算 | 内容 |
+|------|-----------|------|
+| **1. Advertise** | ~100 tokens/skill | Skill 名称 + 描述，注入 system prompt |
+| **2. Load** | <5000 tokens | 匹配时加载完整 SKILL.md |
+| **3. Read** | as needed | 按需读取 references/ 目录 |
+| **4. Execute** | — | 执行 Skill 定义的操作 |
+
+---
+
+## 三、任务 Skill 定义
+
+### 3.1 Skill 结构
+
+每个任务 Skill 是一个目录，遵循 Agent Skills 开放标准：
+
+```
+~/.tars/task_skills/
+├── deploy-project/           # 项目部署技能
+│   ├── SKILL.md             # 技能定义
+│   └── scripts/
+│       └── health_check.sh  # 健康检查脚本
+├── code-review/              # 代码审查技能
+│   ├── SKILL.md
+│   └── scripts/
+│       └── lint.sh
+└── data-analysis/           # 数据分析技能
+    ├── SKILL.md
+    └── templates/
+        └── report.md
+```
+
+### 3.2 SKILL.md 格式
+
+```yaml
+---
+name: deploy-project
+description: |
+  项目部署自动化流程。适用于"帮我部署"、"发布到服务器"、"deploy"等请求。
+  会自动检测 git 状态、运行构建、验证部署结果。
+trigger_keywords: ["部署", "发布", "deploy", "发布到", "上线"]
+compatibility: 需要 git + npm/node 环境
+allowed_tools:
+  - git
+  - shell
+  - file_read
+  - file_write
+---
+
+## 执行步骤
+
+### 1. 前置检查
+- 描述：检查 git 状态，确保工作区干净
+- 命令：git status --porcelain
+- 验证：
+  - type: output_is_empty
+  - error_msg: "工作区有未提交的更改，请先 commit"
+
+### 2. 安装依赖
+- 描述：安装项目依赖
+- 命令：npm install
+- 验证：
+  - type: output_not_contains
+  - expected: "ERR!"
+  - error_msg: "依赖安装失败"
+
+### 3. 构建
+- 描述：执行生产构建
+- 命令：npm run build
+- 验证：
+  - type: file_exists
+  - expected: "dist/index.html"
+  - error_msg: "构建产物不存在"
+
+### 4. 部署（可选）
+- 描述：部署到服务器
+- 命令：scp -r dist/* user@server:/var/www/app/
+- 验证：
+  - type: exit_code
+  - expected: 0
+  - error_msg: "部署失败"
+
+### 5. 健康检查
+- 描述：验证部署结果
+- 命令：curl -s -o /dev/null -w "%{http_code}" http://example.com
+- 验证：
+  - type: output_contains
+  - expected: "200"
+  - error_msg: "服务不可用"
+
+## 失败处理
+
+### 可跳过的步骤
+- 步骤 4（部署）：如果用户没有配置服务器，可以跳过
+
+### 不可跳过的步骤
+- 步骤 1、2、3、5 必须成功才能继续
+
+### 重试策略
+- 步骤 2、3：最多重试 2 次
+- 步骤 4、5：最多重试 3 次
+```
+
+### 3.3 内置 Task Skills
+
+TARS 提供以下内置 Task Skills：
+
+| Skill | 触发关键词 | 适用场景 |
+|-------|-----------|----------|
+| `deploy-project` | 部署、发布、deploy、上线 | 前端/Node.js 项目部署 |
+| `code-review` | 审查、review、代码检查 | 代码审查流程 |
+| `test-runner` | 测试、test、跑测试 | 运行单元/集成测试 |
+| `data-analysis` | 分析、数据、报表 | 数据分析任务 |
+| `git-workflow` | commit、git、提交 | Git 工作流 |
+| `file-convert` | 转换、convert、格式转换 | 文件格式转换 |
+
+### 3.4 Skill 注册与发现
+
+**Advertise 阶段**（~100 tokens）：
+- 系统启动时，扫描 `~/.tars/task_skills/` 目录
+- 提取每个 Skill 的 `name` + `description` + `trigger_keywords`
+- 注入到 Agent 的 system prompt
+
+**Load 阶段**（按需加载）：
+- TaskDetector 检测到匹配的触发词
+- 加载对应 Skill 的完整 SKILL.md
+- 将步骤注入 TaskPlanner
+
+### 3.5 步骤验证机制（Check）
 
 每个步骤包含**执行**和**验证**两部分：
 
@@ -79,7 +228,7 @@ Act：  成功 → 下一步骤；失败 → 重试/跳过/中止
   "description": "git pull 拉取最新代码",
   "command": "git pull origin main",
   "verify": {
-    "type": "exit_code",      // 或 "output_contains" / "file_exists"
+    "type": "exit_code",
     "expected": 0,
     "error_msg": "拉取代码失败"
   }
@@ -93,8 +242,9 @@ Act：  成功 → 下一步骤；失败 → 重试/跳过/中止
 | `exit_code` | 检查退出码 | git pull 成功返回 0 |
 | `output_contains` | 输出包含关键字 | 包含 "Already up to date" |
 | `output_not_contains` | 输出不包含错误 | 不包含 "error" |
+| `output_is_empty` | 输出为空 | git status 无输出 |
 | `file_exists` | 文件存在 | package.json 存在 |
-| `file_not_exists` | 文件不存在 | 无 node_modules（构建前清理） |
+| `file_not_exists` | 文件不存在 | 无 node_modules |
 | `custom` | 自定义验证 | 调用 LLM 判断结果 |
 
 **验证失败处理（Act）**：
@@ -107,79 +257,12 @@ Act：  成功 → 下一步骤；失败 → 重试/跳过/中止
     │       └── 成功 → 继续下一步
     │       └── 失败 → 进入跳过/中止判断
     │
-    ├── 跳过（Skip）— 用户选择或自动判断
-    │       │
-    │       └── 标记为 skipped，继续下一步
+    ├── 跳过（Skip）— 标记为 skipped，继续下一步
     │
     └── 中止（Abort）— 任务失败
-            │
-            └── 更新任务状态为 failed
 ```
 
-### 2.4 增强的数据模型
-
-**task_steps 表新增验证字段**：
-
-```sql
-ALTER TABLE task_steps ADD COLUMN verify_type TEXT;      -- exit_code/output_contains/file_exists
-ALTER TABLE task_steps ADD COLUMN verify_expected TEXT;  -- 期望值
-ALTER TABLE task_steps ADD COLUMN verify_msg TEXT;        -- 失败提示
-ALTER TABLE task_steps ADD COLUMN retry_count INTEGER DEFAULT 0;
-```
-
-**TaskPlanner 输出格式增强**：
-
-```json
-{
-  "steps": [
-    {
-      "description": "git pull 拉取最新代码",
-      "command": "git pull origin main",
-      "verify": {
-        "type": "exit_code",
-        "expected": 0
-      }
-    },
-    {
-      "description": "npm install 安装依赖",
-      "command": "npm install",
-      "verify": {
-        "type": "output_not_contains",
-        "expected": "ERR!",
-        "error_msg": "依赖安装失败"
-      }
-    }
-  ]
-}
-```
-
-## 三、总体架构
-
-```
-用户消息
-    │
-    ▼
-┌─────────────────┐
-│ TaskDetector    │  ← 检测是否需要任务自动化
-│ (LLM 分析)      │
-└────────┬────────┘
-         │ 触发?
-    ┌────┴────┐
-    │ 否      │ 是
-    ▼         ▼
-  正常对话   询问用户确认
-                 │
-                 ▼
-          ┌─────────────────┐
-          │ TaskPlanner     │  ← LLM 生成执行计划
-          │ (复用现有)       │
-          └────────┬────────┘
-                   ▼
-          ┌─────────────────┐
-          │ TaskPanel (UI)  │  ← 独立任务面板
-          │ + TaskExecutor  │  ← 后台执行
-          └─────────────────┘
-```
+---
 
 ## 四、TaskWorkspace 机制
 
@@ -393,31 +476,45 @@ def detect_workspace_context(user_msg: str) -> dict:
 [     ]
 ```
 
-## 四、数据模型
+---
 
-### 4.1 数据库表：tasks
+## 六、数据模型
+
+### 6.1 数据库表：tasks
 
 ```sql
 CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     title TEXT NOT NULL,
+    skill_name TEXT,              -- 使用的 Skill 名称
     status TEXT DEFAULT 'pending',  -- pending/confirmed/running/paused/completed/failed
     current_step INTEGER DEFAULT 0,
     total_steps INTEGER DEFAULT 0,
+    workspace_path TEXT,           -- TaskWorkspace 路径
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     completed_at TEXT,
     error_message TEXT
 );
+```
 
+### 6.2 数据库表：task_steps
+
+```sql
 CREATE TABLE task_steps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT NOT NULL,
     step_order INTEGER NOT NULL,
     description TEXT NOT NULL,
     command TEXT,
-    status TEXT DEFAULT 'pending',  -- pending/running/completed/skipped/failed
+    verify_type TEXT,            -- exit_code/output_contains/file_exists/output_is_empty
+    verify_expected TEXT,        -- 期望值
+    verify_msg TEXT,             -- 失败提示
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    skippable BOOLEAN DEFAULT FALSE,
+    status TEXT DEFAULT 'pending', -- pending/running/completed/skipped/failed
     result TEXT,
     error TEXT,
     started_at TEXT,
@@ -426,10 +523,9 @@ CREATE TABLE task_steps (
 );
 ```
 
-### 4.2 WebSocket 消息
+### 6.3 WebSocket 消息
 
 ```typescript
-// 服务端 → 客户端
 interface TaskEvent {
   type: 'task_created' | 'task_updated' | 'step_updated' | 'confirmation_needed' | 'task_completed';
   payload: {
@@ -448,7 +544,9 @@ interface ConfirmationRequest {
 }
 ```
 
-## 五、API 设计
+---
+
+## 七、API 设计
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
@@ -461,10 +559,14 @@ interface ConfirmationRequest {
 | `/api/tasks/{id}/cancel` | POST | 取消任务 |
 | `/api/tasks/{id}/retry` | POST | 重试失败任务 |
 | `/api/tasks/{id}/steps/{step_id}/logs` | GET | 获取步骤执行日志 |
+| `/api/taskskills/` | GET | 列出所有可用 Task Skills |
+| `/api/taskskills/{name}` | GET | 获取 Skill 详情 |
 
-## 六、流程图
+---
 
-### 6.1 任务创建流程
+## 八、流程图
+
+### 8.1 任务创建流程
 
 ```
 用户: "帮我部署项目"
@@ -483,6 +585,12 @@ TaskDetector 分析
     └─ 用户确认
             │
             ▼
+        检测/创建 TaskWorkspace
+            │
+            ▼
+        加载匹配的 Task Skill
+            │
+            ▼
         TaskPlanner 生成计划
             │
             ▼
@@ -499,7 +607,7 @@ TaskDetector 分析
             └─ 执行完成 → 更新状态 → 通知用户
 ```
 
-### 6.2 前端交互流程
+### 8.2 前端交互流程
 
 ```
 用户点击"确认执行"
@@ -520,26 +628,33 @@ WebSocket 推送 step_updated
 任务完成 → 推送 task_completed
 ```
 
-## 七、开发任务分解
+---
+
+## 九、开发任务分解
 
 ### Phase 1: 后端核心
 1. 新增 `tasks` / `task_steps` 数据库表
-2. 新增 `api/tasks.py` 路由
-3. 增强 `TaskExecutor` 支持异步 + 状态持久化
-4. WebSocket 推送任务状态
+2. 新增 `api/tasks.py` 和 `api/taskskills.py` 路由
+3. 实现 Task Skill 加载器（复用现有 SkillLoader）
+4. 增强 `TaskExecutor` 支持异步 + 状态持久化 + 验证
+5. WebSocket 推送任务状态
 
 ### Phase 2: 前端核心
 1. 新增 `/tasks` 路由和 `TasksView.vue`
 2. 实现 `TaskPanel.vue` 组件
 3. 实现 `TaskCard.vue` 组件
 4. 实现危险操作确认弹窗
+5. 集成 SkillHub 技能列表
 
 ### Phase 3: 集成
 1. TaskDetector 集成到 Agent
-2. 完善错误处理
-3. 测试全流程
+2. 实现 TaskWorkspace 自动创建
+3. 完善错误处理
+4. 测试全流程
 
-## 八、风险与缓解
+---
+
+## 十、风险与缓解
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
@@ -548,15 +663,17 @@ WebSocket 推送 step_updated
 | 执行失败 | 任务状态不一致 | 完整的状态机 + 回滚机制 |
 | WebSocket 断开 | 状态更新丢失 | 轮询兜底 + 状态持久化 |
 
-## 九、非目标（明确）
+---
+
+## 十一、非目标（明确）
 
 - 不做全自动化执行（用户必须确认）
 - 不做任务依赖图
 - 不做定时任务调度
-- 不做任务模板库
+- 不做任务模板库（Skill 即模板）
 
 ---
 
-*文档版本: v1.2*
+*文档版本: v1.3*
 *日期: 2026-05-09*
-*更新: PDCA 循环 + TaskWorkspace 机制（默认本地，自动初始化 git 仓库）*
+*更新: 融合 Agent Skills（Skills as SOP）+ PDCA 执行控制框架 + TaskWorkspace 机制*
