@@ -402,18 +402,38 @@ class AgentV2:
                     from ..orchestration.workspace_resolver import resolve_workspace_path
                     ws_path, ws_source = resolve_workspace_path(session_id, title=plan.goal[:30])
 
-                    # v2.5: require_git 检查（来自 pdca.yaml workspace.require_git）
+                    # v2.5: 先取 PDCA 配置（require_git 检查和变量替换都要用）
+                    pdca_config, pdca_ref = (
+                        planner_tool.pop_pending_pdca()
+                        if hasattr(planner_tool, "pop_pending_pdca")
+                        else (None, None)
+                    )
+
+                    # v2.5: require_git 检查
                     if pdca_config and pdca_config.workspace.get("require_git"):
-                        git_dir = ws_path + "/.git"
-                        if not __import__('os').path.isdir(git_dir):
+                        import os as _os
+                        if not _os.path.isdir(_os.path.join(ws_path, ".git")):
                             await channel.send(session_id, {
                                 "type": "task_aborted",
                                 "session_id": session_id,
                                 "step_id": 0,
                                 "error": f"技能要求 git 仓库但 {ws_path} 不是 git 目录",
-                                "timestamp": now,
+                                "timestamp": now_iso(),
                             })
                             return
+
+                    # v2.5: PDCA workspace.* 变量替换（step_N.* 保留给 executor 运行时处理）
+                    skill_id_from_ref = None
+                    if pdca_config:
+                        from ..orchestration.variable_engine import VariableEngine
+                        engine = VariableEngine(ws_path)
+                        for step in plan.steps:
+                            # 按 tool_name 决定 shlex.quote 作用范围
+                            step.arguments = engine.resolve_dict(step.arguments, tool_name=step.tool)
+                        # 从 pdca_ref 反推 skill_id，供权限检查使用
+                        if pdca_ref and pdca_ref.startswith("skill://"):
+                            skill_id_from_ref = pdca_ref.replace("skill://", "").split("/")[0]
+                            self._active_skill_id = skill_id_from_ref
 
                     # 持久化任务到 SQLite
                     task_id = str(uuid.uuid4())
@@ -421,10 +441,15 @@ class AgentV2:
                     conn = self.db._get_conn()
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO tasks (id, session_id, title, goal, workspace_path, "
+                        "workspace_source, status, current_step, total_steps, artifacts, "
+                        "output_summary, created_at, updated_at, completed_at, error_message, "
+                        "skill_id, pdca_ref) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (task_id, session_id, plan.goal[:30], plan.goal,
                          ws_path, ws_source, "running", 0, len(plan.steps),
-                         None, None, now, now, None, None),
+                         None, None, now, now, None, None,
+                         skill_id_from_ref, pdca_ref),
                     )
                     for s in plan.steps:
                         cur.execute(
@@ -447,6 +472,8 @@ class AgentV2:
                                 "workspace_path": ws_path, "workspace_source": ws_source,
                                 "status": "running", "current_step": 0,
                                 "total_steps": len(plan.steps),
+                                "skill_id": skill_id_from_ref,
+                                "pdca_ref": pdca_ref,
                                 "steps": [{"id": s.id, "step_order": s.id, "description": s.description,
                                            "tool": s.tool, "status": "pending"} for s in plan.steps],
                             }
@@ -454,13 +481,15 @@ class AgentV2:
                         "timestamp": now,
                     })
 
-                    # v2.5: PDCA 变量替换
-                    pdca_config, pdca_ref = planner_tool.pop_pending_pdca() if hasattr(planner_tool, "pop_pending_pdca") else (None, None)
-                    if pdca_config:
-                        from ..orchestration.variable_engine import VariableEngine
-                        engine = VariableEngine(ws_path)
-                        for step in plan.steps:
-                            step.arguments = engine.resolve_dict(step.arguments)
+                    # v2.5: 把 pdca act 配置传给 executor（若有）
+                    if pdca_config and hasattr(self.task_executor, "act_policy"):
+                        act = pdca_config.act or {}
+                        if "max_retries" in act:
+                            self.task_executor.act_policy.max_retries = act["max_retries"]
+                        if "retry_backoff_s" in act:
+                            self.task_executor.act_policy.retry_backoff_s = act["retry_backoff_s"]
+                        if "on_final_failure" in act:
+                            self.task_executor.act_policy.on_final_failure = act["on_final_failure"]
 
                     # 执行计划（v2.4: 危险命令检查已集成在 executor 内）
                     results = await self.task_executor.execute(plan, session_id, channel, workspace_path=ws_path)

@@ -18,7 +18,9 @@ permissions:
 - 应用 workspace 变量替换（{{workspace.pm}}、{{workspace.branch}} 等）
 - 走 PDCA 验证循环（每步自动校验，失败重试×3）
 
-## 辅助脚本
+## 注意事项
 
-- `scripts/pre_check.py` — 部署前环境检查
-- `scripts/health_check.py` — 部署后健康检查
+- 若 pdca.yaml 检测到 workspace 不是 git 仓库且 `require_git: true`，会中止并提示用户
+- `{{workspace.pm}}` 未检测到包管理器时，pdca.yaml 的 fallback 规则生效（若声明）
+- 部署前确认 CHANGELOG/版本号已更新，可通过 release_notes 技能协作
+- 如需自定义部署流程（如额外的健康检查、灰度发布），不要使用本技能的 pdca.yaml，改为让 task_planner 生成自定义 steps
