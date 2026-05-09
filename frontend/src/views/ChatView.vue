@@ -8,6 +8,7 @@ import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
+import TaskPanel from '@/components/chat/TaskPanel.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 
 const router = useRouter()
@@ -19,6 +20,18 @@ const { t } = useI18n()
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[] }[]>([])
 const inputMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+// v2.4 任务面板
+const tasks = ref<any[]>([])
+const showTaskPanel = ref(false)
+
+const toggleTaskPanel = () => { showTaskPanel.value = !showTaskPanel.value }
+
+// 任务操作
+const doPauseTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/pause`, { method: 'POST' }).catch(() => {}) }
+const doResumeTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/resume`, { method: 'POST' }).catch(() => {}) }
+const doCancelTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' }).catch(() => {}) }
+const doRetryTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/retry`, { method: 'POST' }).catch(() => {}) }
 
 const autoResize = () => {
   const el = inputRef.value
@@ -124,7 +137,16 @@ const setupWsHandler = () => {
       if (lastMsg && lastMsg.id?.startsWith('streaming-')) {
         lastMsg.id = `msg-${Date.now()}`
       }
+    } else if (data.type === 'task_created' || data.type === 'task_updated') {
+      showTaskPanel.value = true
+      const t = data.payload?.task || data.task
+      if (t) {
+        const idx = tasks.value.findIndex(x => x.id === t.id)
+        if (idx >= 0) tasks.value[idx] = t
+        else tasks.value.push(t)
+      }
     } else if (data.type === 'plan_created') {
+      showTaskPanel.value = true
       messages.value.push({
         id: `plan_${Date.now()}`,
         role: 'plan',
@@ -343,6 +365,14 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs text-slate-500">{{ settingsStore.currentModel || '' }}</span>
+          <button @click="toggleTaskPanel" class="p-2 rounded-lg hover:bg-slate-700 transition-colors relative" title="任务">
+            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            <span v-if="tasks.length" class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-500 rounded-full text-[8px] flex items-center justify-center text-white font-bold">
+              {{ tasks.filter(t => t.status === 'running' || t.status === 'pending').length || tasks.length }}
+            </span>
+          </button>
           <button @click="router.push('/settings')" class="p-2 rounded-lg hover:bg-slate-700 transition-colors" title="设置">
             <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -436,5 +466,14 @@ onUnmounted(() => {
         </div>
       </footer>
     </main>
+    <TaskPanel
+      :tasks="tasks"
+      :visible="showTaskPanel"
+      @close="showTaskPanel = false"
+      @pause="doPauseTask"
+      @resume="doResumeTask"
+      @cancel="doCancelTask"
+      @retry="doRetryTask"
+    />
   </div>
 </template>
