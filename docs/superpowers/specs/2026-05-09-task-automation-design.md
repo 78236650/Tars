@@ -1,9 +1,9 @@
 # 任务自动化设计（E1）
 
 - **日期**：2026-05-09
-- **版本**：v1.1
+- **版本**：v1.2
 - **状态**：草稿
-- **更新**：增加 PDCA 循环理论 + Check/Act 验证机制
+- **更新**：增加 PDCA 循环 + TaskWorkspace 机制（默认本地目录，自动初始化 git 仓库）
 
 ## 一、背景与目标
 
@@ -181,9 +181,106 @@ ALTER TABLE task_steps ADD COLUMN retry_count INTEGER DEFAULT 0;
           └─────────────────┘
 ```
 
-## 三、核心组件
+## 四、TaskWorkspace 机制
 
-### 3.1 TaskDetector
+### 4.1 设计原则
+
+**默认使用本地文件夹**：任务相关文件在用户的项目目录下操作，不强制使用 git 仓库。
+
+### 4.2 Workspace 自动创建
+
+当用户创建任务但没有可用的工作目录时，TARS 自动创建：
+
+```
+任务 Workspace 目录结构：
+~/.tars/workspaces/
+└── {日期时间}_{任务标题_slug}/
+    ├── .git/                    # 自动初始化为 git 仓库
+    ├── task.md                  # 任务描述
+    ├── steps.json              # 执行步骤记录
+    ├── outputs/                 # 输出文件目录
+    └── logs/                    # 执行日志目录
+```
+
+**命名规则**：
+- 目录名：`20260509_143052_项目部署`（格式：`{日期}{时间}_{标题slug}`）
+- slug：中文转拼音/英文，小写化，空格替换为 `_`
+
+### 4.3 Workspace 上下文检测
+
+TaskPlanner 在生成计划前，先检测可用环境：
+
+```python
+def detect_workspace_context(user_msg: str) -> dict:
+    """检测工作区上下文，返回可用操作列表"""
+    result = {
+        "has_git": False,
+        "has_remote": False,
+        "workspace_path": None,
+        "available_ops": []
+    }
+
+    # 1. 检测用户是否在某个项目目录下
+    workspace = get_current_workspace()
+    if workspace:
+        result["workspace_path"] = workspace
+
+        # 2. 检测是否是 git 仓库
+        if is_git_repo(workspace):
+            result["has_git"] = True
+            result["available_ops"].extend(["add", "commit", "status", "log", "diff"])
+
+            # 3. 检测是否有远程仓库
+            remotes = get_git_remotes(workspace)
+            if remotes:
+                result["has_remote"] = True
+                result["available_ops"].extend(["push", "pull", "fetch"])
+
+        # 4. 检测可用的构建工具
+        result["available_ops"].extend(detect_build_tools(workspace))
+
+    return result
+```
+
+### 4.4 Git 仓库初始化流程
+
+```
+用户创建任务
+    │
+    ▼
+检测是否有可用 workspace
+    │
+    ├── 有
+    │   └── 检测 git 状态，添加到 available_ops
+    │
+    └── 无
+        └── 创建 TaskWorkspace
+                │
+                ▼
+            初始化为 git 仓库
+                │
+                ▼
+            生成任务计划（基于可用操作）
+```
+
+### 4.5 操作分层
+
+根据检测到的上下文，TaskPlanner 限制可用操作：
+
+| 场景 | 可用 Git 操作 | 可用其他操作 |
+|------|--------------|--------------|
+| 无 workspace | init（新建） | mkdir/copy |
+| 本地 git | add/commit/status/log/diff | 文件操作 |
+| git + 远程 | + push/pull/clone/fetch | + scp/docker |
+| 非 git 项目 | 无 git 操作 | 文件操作/构建/测试 |
+
+**注意**：如果项目已有 git 仓库，TARS **不会**在子目录创建新的仓库，而是在原仓库内操作。
+
+---
+
+## 五、核心组件
+
+### 5.1 TaskDetector
 
 **职责**：分析用户消息，判断是否触发任务自动化
 
@@ -209,7 +306,7 @@ ALTER TABLE task_steps ADD COLUMN retry_count INTEGER DEFAULT 0;
 检测到的意图：{intent}
 ```
 
-### 3.2 TaskPanel（前端）
+### 5.2 TaskPanel（前端）
 
 **职责**：独立任务面板，展示和管理所有任务
 
@@ -261,7 +358,7 @@ ALTER TABLE task_steps ADD COLUMN retry_count INTEGER DEFAULT 0;
 - 取消：终止任务（不可恢复）
 - 重试：重新执行失败的任务
 
-### 3.3 TaskExecutor（增强）
+### 5.3 TaskExecutor（增强）
 
 **复用现有**：`backend/tars/orchestration/executor.py`
 
@@ -271,7 +368,7 @@ ALTER TABLE task_steps ADD COLUMN retry_count INTEGER DEFAULT 0;
 3. **WebSocket 推送**：实时更新前端面板
 4. **危险操作拦截**：危险命令执行前暂停，等待用户确认
 
-### 3.4 危险操作处理
+### 5.4 危险操作处理
 
 **黑名单命令**（来自现有 shell 工具）：
 - `rm -rf`
@@ -460,6 +557,6 @@ WebSocket 推送 step_updated
 
 ---
 
-*文档版本: v1.1*
+*文档版本: v1.2*
 *日期: 2026-05-09*
-*更新: 增加 PDCA 循环理论 + Check/Act 验证机制*
+*更新: PDCA 循环 + TaskWorkspace 机制（默认本地，自动初始化 git 仓库）*
