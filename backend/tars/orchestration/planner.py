@@ -17,6 +17,10 @@ class TaskPlannerTool(BaseTool):
         "type": "object",
         "properties": {
             "goal": {"type": "string", "description": "最终目标的简短描述"},
+            "pdca_ref": {
+                "type": "string",
+                "description": "可选。指向 pdca.yaml 的 skill URI，如 skill://deploy/pdca.yaml。提供后将加载预定义步骤而非 LLM 自由生成。"
+            },
             "steps": {
                 "type": "array",
                 "description": "执行步骤列表",
@@ -49,7 +53,21 @@ class TaskPlannerTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         """提交计划 — 不真正执行，只是传递给 TaskExecutor"""
         goal = kwargs.get("goal", "")
+        pdca_ref = kwargs.get("pdca_ref", "")
         steps = kwargs.get("steps", [])
+
+        # v2.5: pdca_ref 加载预定义步骤
+        if pdca_ref and not steps:
+            from .pdca_parser import parse_pdca_ref
+            from pathlib import Path
+            skills_dir = str(Path(__file__).resolve().parent.parent.parent / "skills")
+            config = parse_pdca_ref(pdca_ref, skills_dir)
+            if config:
+                steps = [s.to_dict() for s in config.steps]
+                self._pending_pdca_config = config
+                self._pending_pdca_ref = pdca_ref
+            else:
+                return ToolResult(success=False, output="", error=f"pdca_ref 无效: {pdca_ref}")
 
         if not goal or not steps:
             return ToolResult(success=False, output="", error="计划需要 goal 和 steps")
@@ -68,3 +86,11 @@ class TaskPlannerTool(BaseTool):
         plan = self._pending_plan
         self._pending_plan = None
         return plan
+
+    def pop_pending_pdca(self):
+        """取出 PDCA 配置和 ref（由 Agent 调用）"""
+        config = getattr(self, '_pending_pdca_config', None)
+        ref = getattr(self, '_pending_pdca_ref', None)
+        self._pending_pdca_config = None
+        self._pending_pdca_ref = None
+        return config, ref

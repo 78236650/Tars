@@ -6,6 +6,8 @@ from .workspace_resolver import resolve_workspace_path, detect_workspace_context
 from .verifier import StepVerifier, VerifyResult, verifier
 from .act_policy import ActPolicy, ActDecision
 from .artifacts_collector import ArtifactsCollector
+from .pdca_parser import parse_pdca_yaml, parse_pdca_ref, PDCAConfig, PDCAStep
+from .variable_engine import VariableEngine
 
 __all__ = [
     "TaskStep", "TaskPlan", "StepStatus",
@@ -15,4 +17,6 @@ __all__ = [
     "StepVerifier", "VerifyResult", "verifier",
     "ActPolicy", "ActDecision",
     "ArtifactsCollector",
+    "parse_pdca_yaml", "parse_pdca_ref", "PDCAConfig", "PDCAStep",
+    "VariableEngine",
 ]

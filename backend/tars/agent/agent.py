@@ -393,6 +393,14 @@ class AgentV2:
                         "timestamp": now,
                     })
 
+                    # v2.5: PDCA 变量替换
+                    pdca_config, pdca_ref = planner_tool.pop_pending_pdca() if hasattr(planner_tool, "pop_pending_pdca") else (None, None)
+                    if pdca_config:
+                        from ..orchestration.variable_engine import VariableEngine
+                        engine = VariableEngine(ws_path)
+                        for step in plan.steps:
+                            step.arguments = engine.resolve_dict(step.arguments)
+
                     # 执行计划（v2.4: 危险命令检查已集成在 executor 内）
                     results = await self.task_executor.execute(plan, session_id, channel, workspace_path=ws_path)
 

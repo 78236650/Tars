@@ -1,0 +1,45 @@
+version: "1.0"
+workspace:
+  mode: resolve
+  require_git: true
+  detect:
+    - package_manager
+    - git_branch
+
+plan:
+  hint: "为 {{workspace.path}} 的项目制定构建部署计划"
+
+steps:
+  - id: 1
+    description: "拉取最新代码"
+    tool: shell
+    arguments:
+      cmd: "git pull origin {{workspace.branch}}"
+    verify:
+      type: exit_code
+      expected: 0
+
+  - id: 2
+    description: "安装依赖"
+    tool: shell
+    arguments:
+      cmd: "{{workspace.pm}} install"
+    verify:
+      type: exit_code
+      expected: 0
+
+  - id: 3
+    description: "执行构建"
+    tool: shell
+    arguments:
+      cmd: "{{workspace.pm}} run build"
+    verify:
+      type: exit_code
+      expected: 0
+    expected_artifacts:
+      - "dist/"
+
+act:
+  max_retries: 3
+  retry_backoff_s: [1, 2, 4]
+  on_final_failure: ask_user
