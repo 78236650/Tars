@@ -1,5 +1,12 @@
 from .models import TaskStep, TaskPlan, StepStatus
 from .planner import TaskPlannerTool
 from .executor import TaskExecutor
+from .detector import TriggerMode, detect_task_intent, build_detector_prompt
+from .workspace_resolver import resolve_workspace_path, detect_workspace_context
 
-__all__ = ["TaskStep", "TaskPlan", "StepStatus", "TaskPlannerTool", "TaskExecutor"]
+__all__ = [
+    "TaskStep", "TaskPlan", "StepStatus",
+    "TaskPlannerTool", "TaskExecutor",
+    "TriggerMode", "detect_task_intent", "build_detector_prompt",
+    "resolve_workspace_path", "detect_workspace_context",
+]

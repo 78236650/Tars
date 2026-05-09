@@ -267,11 +267,51 @@ class Database:
         """)
 
         # v2.2 memories 表加列
-        for col_name in ["event_time", "entity_refs", "supersedes"]:
-            try:
-                cursor.execute(f"ALTER TABLE memories ADD COLUMN {col_name} TEXT")
-            except sqlite3.OperationalError:
-                pass
+        # === v2.4 任务自动化 ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                goal TEXT NOT NULL,
+                workspace_path TEXT NOT NULL,
+                workspace_source TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                current_step INTEGER DEFAULT 0,
+                total_steps INTEGER DEFAULT 0,
+                artifacts TEXT,
+                output_summary TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                error_message TEXT
+            )
+            """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS task_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL REFERENCES tasks(id),
+                step_order INTEGER NOT NULL,
+                description TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                arguments TEXT,
+                verify_type TEXT,
+                verify_expected TEXT,
+                verify_msg TEXT,
+                expected_artifacts TEXT,
+                status TEXT DEFAULT 'pending',
+                result TEXT,
+                error TEXT,
+                retries INTEGER DEFAULT 0,
+                started_at TEXT,
+                completed_at TEXT
+            )
+            """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_task_steps_task ON task_steps(task_id, step_order)")
 
         conn.commit()
 
