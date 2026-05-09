@@ -123,7 +123,7 @@ def detect_task_intent(user_msg: str, is_slash_plan: bool) -> TriggerMode:
 
     msg_lower = user_msg.lower()
     has_kw = any(kw in msg_lower for kw in TRIGGER_KEYWORDS)
-    if not has_kw or len(user_msg) <= 50:
+    if not has_kw or len(user_msg) <= 10:
         return TriggerMode.NONE
 
     # 含疑问词 → 软提示；否则 → 硬指令
@@ -294,7 +294,7 @@ CREATE TABLE task_steps (
 | 风险 | 缓解 |
 |------|------|
 | Workspace 解析错 | 4 级优先级 + 前端展示 workspace_source 供确认 |
-| 关键词误触发 | 长度>50 过滤 + 用户可 `/no-plan` 禁用 |
+| 关键词误触发 | 长度>10 过滤 + 用户可 `/no-plan` 禁用 |
 | 重试掩盖真 bug | 前端展示 retries 计数 >0 时黄色标识 |
 | artifacts 污染 | 只采集任务开始后的变更 |
 | 崩溃续跑危险命令 | 默认 paused + 危险步骤重走双确认 |

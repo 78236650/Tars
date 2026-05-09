@@ -235,7 +235,7 @@ class AgentV2:
         is_slash_plan = user_content.startswith("/plan")
         try:
             from ..orchestration.detector import detect_task_intent, build_detector_prompt
-            mode = detect_task_intent(user_content, is_slash_plan=is_slash_plan)
+            mode = detect_task_intent(user_content, is_slash_plan=is_slash_plan, session_id=session_id)
             if mode.value != "none":
                 detector_prompt = build_detector_prompt(user_content, mode)
                 if detector_prompt:

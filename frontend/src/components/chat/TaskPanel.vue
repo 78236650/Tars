@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useWsStore } from '@/stores/wsStore'
+
+const wsStore = useWsStore()
 
 interface TaskStep {
   id: number; step_order: number; description: string; tool: string;
@@ -76,6 +79,16 @@ const wsSourceStyle = (source: string): string => {
 const confirmNeeded = ref<string | null>(null)
 const doConfirmWorkspace = () => { confirmNeeded.value = null }
 const doRejectWorkspace = () => { confirmNeeded.value = null }
+
+const dangerConfirm = ref<string | null>(null)
+const dangerInput = ref('')
+const doDangerConfirm = (taskId: string) => {
+  if (dangerInput.value.trim().toLowerCase() === 'yes') {
+    wsStore.send({ type: 'user_decision', task_id: taskId, decision: 'retry' })
+    dangerConfirm.value = null
+    dangerInput.value = ''
+  }
+}
 
 const onPause = (taskId: string) => { emit('pause', taskId) }
 const onResume = (taskId: string) => { emit('resume', taskId) }
@@ -182,6 +195,15 @@ const runningTasks = computed(() => props.tasks.filter(t => t.status === 'runnin
               <div class="flex gap-2">
                 <button @click="doConfirmWorkspace" class="px-2 py-1 rounded bg-amber-600/30 text-amber-300 hover:bg-amber-600/50">确认</button>
                 <button @click="doRejectWorkspace" class="px-2 py-1 rounded bg-slate-600/30 text-slate-400 hover:bg-slate-600/50">取消</button>
+              </div>
+            </div>
+            <!-- confirmation_needed critical 输入框 -->
+            <div v-if="dangerConfirm === task.id" class="mt-2 p-2 bg-red-900/20 border border-red-700/40 rounded text-xs">
+              <p class="text-red-300 mb-2">⚠️ 危险命令，输入 "yes" 确认执行</p>
+              <div class="flex gap-2">
+                <input v-model="dangerInput" @keyup.enter="doDangerConfirm(task.id)" class="flex-1 px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-xs" placeholder='输入 "yes"' />
+                <button @click="doDangerConfirm(task.id)" class="px-3 py-1 rounded bg-red-600/30 text-red-300 hover:bg-red-600/50">确认</button>
+                <button @click="dangerConfirm = null" class="px-3 py-1 rounded bg-slate-600/30 text-slate-400 hover:bg-slate-600/50">取消</button>
               </div>
             </div>
             <!-- Action buttons -->
