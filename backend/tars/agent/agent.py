@@ -343,7 +343,77 @@ class AgentV2:
             if planner_tool and hasattr(planner_tool, "pop_pending_plan"):
                 plan = planner_tool.pop_pending_plan()
                 if plan:
-                    await self.task_executor.execute(plan, session_id, channel)
+                    # 解析 workspace 路径
+                    import json, uuid
+                    from ..orchestration.workspace_resolver import resolve_workspace_path
+                    ws_path, ws_source = resolve_workspace_path(session_id, title=plan.goal[:30])
+
+                    # 持久化任务到 SQLite
+                    task_id = str(uuid.uuid4())
+                    now = now_iso()
+                    conn = self.db._get_conn()
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (task_id, session_id, plan.goal[:30], plan.goal,
+                         ws_path, ws_source, "running", 0, len(plan.steps),
+                         None, None, now, now, None, None),
+                    )
+                    for s in plan.steps:
+                        cur.execute(
+                            "INSERT INTO task_steps(task_id,step_order,description,tool,arguments,verify_type,verify_expected,verify_msg,expected_artifacts) "
+                            "VALUES(?,?,?,?,?,?,?,?,?)",
+                            (task_id, s.id, s.description, s.tool,
+                             json.dumps(s.arguments, ensure_ascii=False),
+                             None, None, None, None),
+                        )
+                    conn.commit()
+
+                    # 发 task_created 事件
+                    await channel.send(session_id, {
+                        "type": "task_created",
+                        "session_id": session_id,
+                        "payload": {
+                            "task_id": task_id,
+                            "task": {
+                                "id": task_id, "title": plan.goal[:30], "goal": plan.goal,
+                                "workspace_path": ws_path, "workspace_source": ws_source,
+                                "status": "running", "current_step": 0,
+                                "total_steps": len(plan.steps),
+                                "steps": [{"id": s.id, "step_order": s.id, "description": s.description,
+                                           "tool": s.tool, "status": "pending"} for s in plan.steps],
+                            }
+                        },
+                        "timestamp": now,
+                    })
+
+                    # 执行计划
+                    results = await self.task_executor.execute(plan, session_id, channel, workspace_path=ws_path)
+
+                    # 采集 artifacts 并更新 SQLite
+                    from ..orchestration.artifacts_collector import ArtifactsCollector
+                    collector = ArtifactsCollector(ws_path)
+                    artifacts = collector.collect_new_files() if collector._snapshot is None else []
+                    cur.execute(
+                        "UPDATE tasks SET status = 'completed', artifacts = ?, output_summary = ?, completed_at = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(artifacts, ensure_ascii=False),
+                         "", now_iso(), now_iso(), task_id),
+                    )
+                    for s in plan.steps:
+                        cur.execute(
+                            "UPDATE task_steps SET status = ?, result = ?, error = ?, retries = ?, completed_at = ? WHERE task_id = ? AND step_order = ?",
+                            (s.status.value, (s.output or "")[:500], s.error, s.retries,
+                             now_iso(), task_id, s.id),
+                        )
+                    conn.commit()
+
+                    # 发 task_completed 事件
+                    await channel.send(session_id, {
+                        "type": "task_completed",
+                        "session_id": session_id,
+                        "payload": {"task_id": task_id, "artifacts": artifacts},
+                        "timestamp": now_iso(),
+                    })
 
         # 9. 保存助手响应
         self.db.add_message(session_id, "assistant", full_response)
