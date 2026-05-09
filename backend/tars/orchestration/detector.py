@@ -23,16 +23,39 @@ class TriggerMode(str, Enum):
     HARD = "hard"   # 强制在主 prompt 中注入 task_planner 调用指令
 
 
-def detect_task_intent(user_msg: str, is_slash_plan: bool = False) -> TriggerMode:
+# session 级别禁用标记
+_disabled_sessions: set = set()
+
+
+def disable_for_session(session_id: str):
+    _disabled_sessions.add(session_id)
+
+
+def enable_for_session(session_id: str):
+    _disabled_sessions.discard(session_id)
+
+
+def detect_task_intent(user_msg: str, is_slash_plan: bool = False,
+                       session_id: str = "") -> TriggerMode:
     """分析用户消息，返回触发模式。
 
     /plan 命令 → HARD（零歧义，必定是执行意图）
-    含关键词 + 长度>50 + 无疑问词 → HARD
-    含关键词 + 长度>50 + 含疑问词 → SOFT（可能是询问）
+    /no-plan → 禁用当前 session 自动检测
+    含关键词 + 长度>10 + 无疑问词 → HARD
+    含关键词 + 长度>10 + 含疑问词 → SOFT（可能是询问）
     其他 → NONE
     """
+    # /no-plan 禁用
+    if user_msg.strip().lower().startswith("/no-plan"):
+        if session_id:
+            disable_for_session(session_id)
+        return TriggerMode.NONE
+
     if is_slash_plan:
         return TriggerMode.HARD
+
+    if session_id and session_id in _disabled_sessions:
+        return TriggerMode.NONE
 
     msg_lower = user_msg.lower()
     has_kw = any(kw in msg_lower for kw in TRIGGER_KEYWORDS)
