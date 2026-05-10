@@ -60,7 +60,7 @@ def detect_task_intent(user_msg: str, is_slash_plan: bool = False,
     msg_lower = user_msg.lower()
     has_kw = any(kw in msg_lower for kw in TRIGGER_KEYWORDS)
 
-    if not has_kw or len(user_msg) <= 10:
+    if not has_kw or len(user_msg) <= 5:
         return TriggerMode.NONE
 
     has_question = any(q in msg_lower for q in QUESTION_MARKERS)
