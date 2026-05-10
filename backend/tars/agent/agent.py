@@ -258,15 +258,16 @@ class AgentV2:
 
         # 5. 构建 system prompt（含人格 + 记忆 + 渐进披露技能 + 命令提示词）
         system_prompt = self.workspace.build_context()
-        # v2.5: 渐进披露——只注入 name + description
-        if hasattr(self.skill_loader, 'get_progressive_disclosure'):
+        # v2.5: 渐进披露——只注入 name + description（替代旧版全量注入）
+        if hasattr(self, 'skill_loader') and hasattr(self.skill_loader, 'get_progressive_disclosure'):
             disclosure = self.skill_loader.get_progressive_disclosure()
             if disclosure:
                 system_prompt += f"\n\n{disclosure}"
-        # v2.3 legacy: 旧的 prompt 注入（兼容未迁移技能）
-        skill_injection = self.skill_executor.build_prompt_injection()
-        if skill_injection:
-            system_prompt += f"\n\n{skill_injection}"
+        else:
+            # v2.3 legacy fallback: 旧版全量 prompt 注入（仅当渐进披露不可用时）
+            skill_injection = self.skill_executor.build_prompt_injection()
+            if skill_injection:
+                system_prompt += f"\n\n{skill_injection}"
         if memory_context:
             system_prompt += f"\n\n{memory_context}"
         # v2.4: TaskDetector 自动检测任务意图（/plan 之外）
