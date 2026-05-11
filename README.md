@@ -1,4 +1,4 @@
-# TARS AI Agent v2.3.0
+# TARS AI Agent v2.6.0
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解。
 
@@ -200,6 +200,107 @@ python_exec(code="import pandas as pd\ndf = pd.read_csv('data.csv')\nprint(df.de
 - **WebSocket 持久连接** — `wsStore` Pinia store 全局管理，切换页面不断连
 - **Enter 键换行** — 输入框 Enter 自然换行，仅点击 Send 按钮提交
 - **命令下拉菜单** — `/` 按钮悬浮弹出 7 个命令，点击自动填入
+
+## v2.2.0 新特性 — 记忆认知架构
+
+### 四层记忆
+
+- **Core Memory**（4 块固定区块）— Letta 模式不变画像
+- **Working Context**（会话级短期）— 当前焦点实体、意图、未结话题
+- **Semantic Memory**（实体图）— `entities` + `relations` 表，哈希 ID + aliases 合并
+- **Episodic Memory**（事件流）— archival 升级，带 `event_time` / `entity_refs` / `supersedes`
+
+### Scene Analyzer + MemoryRouter + SkillRouter
+
+- **Scene Analyzer** — 每轮小模型分析意图、焦点实体、是否需要记忆召回；带 fast_path 跳过 + 语义缓存
+- **MemoryRouter** — 实体/时间线/向量/关键词四路融合打分，异常时降级 HybridSearch
+- **SkillRouter** — `trigger.intents/entities/keywords` + priority 动态选技能，淘汰永久注入
+- **Hooks** — `on_activate` / `pre_llm` / `post_llm`，2s 超时沙箱化
+
+### Reflector 异步分流
+
+- 6 种操作：`upsert_entity` / `upsert_relation` / `log_episode` / `update_core` / `forget` / `noop`
+- 异步队列批处理，紧急写入通道（`core_memory_append` / `archival_insert`）绕过队列同步写
+
+## v2.4.0 新特性 — 任务自动化（PDCA）
+
+### TaskDetector + 三档触发
+
+- `/plan` 命令 → 硬指令
+- 关键词（`部署`/`构建`/`发布`/`测试` 等）+ 长度过滤 → 硬指令
+- 含疑问词时降级软提示，避免询问类消息被误判为执行意图
+
+### PDCA 执行引擎
+
+- **Plan**：TaskPlanner（已有）+ TaskDetector（新）
+- **Do**：TaskExecutor 复用 v2.1，新增危险命令拦截
+- **Check**：StepVerifier 6 种验证类型 (`exit_code` / `output_contains` / `file_exists` 等)
+- **Act**：ActPolicy 重试×3 + 指数退避 + 询问/中止/跳过
+
+### Workspace 解析
+
+- 4 级优先级：API → WorkspaceManager → `Path(__file__).resolve().parent.parent.parent` → `~/.tars/workspaces/{slug}/`
+- `tars_repo_root` 兜底命中时前端强制确认
+
+### SQLite 持久化 + 崩溃恢复
+
+- `tasks` / `task_steps` 表带 status / verify_type / artifacts / output_summary
+- 启动时扫描 `running/paused` 任务置为 paused，用户手动恢复
+
+### 前端 TaskPanel
+
+- ChatView 内嵌右侧抽屉，响应式三档断点（≥1200/900-1199/<900）
+- 步骤实时状态 + retries 黄色标识 + 产出文件可点击
+
+## v2.5.0 新特性 — 技能 Agent Skills 化
+
+### 完全对齐 Anthropic Agent Skills 规范
+
+- 主文件 `SKILL.md`（YAML frontmatter + Markdown 正文），只需 `name` + `description`
+- 渐进披露：LLM 读 description 自判激活，淘汰关键词 + Router 打分
+- 目录结构：`skills/<name>/{SKILL.md, pdca.yaml, scripts/, references/, assets/}`
+- 可直接导入 `anthropics/skills` 社区技能
+
+### PDCA 挂件
+
+- 需要确定性的技能挂 `pdca.yaml`，LLM 调 `task_planner(pdca_ref="skill://deploy/pdca.yaml")` 触发
+- 复用 v2.4 TaskExecutor + StepVerifier + ActPolicy
+- 变量替换 `{{workspace.pm}}` / `{{workspace.branch}}` 按 tool_name 分类 shlex.quote 防注入
+
+### 内置三个 PDCA 示范技能
+
+- `deploy` — 构建部署项目
+- `run_tests` — 检测 framework + 跑测试 + 解析报告
+- `release_notes` — 从 git log 生成 CHANGELOG（动态 task_planner 步骤，非 pdca.yaml）
+
+### 权限模型
+
+- SKILL.md 声明 `permissions: [shell, file_write, git_push, network, system]`
+- 安装时用户授权 + 运行时 `permission_engine.can_call` 拦截
+- 危险组合（shell + network + file_write）安装时强警告
+
+### 迁移工具
+
+- `scripts/migrate_skill_yaml_to_md.py` 把 v2.2 私有格式自动转 SKILL.md
+
+## v2.6.0 新特性 — 工具调用稳定性 + 上传发布
+
+### 修复 web_search / web_fetch 工具不可用
+
+- **Ollama 400 Bad Request**：dispatcher 不再把 `tool_calls[].function.arguments` 序列化成字符串；ollama.py 发送前确保是 dict；OpenAI 协议 (Custom/OpenRouter) 仍按规范序列化为 JSON 字符串
+- **CustomProvider 返回格式归一化**：阿里 API 的 `choices[0].message.tool_calls` 嵌套结构展平为 dispatcher 期望的扁平 dict，工具结果正确传回 LLM
+- **OpenRouter tool_calls 字段补齐**：之前丢失 tool_calls 透传
+- **工具调用强制非流式**：`tools` 参数存在时关闭 stream，确保 tool_calls 完整接收
+- **tool_call_id 唯一化**：`call_{uuid4}` 替代 `call_{tool_name}`，多轮同名工具不冲突
+- **NATIVE_TOOL_MODELS 扩展**：增加 `qwen-max` / `qwen-plus` / `qwen-turbo` / `kimi` 等云端模型
+
+### v2.5 修复轮
+
+- SKILL.md 加载支持 PluginSkill（目录含 `main.py` 自动按 plugin 注册到 ToolRegistry）
+- `INSERT INTO tasks` 改显式列名，匹配 ALTER 后的 17 列
+- 权限引擎与渐进披露联动，从 `pdca_ref` 反推 `skill_id` 自动设 `_active_skill_id`
+- VariableEngine 按 `tool_name` 分类 `shlex.quote`，`{{step_N.*}}` 保留给 executor 运行时处理
+- pdca.yaml 的 `act` 字段注入 TaskExecutor.act_policy（max_retries / retry_backoff / on_final_failure）
 
 ## 记忆系统 V3（Letta 混合模式）
 
