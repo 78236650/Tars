@@ -1,6 +1,6 @@
 {
   "name": "tars-frontend",
-  "version": "2.3.0",
+  "version": "2.6.0",
   "description": "TARS AI Agent Frontend",
   "type": "module",
   "scripts": {
