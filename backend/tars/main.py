@@ -52,6 +52,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 提升文件上传限制到 50MB（Starlette 默认 1MB）
+from starlette.requests import Request as _StarletteRequest
+_original_form = _StarletteRequest.form
+async def _patched_form(self, *, max_files=1000, max_fields=1000, max_part_size=50*1024*1024, **kwargs):
+    return await _original_form(self, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size, **kwargs)
+_StarletteRequest.form = _patched_form
+
 # 初始化组件
 db = Database()
 user_store = UserStore(db)

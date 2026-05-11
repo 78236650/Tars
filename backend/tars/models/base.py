@@ -11,6 +11,7 @@ class ChatMessage:
     role: str  # user, assistant, system, tool
     content: str
     tool_call_id: str | None = None
+    tool_calls: List[Dict[str, Any]] | None = None  # Ollama native tool calling
     name: str | None = None
     images: List[str] | None = None  # Base64 编码的图片列表（多模态支持）
 

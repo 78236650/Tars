@@ -211,6 +211,13 @@ class AgentV2:
                 if skill:
                     self.skill_registry.enable(skill.id)
                     cmd_result.frontend_message = f"⚡ 技能 {skill.name} 已激活 ✓"
+                    await channel.send(session_id, {
+                        "type": "thinking_step",
+                        "session_id": session_id,
+                        "step": "⚡",
+                        "title": f"激活技能: {skill.name}",
+                        "timestamp": now_iso(),
+                    })
                 else:
                     cmd_result.frontend_message = f"❌ 技能 {skill_id} 不存在"
 
@@ -234,6 +241,13 @@ class AgentV2:
                 })
                 return
 
+        # 0.5 发送处理开始事件
+        await channel.send(session_id, {
+            "type": "thinking_start",
+            "session_id": session_id,
+            "timestamp": now_iso(),
+        })
+
         # 1. 获取或创建会话
         session = self.db.get_session(session_id)
         if not session:
@@ -248,6 +262,14 @@ class AgentV2:
 
         # 4. 获取记忆上下文（v2.2: 优先 MemoryRouter，否则老路）
         if self.memory_router and self.mem_config.router_enabled:
+            await channel.send(session_id, {
+                "type": "thinking_step",
+                "session_id": session_id,
+                "step": "🧠",
+                "title": "检索相关记忆",
+                "detail": user_content[:30] + ("..." if len(user_content) > 30 else ""),
+                "timestamp": now_iso(),
+            })
             wc = self.wc_manager.get(session_id)
             ctx = self.memory_router.retrieve(user_content, wc)
             memory_context = self.memory_router.build_injection(ctx)
@@ -296,6 +318,14 @@ class AgentV2:
                 "type": "file_processing",
                 "session_id": session_id,
                 "message": "正在解析文件...",
+                "timestamp": now_iso(),
+            })
+            await channel.send(session_id, {
+                "type": "thinking_step",
+                "session_id": session_id,
+                "step": "📦",
+                "title": "解析文件附件",
+                "detail": f"{len(file_ids)} 个文件",
                 "timestamp": now_iso(),
             })
             user_msg = await self._build_message_with_files(session_id, user_content, file_ids, channel)
@@ -347,6 +377,14 @@ class AgentV2:
                 "parameters": arguments,
                 "timestamp": now_iso(),
             })
+            await channel.send(session_id, {
+                "type": "thinking_step",
+                "session_id": session_id,
+                "step": "🔧",
+                "title": f"调用 {tool_name}",
+                "detail": str(arguments)[:100],
+                "timestamp": now_iso(),
+            })
 
         async def on_tool_result(tool_name: str, result):
             import time
@@ -362,8 +400,23 @@ class AgentV2:
                 "duration": duration,
                 "timestamp": now_iso(),
             })
+            await channel.send(session_id, {
+                "type": "thinking_step",
+                "session_id": session_id,
+                "step": "🔧",
+                "title": f"{tool_name}: {'✓' if result.success else '✕'}",
+                "detail": (result.output or result.error or "")[:200],
+                "timestamp": now_iso(),
+            })
 
         # 8. 调用 ToolDispatcher
+        await channel.send(session_id, {
+            "type": "thinking_step",
+            "session_id": session_id,
+            "step": "💭",
+            "title": "生成回答",
+            "timestamp": now_iso(),
+        })
         full_response = ""
         try:
             async for chunk in self.dispatcher.chat_with_tools(
@@ -552,6 +605,14 @@ class AgentV2:
                 applied = []
             if applied:
                 await channel.send(session_id, {
+                    "type": "thinking_step",
+                    "session_id": session_id,
+                    "step": "📝",
+                    "title": "写入记忆",
+                    "detail": f"{len(applied)} 条",
+                    "timestamp": now_iso(),
+                })
+                await channel.send(session_id, {
                     "type": "memory_extracted",
                     "session_id": session_id,
                     "memories": [{"op": op.get("op"), "summary": str(op)[:80]} for op in applied],
@@ -561,6 +622,11 @@ class AgentV2:
         asyncio.create_task(_reflect_background())
 
         # 11. 完成
+        await channel.send(session_id, {
+            "type": "thinking_complete",
+            "session_id": session_id,
+            "timestamp": now_iso(),
+        })
         await channel.send(session_id, {
             "type": "done",
             "session_id": session_id,

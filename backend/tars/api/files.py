@@ -6,7 +6,7 @@ from ..files import FileStorage
 
 router = APIRouter(prefix="/api/files", tags=["文件管理"])
 
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 # 全局实例，在 main.py 中初始化
 _storage: FileStorage = None
@@ -29,7 +29,7 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"读取文件失败: {e}")
 
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"文件过大，最大 {MAX_FILE_SIZE // 1024 // 1024}MB")
+        raise HTTPException(status_code=413, detail=f"文件过大（>{MAX_FILE_SIZE // 1024 // 1024}MB），无法通过 HTTP 上传。如文件在本地项目目录中，请直接告诉我文件路径，我会使用读取工具直接解析。")
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")

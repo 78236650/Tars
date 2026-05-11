@@ -31,6 +31,23 @@ class OllamaProvider(LLMProvider):
             m = {"role": msg.role, "content": msg.content or ""}
             if msg.tool_call_id:
                 m["tool_call_id"] = msg.tool_call_id
+            if msg.tool_calls:
+                # Ollama 的 /api/chat 要求 tool_calls[].function.arguments 是 object（dict），
+                # 不是 JSON 字符串。若上游给了字符串则解析回 dict，否则直接透传。
+                normalized_calls = []
+                for tc in msg.tool_calls:
+                    tc_copy = dict(tc)
+                    func = dict(tc_copy.get("function", {}))
+                    args = func.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args) if args else {}
+                        except (json.JSONDecodeError, TypeError):
+                            args = {}
+                    func["arguments"] = args
+                    tc_copy["function"] = func
+                    normalized_calls.append(tc_copy)
+                m["tool_calls"] = normalized_calls
             if msg.images:
                 m["images"] = msg.images
             formatted_messages.append(m)
