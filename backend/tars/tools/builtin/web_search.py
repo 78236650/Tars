@@ -36,12 +36,23 @@ class WebSearchTool(BaseTool):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
                     f"{SEARXNG_URL}/search",
-                    params={"q": query, "format": "json", "engines": "google,bing,duckduckgo"},
+                    params={"q": query, "format": "json", "engines": "bing,baidu"},
                 )
                 resp.raise_for_status()
 
             data = resp.json()
             results = data.get("results", [])[:limit]
+
+            # 检测搜索引擎是否全部失败（timeout/error）
+            unresponsive = data.get("unresponsive_engines", [])
+            if not results and unresponsive:
+                failed = [f"{e[0]}({e[1]})" for e in unresponsive[:5]]
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"搜索不可用：所有搜索引擎均失败 ({', '.join(failed)})。请尝试稍后重试或使用其他方式获取信息。",
+                    metadata={"query": query, "failed_engines": failed},
+                )
 
             if not results:
                 return ToolResult(

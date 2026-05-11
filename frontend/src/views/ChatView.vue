@@ -8,7 +8,7 @@ import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
-import TaskPanel from '@/components/chat/TaskPanel.vue'
+import TaskCard from '@/components/chat/TaskCard.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 
 const router = useRouter()
@@ -20,18 +20,6 @@ const { t } = useI18n()
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[] }[]>([])
 const inputMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
-
-// v2.4 任务面板
-const tasks = ref<any[]>([])
-const showTaskPanel = ref(false)
-
-const toggleTaskPanel = () => { showTaskPanel.value = !showTaskPanel.value }
-
-// 任务操作
-const doPauseTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/pause`, { method: 'POST' }).catch(() => {}) }
-const doResumeTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/resume`, { method: 'POST' }).catch(() => {}) }
-const doCancelTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' }).catch(() => {}) }
-const doRetryTask = (taskId: string) => { fetch(`/api/tasks/${taskId}/retry`, { method: 'POST' }).catch(() => {}) }
 
 const autoResize = () => {
   const el = inputRef.value
@@ -64,7 +52,7 @@ const attachments = ref<{ file_id: string; name: string; type: string; mime_type
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
 const MAX_FILES = 5
-const MAX_SIZE = 20 * 1024 * 1024
+const MAX_SIZE = 50 * 1024 * 1024  // 50MB
 
 // WebSocket 由 wsStore 全局管理，ChatView 订阅消息即可
 const setupWsHandler = () => {
@@ -80,32 +68,17 @@ const setupWsHandler = () => {
       }
       const streamId = `streaming-${data.session_id}`
       const lastMsg = messages.value[messages.value.length - 1]
+      // v2.6.1: thinking_start 已创建占位消息，直接追加内容
       if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === streamId) {
         lastMsg.content += data.content
-      } else {
-        messages.value.push({
-          id: streamId,
-          role: 'assistant',
-          content: data.content,
-          timestamp: data.timestamp,
-        })
       }
     } else if (data.type === 'tool_calling') {
+      // v2.6.1: 工具调用已转为 thinking_step，这里仅保留日志
       console.log('[ChatView] 工具调用:', data.tool, data.parameters)
     } else if (data.type === 'tool_result') {
+      // v2.6.1: 工具结果已转为 thinking_step with detail，不再创建独立消息
       wsStore.isGenerating = true
-      const toolMsg = {
-        id: data.session_id + '_tool',
-        role: 'assistant',
-        content: `🔧 ${data.tool}: ${data.output || data.error || '执行完成'}`,
-        timestamp: data.timestamp
-      }
-      const existingToolMsg = messages.value.find(m => m.id === toolMsg.id)
-      if (existingToolMsg) {
-        existingToolMsg.content = toolMsg.content
-      } else {
-        messages.value.push(toolMsg)
-      }
+      console.log('[ChatView] 工具结果:', data.tool, data.success ? '✓' : '✕')
     } else if (data.type === 'warning') {
       messages.value.push({
         id: Date.now().toString() + '_warn',
@@ -115,6 +88,36 @@ const setupWsHandler = () => {
       })
     } else if (data.type === 'file_processing') {
       // 可选：显示文件处理中状态
+    } else if (data.type === 'thinking_start') {
+      // v2.6.1: 流式 — 立即创建占位 assistant 消息
+      const streamId = `streaming-${data.session_id}`
+      messages.value.push({
+        id: streamId,
+        role: 'assistant',
+        content: '',
+        timestamp: data.timestamp,
+        thinking: { isActive: true, steps: [] }
+      })
+    } else if (data.type === 'thinking_step') {
+      // v2.6.1: 流式 — 追加到当前 assistant 消息的 thinking.steps
+      const last = messages.value[messages.value.length - 1]
+      if (last && last.role === 'assistant' && last.thinking) {
+        last.thinking.steps.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          step: data.step || '',
+          title: data.title || '',
+          detail: data.detail,
+          timestamp: data.timestamp || ''
+        })
+      }
+    } else if (data.type === 'thinking_complete') {
+      // v2.6.1: 标记 thinking 完成
+      for (let i = messages.value.length - 1; i >= 0; i--) {
+        if (messages.value[i].role === 'assistant' && (messages.value[i] as any).thinking) {
+          (messages.value[i] as any).thinking.isActive = false
+          break
+        }
+      }
     } else if (data.type === 'done') {
       wsStore.isGenerating = false
       const lastMsg = messages.value[messages.value.length - 1]
@@ -138,15 +141,48 @@ const setupWsHandler = () => {
         lastMsg.id = `msg-${Date.now()}`
       }
     } else if (data.type === 'task_created' || data.type === 'task_updated') {
-      showTaskPanel.value = true
+      // v2.6.1: 内嵌任务卡片，替换独立抽屉
       const t = data.payload?.task || data.task
-      if (t) {
-        const idx = tasks.value.findIndex(x => x.id === t.id)
-        if (idx >= 0) tasks.value[idx] = t
-        else tasks.value.push(t)
+      if (!t) return
+      const existing = messages.value.find(m => (m as any).task?.id === t.id)
+      if (existing) {
+        (existing as any).task = t
+      } else {
+        messages.value.push({
+          id: `task-${t.id}`,
+          role: 'task' as any,
+          content: '',
+          timestamp: data.timestamp,
+          task: t,
+        } as any)
       }
+    } else if (data.type === 'step_verified' || data.type === 'step_retrying') {
+      // 更新任务卡片中的步骤状态
+      const taskId = data.task_id
+      const taskMsg = messages.value.find(m => (m as any).task?.id === taskId)
+      if (!taskMsg || !(taskMsg as any).task) return
+      const task = (taskMsg as any).task
+      const stepId = data.step_id
+      const step = task.steps?.find((s: any) => s.id === stepId || s.step_order === stepId)
+      if (step) {
+        step.status = data.type === 'step_verified' ? 'completed' : 'running'
+        task.current_step = Math.max(task.current_step, (step.step_order || 0))
+      }
+    } else if (data.type === 'task_completed') {
+      const tid = data.payload?.task_id
+      if (!tid) return
+      const existing = messages.value.find(m => (m as any).task?.id === tid)
+      if (existing) {
+        (existing as any).task.status = 'completed'
+        if (data.payload?.artifacts) (existing as any).task.artifacts = data.payload.artifacts
+      }
+    } else if (data.type === 'task_aborted') {
+      const tid = data.payload?.task_id || data.task_id
+      if (!tid) return
+      const existing = messages.value.find(m => (m as any).task?.id === tid)
+      if (existing) (existing as any).task.status = 'aborted'
     } else if (data.type === 'plan_created') {
-      showTaskPanel.value = true
+      // 保留为聊天消息（不打开抽屉）
       messages.value.push({
         id: `plan_${Date.now()}`,
         role: 'plan',
@@ -365,14 +401,7 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs text-slate-500">{{ settingsStore.currentModel || '' }}</span>
-          <button @click="toggleTaskPanel" class="p-2 rounded-lg hover:bg-slate-700 transition-colors relative" title="任务">
-            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-            </svg>
-            <span v-if="tasks.length" class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-500 rounded-full text-[8px] flex items-center justify-center text-white font-bold">
-              {{ tasks.filter(t => t.status === 'running' || t.status === 'pending').length || tasks.length }}
-            </span>
-          </button>
+
           <button @click="router.push('/settings')" class="p-2 rounded-lg hover:bg-slate-700 transition-colors" title="设置">
             <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -466,14 +495,5 @@ onUnmounted(() => {
         </div>
       </footer>
     </main>
-    <TaskPanel
-      :tasks="tasks"
-      :visible="showTaskPanel"
-      @close="showTaskPanel = false"
-      @pause="doPauseTask"
-      @resume="doResumeTask"
-      @cancel="doCancelTask"
-      @retry="doRetryTask"
-    />
   </div>
 </template>

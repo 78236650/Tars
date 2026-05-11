@@ -163,7 +163,7 @@ class ToolDispatcher:
                     "tool_calls": [{
                         "id": f"call_{tool_name}",
                         "type": "function",
-                        "function": {"name": tool_name, "arguments": json.dumps(arguments, ensure_ascii=False)},
+                        "function": {"name": tool_name, "arguments": arguments},
                     }],
                 })
                 working_messages.append({
@@ -217,6 +217,7 @@ class ToolDispatcher:
                 role=m["role"],
                 content=content,
                 tool_call_id=m.get("tool_call_id"),
+                tool_calls=m.get("tool_calls"),
             ))
 
         response = await self.provider.chat(chat_messages, stream=False, tools=tools)

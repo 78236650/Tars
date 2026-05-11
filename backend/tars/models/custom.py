@@ -37,6 +37,20 @@ class CustomProvider(LLMProvider):
                 msg_dict["tool_call_id"] = msg.tool_call_id
             if msg.name:
                 msg_dict["name"] = msg.name
+            if msg.tool_calls:
+                normalized_calls = []
+                for tc in msg.tool_calls:
+                    tc_copy = dict(tc)
+                    func = dict(tc_copy.get("function", {}))
+                    args = func.get("arguments")
+                    if isinstance(args, dict):
+                        import json as _json
+                        func["arguments"] = _json.dumps(args, ensure_ascii=False)
+                    elif args is None:
+                        func["arguments"] = "{}"
+                    tc_copy["function"] = func
+                    normalized_calls.append(tc_copy)
+                msg_dict["tool_calls"] = normalized_calls
             formatted_messages.append(msg_dict)
 
         payload = {

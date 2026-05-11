@@ -2,6 +2,7 @@
 import { ref, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
 import PlanCard from './PlanCard.vue'
+import TaskCard from './TaskCard.vue'
 import type { ToolCallEvent } from '@/types'
 import { marked } from 'marked'
 import hljs from 'highlight.js/lib/core'
@@ -65,8 +66,21 @@ function renderMarkdown(text: string): string {
   return html
 }
 
+// v2.6: 扩展 message 类型支持 thinking 步骤
+interface ThinkingStep {
+  id: string
+  step: string
+  title: string
+  detail?: string
+  timestamp: string
+}
+interface ThinkingState {
+  isActive: boolean
+  steps: ThinkingStep[]
+}
+
 const props = defineProps<{
-  messages: { id: string; role: string; content: string; timestamp: string; toolCalls?: ToolCallEvent[]; plan?: any; planSteps?: any[]; attachments?: any[] }[]
+  messages: { id: string; role: string; content: string; timestamp: string; toolCalls?: ToolCallEvent[]; plan?: any; planSteps?: any[]; attachments?: any[]; thinking?: ThinkingState; task?: any }[]
   isGenerating?: boolean
 }>()
 
@@ -84,6 +98,15 @@ const quickCards = [
 const { t } = useI18n()
 const panelRef = ref<HTMLElement | null>(null)
 const collapsedTools = ref<Set<string>>(new Set())
+// v2.6: 处理步骤折叠状态
+const expandedThinking = ref<Set<string>>(new Set())
+
+const toggleThinking = (msgId: string) => {
+  if (expandedThinking.value.has(msgId)) expandedThinking.value.delete(msgId)
+  else expandedThinking.value.add(msgId)
+}
+
+const isThinkingExpanded = (msgId: string) => expandedThinking.value.has(msgId)
 
 const formatTime = (timestamp: string) => {
   const date = new Date(timestamp)
@@ -213,9 +236,18 @@ onMounted(() => {
               </div>
             </div>
 
+            <!-- 任务卡片 -->
+            <TaskCard v-if="msg.role === 'task' && msg.task" :task="msg.task" class="max-w-[95%]" />
+
             <!-- TARS 卡片 -->
-            <div v-else class="max-w-[95%]">
-              <div class="markdown-body text-sm text-slate-300 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
+            <div v-else-if="msg.role === 'assistant' || msg.role === 'system'" class="max-w-[95%]">
+              <!-- v2.6.1: 空内容脉冲动画 -->
+              <div v-if="!msg.content && msg.thinking?.isActive" class="flex gap-1 py-2">
+                <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0s" />
+                <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.2s" />
+                <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.4s" />
+              </div>
+              <div v-if="msg.content" class="markdown-body text-sm text-slate-300 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
 
               <!-- 工具调用 -->
               <div v-if="msg.toolCalls?.length" class="mt-3 space-y-1.5">
@@ -232,6 +264,35 @@ onMounted(() => {
                   <div v-if="!collapsedTools.has(tc.id || tc.tool)" class="px-3 pb-2">
                     <div v-if="tc.output" class="text-xs text-slate-400 bg-slate-900/50 rounded p-2 max-h-32 overflow-auto font-mono whitespace-pre-wrap">{{ tc.output }}</div>
                     <div v-if="tc.error" class="text-xs text-red-400 bg-red-900/20 rounded p-2">{{ tc.error }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- v2.6.1: 处理步骤面板 — 活跃时强制展开 -->
+              <div v-if="msg.thinking && msg.thinking.steps.length > 0" class="mt-3">
+                <div
+                  class="thinking-panel"
+                  :class="{ 'cursor-pointer': !msg.thinking.isActive }"
+                  @click="msg.thinking.isActive ? null : toggleThinking(msg.id)"
+                >
+                  <div class="thinking-header">
+                    <span>{{ msg.thinking.isActive ? '▼' : isThinkingExpanded(msg.id) ? '▼' : '▶' }}</span>
+                    <span>🔄 {{ msg.thinking.isActive ? '处理中...' : '处理步骤' }}</span>
+                    <span class="step-count">({{ msg.thinking.steps.length }})</span>
+                  </div>
+
+                  <div v-if="msg.thinking.isActive || isThinkingExpanded(msg.id)" class="thinking-steps">
+                    <div
+                      v-for="step in msg.thinking.steps"
+                      :key="step.id"
+                      class="step-item"
+                    >
+                      <span class="step-icon">{{ step.step }}</span>
+                      <div class="step-text">
+                        <span class="step-title">{{ step.title }}</span>
+                        <span v-if="step.detail" class="step-detail">{{ step.detail }}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -286,4 +347,76 @@ onMounted(() => {
 .markdown-body img { border-radius: 0.5rem; max-width: 100%; margin: 0.75rem 0; }
 /* highlight.js overrides for dark theme */
 .hljs { background: transparent !important; }
+
+/* v2.6: 处理步骤面板 */
+.thinking-panel {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(100, 116, 139, 0.1);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  user-select: none;
+}
+
+.thinking-header:hover {
+  color: #94a3b8;
+}
+
+.step-count {
+  opacity: 0.7;
+}
+
+.thinking-steps {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  border-left: 2px solid #334155;
+  margin-left: 4px;
+  padding-left: 12px;
+}
+
+.step-item:first-child {
+  margin-top: 4px;
+}
+
+.step-icon {
+  font-size: 14px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.step-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-title {
+  color: #94a3b8;
+  display: block;
+}
+
+.step-detail {
+  color: #64748b;
+  font-size: 11px;
+  display: block;
+  margin-top: 2px;
+  word-break: break-all;
+  max-height: 60px;
+  overflow: hidden;
+}
 </style>
