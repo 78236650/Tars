@@ -72,6 +72,8 @@ class OpenRouterProvider(LLMProvider):
 
         if tools:
             payload["tools"] = tools
+            payload["stream"] = False
+            stream = False
 
         if not stream:
             # 非流式响应
@@ -79,10 +81,26 @@ class OpenRouterProvider(LLMProvider):
             response.raise_for_status()
             data = response.json()
 
+            choices = data.get("choices", [])
+            if not choices:
+                return ModelResponse(content="", model=data.get("model", payload["model"]), usage=data.get("usage"))
+
+            message = choices[0].get("message", {})
+            content = message.get("content", "") or ""
+            tool_calls = message.get("tool_calls")
+
+            # 带工具调用时返回扁平 dict（与 OllamaProvider 对齐），供 dispatcher 消费
+            if tool_calls:
+                return {
+                    "content": content,
+                    "tool_calls": tool_calls,
+                    "model": data.get("model", payload["model"]),
+                }
+
             return ModelResponse(
-                content=data["choices"][0]["message"]["content"],
-                model=data["model"],
-                usage=data.get("usage")
+                content=content,
+                model=data.get("model", payload["model"]),
+                usage=data.get("usage"),
             )
         else:
             # 流式响应生成器

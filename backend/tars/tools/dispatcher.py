@@ -12,9 +12,11 @@ from .registry import ToolRegistry
 
 
 NATIVE_TOOL_MODELS = [
-    "qwen3", "qwen2.5", "qwen2", "llama3.1", "llama3.2", "llama3.3",
-    "mistral", "mixtral", "command-r", "gemma2",
-    "deepseek-chat", "deepseek-coder",
+    "qwen3", "qwen2.5", "qwen2", "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long",
+    "llama3.1", "llama3.2", "llama3.3",
+    "mistral", "mixtral", "command-r",
+    "deepseek-chat", "deepseek-coder", "deepseek-v",
+    "kimi",
 ]
 
 TOOL_PROMPT_TEMPLATE = """## 可用工具
@@ -157,18 +159,20 @@ class ToolDispatcher:
 
             # 将工具调用和结果加入消息历史
             if use_native:
+                import uuid as _uuid
+                call_id = f"call_{_uuid.uuid4().hex[:12]}"
                 working_messages.append({
                     "role": "assistant",
                     "content": None,
                     "tool_calls": [{
-                        "id": f"call_{tool_name}",
+                        "id": call_id,
                         "type": "function",
                         "function": {"name": tool_name, "arguments": arguments},
                     }],
                 })
                 working_messages.append({
                     "role": "tool",
-                    "tool_call_id": f"call_{tool_name}",
+                    "tool_call_id": call_id,
                     "content": result.output if result.success else (result.error or "执行失败"),
                 })
             else:

@@ -1,9 +1,34 @@
 # TARS Custom Provider
 # Layer 4: 自定义 OpenAI 兼容 API Provider
 
+import json
 import httpx
 from typing import List, AsyncGenerator, Dict, Any, Union
 from .base import LLMProvider, ChatMessage, ModelResponse
+
+
+def _normalize_openai_response(data: dict, default_model: str) -> dict:
+    """把 OpenAI 格式响应归一化为 dispatcher 理解的扁平 dict。
+
+    OpenAI 响应结构：
+      {"choices": [{"message": {"content": "...", "tool_calls": [...]}}]}
+
+    dispatcher._extract_tool_call 期望：
+      {"content": "...", "tool_calls": [...]}
+    """
+    choices = data.get("choices", [])
+    if not choices:
+        return {"content": data.get("content", ""), "model": data.get("model", default_model)}
+
+    message = choices[0].get("message", {})
+    content = message.get("content", "") or ""
+    tool_calls = message.get("tool_calls")
+
+    result = {"content": content, "model": data.get("model", default_model)}
+    if tool_calls:
+        # arguments 保持 OpenAI 协议的 JSON 字符串形式；dispatcher 会按需 parse
+        result["tool_calls"] = tool_calls
+    return result
 
 
 class CustomProvider(LLMProvider):
@@ -44,8 +69,7 @@ class CustomProvider(LLMProvider):
                     func = dict(tc_copy.get("function", {}))
                     args = func.get("arguments")
                     if isinstance(args, dict):
-                        import json as _json
-                        func["arguments"] = _json.dumps(args, ensure_ascii=False)
+                        func["arguments"] = json.dumps(args, ensure_ascii=False)
                     elif args is None:
                         func["arguments"] = "{}"
                     tc_copy["function"] = func
@@ -53,8 +77,9 @@ class CustomProvider(LLMProvider):
                 msg_dict["tool_calls"] = normalized_calls
             formatted_messages.append(msg_dict)
 
+        target_model = model or self.model
         payload = {
-            "model": model or self.model,
+            "model": target_model,
             "messages": formatted_messages,
             "temperature": temperature,
             "stream": stream
@@ -65,12 +90,15 @@ class CustomProvider(LLMProvider):
 
         if tools:
             payload["tools"] = tools
+            # 工具调用时禁用流式，确保能完整拿到 tool_calls
+            payload["stream"] = False
+            stream = False
 
         if not stream:
             response = await self.client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
-            return data
+            return _normalize_openai_response(data, target_model)
         else:
             async def generate():
                 async with self.client.stream("POST", url, headers=headers, json=payload) as response:
@@ -81,7 +109,6 @@ class CustomProvider(LLMProvider):
                             if line.strip() == "[DONE]":
                                 break
                             try:
-                                import json
                                 chunk = json.loads(line)
                                 if chunk.get("choices"):
                                     delta = chunk["choices"][0].get("delta", {})
