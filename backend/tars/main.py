@@ -8,6 +8,7 @@ import uvicorn
 import os
 import asyncio
 import json
+import traceback
 
 # 导入 TARS 模块
 from tars.channels import ConnectionManager
@@ -65,11 +66,11 @@ user_store = UserStore(db)
 permission_manager = PermissionManager()
 evolution_manager = EvolutionManager()
 
-# 初始化自定义模型存储
-from tars.database import CustomModelStore
-custom_model_store = CustomModelStore(db)
-from tars.models.config import init_custom_model_store
-init_custom_model_store(custom_model_store)
+from tars.database import EndpointStore
+from tars.models.config import init_endpoint_store
+
+endpoint_store = EndpointStore(db)
+init_endpoint_store(endpoint_store)
 
 # ========= 注册内置工具到全局 tool_registry =========
 project_dir = Path(__file__).parent.parent
@@ -125,6 +126,11 @@ init_file_storage(file_storage)
 
 # ========= 初始化记忆系统（LLM 提取 + 语义搜索）=========
 from tars.memory import MemoryManager, LocalEmbeddingProvider
+# 模型已缓存到本地，禁止 HuggingFace Hub 网络请求（否则网络不通时会无限挂起）
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "10")
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "10")
 try:
     embedding_provider = LocalEmbeddingProvider(model_name="BAAI/bge-small-zh-v1.5")
     print("[Startup] 嵌入模型 bge-small-zh-v1.5 加载成功")
@@ -178,38 +184,7 @@ init_tasks_api(db, agent)
 
 # ================ API 路由 ================
 
-# ============ 模型相关 ============
-
-class ModelSwitchRequest(BaseModel):
-    model_name: str
-
-class ModelSwitchResponse(BaseModel):
-    success: bool
-    message: str
-    current_model: str
-
-class ModelListResponse(BaseModel):
-    models: List[str]
-    current_model: str
-
-@app.get("/api/models", response_model=ModelListResponse)
-async def get_models():
-    """获取可用模型列表"""
-    models = await agent.get_available_models()
-    return {"models": models, "current_model": agent.current_model}
-
-@app.post("/api/models/switch", response_model=ModelSwitchResponse)
-async def switch_model(request: ModelSwitchRequest):
-    """热切换模型（无需重启服务）"""
-    success = agent.switch_model(request.model_name)
-    if success:
-        return {
-            "success": True,
-            "message": f"已切换到模型: {request.model_name}",
-            "current_model": agent.current_model
-        }
-    else:
-        raise HTTPException(status_code=400, detail=f"无法切换到模型: {request.model_name}")
+# 模型列表与切换见 tars.models.config（/api/models/*），勿在此重复注册同路径以免覆盖带 provider 的切换逻辑。
 
 # ============ 技能相关（已迁移到 api/skills.py 和 api/skillhub.py）============
 
@@ -722,10 +697,15 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # 通过 connection_manager 获取通道并处理消息
             channel = connection_manager.active_connections.get(connection_id)
             if channel:
-                await channel.handle_message(data)
+                try:
+                    await channel.handle_message(data)
+                except Exception as e:
+                    print(f"[WebSocket] 连接 {connection_id[:8]}… 处理异常: {type(e).__name__}: {e}")
+                    traceback.print_exc()
+                    connection_manager.disconnect(connection_id)
+                    break
     except WebSocketDisconnect:
         connection_manager.disconnect(connection_id)
 

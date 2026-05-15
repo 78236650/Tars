@@ -1,42 +1,78 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { personalityApi, subagentApi, modelApi } from '@/api'
-import type { Personality, SubAgent } from '@/types'
+import type { Personality, SubAgent, Endpoint, ModelsOverviewResponse } from '@/types'
 
 const STORAGE_KEY = 'tars_settings'
 
 interface StoredSettings {
+  provider?: 'ollama' | 'openai_compatible'
+  endpoint_id?: string | null
+  model?: string
+  /** @deprecated 迁移用 */
   currentModel?: string
+  /** @deprecated 迁移用 */
   currentProvider?: string
 }
 
 export const useSettingsStore = defineStore('settings', () => {
   const personality = ref<Personality | null>(null)
   const subagents = ref<Record<string, SubAgent>>({})
-  const availableModels = ref<string[]>([])
-  const currentModel = ref('')
-  const currentProvider = ref('ollama')
-  const customModels = ref<any[]>([])
   const loading = ref(false)
+
+  const ollamaModels = ref<string[]>([])
+  const ollamaBaseUrl = ref('')
+  const ollamaStatus = ref('disconnected')
+  const endpoints = ref<Endpoint[]>([])
+  const currentModel = ref('')
+  const currentProvider = ref<'ollama' | 'openai_compatible'>('ollama')
+  const currentEndpointId = ref<string | null>(null)
 
   const _loadFromStorage = (): StoredSettings => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored) {
-        return JSON.parse(stored)
+        const raw = JSON.parse(stored) as StoredSettings
+        if (!raw.provider && raw.currentProvider) {
+          if (raw.currentProvider === 'ollama') {
+            raw.provider = 'ollama'
+          } else if (raw.currentProvider.startsWith('custom:')) {
+            raw.provider = 'openai_compatible'
+            raw.endpoint_id = raw.currentProvider.slice('custom:'.length)
+          }
+        }
+        if (!raw.model && raw.currentModel) {
+          raw.model = raw.currentModel
+        }
+        return raw
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     return {}
   }
 
   const _saveToStorage = () => {
     try {
       const settings: StoredSettings = {
-        currentModel: currentModel.value,
-        currentProvider: currentProvider.value
+        provider: currentProvider.value,
+        endpoint_id: currentEndpointId.value,
+        model: currentModel.value,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    } catch {}
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const _applyOverview = (data: ModelsOverviewResponse) => {
+    ollamaModels.value = data.ollama_models || []
+    ollamaBaseUrl.value = data.ollama_base_url || ''
+    ollamaStatus.value = data.ollama_status || 'disconnected'
+    endpoints.value = data.endpoints || []
+    currentModel.value = data.current?.model || ''
+    currentProvider.value = data.current?.provider || 'ollama'
+    currentEndpointId.value = data.current?.endpoint_id ?? null
   }
 
   const loadPersonality = async () => {
@@ -97,48 +133,22 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  const loadModels = async () => {
+  const applyModelSelection = async (
+    provider: 'ollama' | 'openai_compatible',
+    model: string,
+    endpointId?: string | null
+  ) => {
     loading.value = true
     try {
-      const response = await modelApi.getModels()
-      availableModels.value = response.models
-
-      const stored = _loadFromStorage()
-      currentModel.value = response.current_model || stored.currentModel || ''
-      currentProvider.value = response.current_provider || stored.currentProvider || 'ollama'
-
-      if (stored.currentModel && stored.currentModel !== response.current_model) {
-        const result = await modelApi.switchModel(stored.currentModel)
-        if (result.success) {
-          currentModel.value = stored.currentModel
-        }
-      }
-
-      // 获取自定义模型列表
-      try {
-        const customRes = await fetch('/api/models/custom')
-        if (customRes.ok) {
-          customModels.value = await customRes.json()
-        }
-      } catch {
-        customModels.value = []
-      }
-    } catch {
-      availableModels.value = []
-      currentModel.value = ''
-      currentProvider.value = 'ollama'
-    } finally {
-      loading.value = false
-    }
-  }
-
-  const switchModel = async (modelName: string) => {
-    loading.value = true
-    try {
-      const response = await modelApi.switchModel(modelName)
-      if (response.success) {
-        currentModel.value = modelName
-        currentProvider.value = 'ollama'
+      const res = await modelApi.switchModel({
+        provider,
+        model,
+        endpoint_id: provider === 'openai_compatible' ? endpointId ?? undefined : undefined,
+      })
+      if (res.success && res.current) {
+        currentModel.value = res.current.model
+        currentProvider.value = res.current.provider
+        currentEndpointId.value = res.current.endpoint_id ?? null
         _saveToStorage()
         return true
       }
@@ -148,53 +158,106 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  const switchCustomModel = async (modelId: string) => {
+  const loadModels = async () => {
     loading.value = true
     try {
-      const response = await fetch(`/api/models/switch-custom/${modelId}`, {
-        method: 'POST'
-      })
-      const data = await response.json()
+      const data = await modelApi.getModelsOverview()
+      _applyOverview(data)
 
-      if (data.success) {
-        currentModel.value = data.current_model
-        currentProvider.value = data.current_provider
-        _saveToStorage()
-        return { success: true, message: data.message }
-      } else {
-        return { success: false, message: data.detail || '切换失败' }
+      const stored = _loadFromStorage()
+      const wantModel = stored.model
+      const wantProvider = stored.provider
+      const wantEp = stored.endpoint_id ?? null
+      const cur = data.current
+      const differs =
+        wantModel &&
+        wantProvider &&
+        (wantModel !== cur?.model ||
+          wantProvider !== cur?.provider ||
+          wantEp !== (cur?.endpoint_id ?? null))
+      if (differs) {
+        const ok = await applyModelSelection(wantProvider, wantModel, wantEp)
+        if (ok) {
+          const again = await modelApi.getModelsOverview()
+          _applyOverview(again)
+        }
       }
-    } catch (error) {
-      console.error('切换模型失败:', error)
-      return { success: false, message: '网络错误' }
+    } catch {
+      ollamaModels.value = []
+      endpoints.value = []
+      currentModel.value = ''
+      currentProvider.value = 'ollama'
+      currentEndpointId.value = null
     } finally {
       loading.value = false
     }
   }
 
+  const switchModel = async (modelName: string) => {
+    return applyModelSelection('ollama', modelName)
+  }
+
+  const createEndpoint = async (payload: { name: string; base_url: string; api_key?: string }) => {
+    const ep = await modelApi.createEndpoint(payload)
+    await loadModels()
+    return ep
+  }
+
+  const updateEndpoint = async (
+    id: string,
+    payload: Partial<{
+      name: string
+      base_url: string
+      api_key: string
+      models: string[]
+      enabled: boolean
+    }>
+  ) => {
+    const ep = await modelApi.updateEndpoint(id, payload)
+    await loadModels()
+    return ep
+  }
+
+  const deleteEndpoint = async (id: string) => {
+    await modelApi.deleteEndpoint(id)
+    await loadModels()
+  }
+
+  const fetchEndpointModels = async (id: string) => {
+    return modelApi.fetchEndpointModels(id)
+  }
+
+  const testEndpoint = async (id: string) => {
+    return modelApi.testEndpoint(id)
+  }
+
   const initSettings = async () => {
-    await Promise.all([
-      loadPersonality(),
-      loadSubagents(),
-      loadModels()
-    ])
+    await Promise.all([loadPersonality(), loadSubagents(), loadModels()])
   }
 
   return {
     personality,
     subagents,
-    availableModels,
+    loading,
+    ollamaModels,
+    ollamaBaseUrl,
+    ollamaStatus,
+    endpoints,
     currentModel,
     currentProvider,
-    customModels,
-    loading,
+    currentEndpointId,
     loadPersonality,
     updatePersonality,
     loadSubagents,
     updateSubagent,
     loadModels,
+    applyModelSelection,
     switchModel,
-    switchCustomModel,
-    initSettings
+    createEndpoint,
+    updateEndpoint,
+    deleteEndpoint,
+    fetchEndpointModels,
+    testEndpoint,
+    initSettings,
   }
 })

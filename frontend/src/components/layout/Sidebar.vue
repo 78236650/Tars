@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
@@ -9,7 +8,6 @@ import { useChatStore } from '@/stores/chat'
 
 const router = useRouter()
 const route = useRoute()
-const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
 const { locale, t, toggleLocale } = useI18n()
@@ -17,9 +15,6 @@ const chatStore = useChatStore()
 
 const collapsed = ref(false)
 const searchQuery = ref('')
-
-type TabType = 'ollama' | 'custom' | 'openrouter'
-const activeTab = ref<TabType>('ollama')
 const switching = ref(false)
 const showModelPopover = ref(false)
 
@@ -35,59 +30,68 @@ const toggleCollapse = () => {
   localStorage.setItem('sidebar_collapsed', String(collapsed.value))
 }
 
-const tabs: { key: TabType; label: string }[] = [
-  { key: 'ollama', label: 'Ollama' },
-  { key: 'custom', label: 'Custom' },
-  { key: 'openrouter', label: 'OpenRouter' }
-]
-
 const getProviderLabel = computed(() => {
-  const provider = settingsStore.currentProvider
-  if (provider.startsWith('custom:')) return t('sidebar.custom')
-  if (provider === 'openrouter') return 'OpenRouter'
-  return provider.toUpperCase()
+  if (
+    settingsStore.currentProvider === 'openai_compatible' &&
+    settingsStore.currentEndpointId
+  ) {
+    const ep = settingsStore.endpoints.find((e) => e.id === settingsStore.currentEndpointId)
+    return ep?.name || 'OpenAI'
+  }
+  return 'Ollama'
 })
 
-const switchModel = async (modelName: string) => {
+const selectOllamaModel = async (modelName: string) => {
   if (switching.value) return
   switching.value = true
   try {
-    const success = await settingsStore.switchModel(modelName)
+    const success = await settingsStore.applyModelSelection('ollama', modelName)
     if (success) {
       toast.success(`${t('sidebar.switchedTo')}: ${modelName}`)
     } else {
       toast.error(t('sidebar.switchFailed'))
     }
-  } catch (e) {
+  } catch {
     toast.error(t('sidebar.switchFailed'))
   } finally {
     switching.value = false
   }
 }
 
-const switchCustomModel = async (modelId: string, modelName: string) => {
+const selectEndpointModel = async (endpointId: string, modelName: string) => {
   if (switching.value) return
   switching.value = true
   try {
-    const result = await settingsStore.switchCustomModel(modelId)
-    if (result.success) {
-      toast.success(result.message)
+    const success = await settingsStore.applyModelSelection(
+      'openai_compatible',
+      modelName,
+      endpointId
+    )
+    if (success) {
+      toast.success(`${t('sidebar.switchedTo')}: ${modelName}`)
     } else {
-      toast.error(result.message)
+      toast.error(t('sidebar.switchFailed'))
     }
-  } catch (e) {
+  } catch {
     toast.error(t('sidebar.switchFailed'))
   } finally {
     switching.value = false
   }
 }
 
-const isCurrentModel = (modelName: string) => {
-  return settingsStore.currentModel === modelName && settingsStore.currentProvider === 'ollama'
+const isCurrentOllamaModel = (modelName: string) => {
+  return (
+    settingsStore.currentModel === modelName &&
+    settingsStore.currentProvider === 'ollama'
+  )
 }
 
-const isCurrentCustomModel = (modelId: string) => {
-  return settingsStore.currentProvider === `custom:${modelId}`
+const isCurrentEndpointModel = (endpointId: string, modelName: string) => {
+  return (
+    settingsStore.currentProvider === 'openai_compatible' &&
+    settingsStore.currentEndpointId === endpointId &&
+    settingsStore.currentModel === modelName
+  )
 }
 
 const navItems = [
@@ -288,9 +292,8 @@ const groupedSessions = computed(() => {
         <div class="flex items-center gap-2 min-w-0">
           <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
             :class="{
-              'bg-green-400': settingsStore.currentProvider.startsWith('custom:'),
+              'bg-emerald-400': settingsStore.currentProvider === 'openai_compatible',
               'bg-blue-400': settingsStore.currentProvider === 'ollama',
-              'bg-purple-400': settingsStore.currentProvider === 'openrouter'
             }"
           ></span>
           <span class="text-xs text-slate-300 truncate">{{ settingsStore.currentModel || t('common.loading') }}</span>
@@ -301,35 +304,53 @@ const groupedSessions = computed(() => {
       </button>
 
       <!-- Popover -->
-      <div v-if="showModelPopover" class="absolute bottom-full left-3 right-3 mb-1 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 overflow-hidden">
-        <div class="flex border-b border-slate-700">
-          <button v-for="tab in tabs" :key="tab.key" @click="activeTab = tab.key"
-            class="flex-1 px-2 py-2 text-xs font-medium transition-colors"
-            :class="activeTab === tab.key ? 'text-white bg-slate-700' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'">{{ tab.label }}</button>
+      <div v-if="showModelPopover" class="absolute bottom-full left-3 right-3 mb-1 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 overflow-hidden max-h-72 flex flex-col">
+        <div class="max-h-56 overflow-y-auto">
+          <p class="px-3 py-2 text-[10px] font-medium text-slate-500 uppercase tracking-wider border-b border-slate-700/80">
+            {{ t('sidebar.localModels') }}
+          </p>
+          <button
+            v-for="model in settingsStore.ollamaModels"
+            :key="'o-' + model"
+            type="button"
+            @click="selectOllamaModel(model); showModelPopover = false"
+            :disabled="switching"
+            class="w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors"
+            :class="isCurrentOllamaModel(model) ? 'bg-slate-600 border-l-4 border-blue-400 text-white' : 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent'"
+          >
+            <span class="truncate">{{ model }}</span>
+            <span v-if="isCurrentOllamaModel(model)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
+          </button>
+
+          <template v-for="ep in settingsStore.endpoints" :key="ep.id">
+            <div class="border-t border-slate-700 mt-1 pt-1">
+              <p class="px-3 py-1.5 text-[10px] font-medium text-slate-400 truncate" :title="ep.base_url">{{ ep.name }}</p>
+              <template v-if="ep.models?.length">
+                <button
+                  v-for="mod in ep.models"
+                  :key="ep.id + '-' + mod"
+                  type="button"
+                  :disabled="switching || !ep.enabled"
+                  @click="selectEndpointModel(ep.id, mod); showModelPopover = false"
+                  class="w-full px-3 py-1.5 text-sm text-left flex items-center justify-between transition-colors"
+                  :class="isCurrentEndpointModel(ep.id, mod) ? 'bg-slate-600 border-l-4 border-emerald-400 text-white' : ep.enabled ? 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent' : 'text-slate-600 cursor-not-allowed border-l-4 border-transparent'"
+                >
+                  <span class="truncate">{{ mod }}</span>
+                  <span v-if="isCurrentEndpointModel(ep.id, mod)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
+                </button>
+              </template>
+              <p v-else class="px-3 py-2 text-xs text-slate-500">{{ t('sidebar.noEndpointModels') }}</p>
+            </div>
+          </template>
         </div>
-        <div class="max-h-44 overflow-y-auto">
-          <template v-if="activeTab === 'ollama'">
-            <button v-for="model in settingsStore.availableModels" :key="model" @click="switchModel(model); showModelPopover = false" :disabled="switching"
-              class="w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors"
-              :class="isCurrentModel(model) ? 'bg-slate-600 border-l-4 border-green-500 text-white' : 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent'">
-              <span class="truncate">{{ model }}</span>
-              <span v-if="isCurrentModel(model)" class="text-green-400 text-xs">✓</span>
-            </button>
-          </template>
-          <template v-else-if="activeTab === 'custom'">
-            <button v-for="model in settingsStore.customModels" :key="model.id" @click="switchCustomModel(model.id, model.name); showModelPopover = false" :disabled="switching || !model.is_enabled"
-              class="w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors"
-              :class="isCurrentCustomModel(model.id) ? 'bg-slate-600 border-l-4 border-green-500 text-white' : model.is_enabled ? 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent' : 'text-slate-500 border-l-4 border-transparent cursor-not-allowed'">
-              <div class="truncate"><span class="block truncate">{{ model.name }}</span><span class="text-xs text-slate-500 truncate">{{ model.model }}</span></div>
-              <span v-if="isCurrentCustomModel(model.id)" class="text-green-400 text-xs flex-shrink-0 ml-2">✓</span>
-            </button>
-            <button @click="router.push('/models')" class="w-full px-3 py-2 text-sm text-left text-green-400 hover:bg-slate-600/50 flex items-center gap-2 transition-colors"><span class="text-lg">+</span><span>{{ t('sidebar.addCustomModel') }}</span></button>
-          </template>
-          <template v-else-if="activeTab === 'openrouter'">
-            <div class="px-3 py-4 text-center text-slate-400 text-sm">{{ t('sidebar.configureOpenrouter') }}</div>
-            <button @click="router.push('/settings')" class="w-full px-3 py-2 text-sm text-blue-400 hover:bg-slate-600/50 text-left transition-colors">{{ t('sidebar.goToSettings') }}</button>
-          </template>
-        </div>
+        <button
+          type="button"
+          @click="router.push('/models'); showModelPopover = false"
+          class="w-full px-3 py-2.5 text-sm text-left text-slate-300 border-t border-slate-700 hover:bg-slate-700/60 flex items-center gap-2 transition-colors shrink-0"
+        >
+          <span class="text-base">⚙</span>
+          <span>{{ t('sidebar.modelConfigLink') }}</span>
+        </button>
       </div>
     </div>
 
@@ -337,9 +358,8 @@ const groupedSessions = computed(() => {
       <div class="text-center">
         <span class="w-1.5 h-1.5 rounded-full inline-block"
           :class="{
-            'bg-green-400': settingsStore.currentProvider.startsWith('custom:'),
+            'bg-emerald-400': settingsStore.currentProvider === 'openai_compatible',
             'bg-blue-400': settingsStore.currentProvider === 'ollama',
-            'bg-purple-400': settingsStore.currentProvider === 'openrouter'
           }"
         ></span>
       </div>

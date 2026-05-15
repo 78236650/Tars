@@ -5,7 +5,7 @@ import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
-from ..models import LLMProvider, OllamaProvider, CustomProvider, ChatMessage
+from ..models import LLMProvider, OllamaProvider, ChatMessage
 from ..database import Database
 from ..memory import MemoryManager
 from ..channels import Channel
@@ -88,25 +88,12 @@ class AgentV2:
         self.dispatcher = ToolDispatcher(self.tool_registry, self.provider)
 
     def _create_default_provider(self) -> LLMProvider:
-        provider_type = os.getenv("LLM_PROVIDER", "ollama").lower()
-        if provider_type == "openrouter":
-            from ..models import OpenRouterProvider
-            return OpenRouterProvider()
         return OllamaProvider(model=self.current_model)
 
     def switch_model(self, model_name: str) -> bool:
         try:
             self.provider = OllamaProvider(model=model_name)
             self.current_model = model_name
-            self.dispatcher.set_provider(self.provider)
-            return True
-        except Exception:
-            return False
-
-    def switch_to_custom_model(self, model_id: str, base_url: str, model: str, api_key: str = None) -> bool:
-        try:
-            self.provider = CustomProvider(base_url=base_url, model=model, api_key=api_key)
-            self.current_model = model
             self.dispatcher.set_provider(self.provider)
             return True
         except Exception:
@@ -285,6 +272,13 @@ class AgentV2:
             disclosure = self.skill_loader.get_progressive_disclosure()
             if disclosure:
                 system_prompt += f"\n\n{disclosure}"
+            # v2.6 fix: 渐进披露展示了所有技能名称但缺失已激活技能的完整指令。
+            # 已激活技能（通过 /skill xxx 激活）需要将其 SKILL.md 正文注入 system prompt，
+            # 否则 LLM 只知道技能存在但不知道该技能要求它如何改变行为。
+            if hasattr(self, '_active_skill_id') and self._active_skill_id:
+                active_skill = self.skill_registry.get(self._active_skill_id)
+                if active_skill and active_skill.prompt_template:
+                    system_prompt += f"\n\n## 已激活技能: {active_skill.name}\n{active_skill.prompt_template}"
         else:
             # v2.3 legacy fallback: 旧版全量 prompt 注入（仅当渐进披露不可用时）
             skill_injection = self.skill_executor.build_prompt_injection()
