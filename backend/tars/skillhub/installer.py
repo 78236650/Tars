@@ -12,7 +12,7 @@ from .models import SkillHubPackage
 
 
 DANGEROUS_PERMISSIONS = {"command_exec", "file_write"}
-TARS_VERSION = "2.0.0"  # 当前 TARS 版本
+TARS_VERSION = "2.7.0"  # 当前 TARS 版本
 
 
 def _parse_version(v: str) -> tuple:

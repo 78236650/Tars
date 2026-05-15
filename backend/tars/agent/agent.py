@@ -36,6 +36,7 @@ class AgentV2:
         file_parser=None,
         memory_manager=None,
         task_executor=None,
+        knowledge_retriever=None,
     ):
         self.db = db or Database()
         self.workspace = workspace or WorkspaceManager()
@@ -49,6 +50,7 @@ class AgentV2:
         self.file_storage = file_storage
         self.file_parser = file_parser
         self.task_executor = task_executor
+        self.knowledge_retriever = knowledge_retriever
 
         # 斜杠命令系统
         from ..commands import CommandRegistry, CommandParser
@@ -105,8 +107,21 @@ class AgentV2:
         except Exception:
             return []
 
-    async def handle_message(self, session_id: str, user_content: str, channel: Channel, file_ids: Optional[List[str]] = None):
+    async def handle_message(
+        self,
+        session_id: str,
+        user_content: str,
+        channel: Channel,
+        file_ids: Optional[List[str]] = None,
+        tenant_context: Optional[Any] = None,
+        request_context: Optional[Dict[str, Any]] = None,
+    ):
         """处理用户消息 - 使用 ToolDispatcher，支持文件附件和斜杠命令"""
+        tenant_id = tenant_context.tenant_id if tenant_context else "default"
+        scoped_memory_manager = tenant_context.memory_manager if tenant_context else self.memory_manager
+        scoped_wc_manager = type(self.wc_manager)(self.db, tenant_id=tenant_id) if hasattr(self, "wc_manager") else None
+        scoped_memory_router = self.memory_router.for_tenant(tenant_id) if self.memory_router else None
+
         # 0. 拦截斜杠命令
         cmd_result = self.command_parser.execute(user_content)
         new_sid = None
@@ -121,7 +136,7 @@ class AgentV2:
 
             # 处理 action
             if cmd_result.action == "new_session":
-                new_session = self.db.create_session()
+                new_session = self.db.create_session(tenant_id=tenant_id)
                 new_sid = new_session.id
                 session_id = new_sid
                 await channel.send(session_id, {
@@ -236,9 +251,9 @@ class AgentV2:
         })
 
         # 1. 获取或创建会话
-        session = self.db.get_session(session_id)
+        session = self.db.get_session(session_id, tenant_id=tenant_id)
         if not session:
-            session = self.db.create_session()
+            session = self.db.create_session(tenant_id=tenant_id)
             session_id = session.id
 
         # 2. 保存用户消息
@@ -248,7 +263,7 @@ class AgentV2:
         history = self.db.get_messages(session_id)
 
         # 4. 获取记忆上下文（v2.2: 优先 MemoryRouter，否则老路）
-        if self.memory_router and self.mem_config.router_enabled:
+        if scoped_memory_router and self.mem_config.router_enabled and scoped_wc_manager:
             await channel.send(session_id, {
                 "type": "thinking_step",
                 "session_id": session_id,
@@ -257,13 +272,13 @@ class AgentV2:
                 "detail": user_content[:30] + ("..." if len(user_content) > 30 else ""),
                 "timestamp": now_iso(),
             })
-            wc = self.wc_manager.get(session_id)
-            ctx = self.memory_router.retrieve(user_content, wc)
-            memory_context = self.memory_router.build_injection(ctx)
+            wc = scoped_wc_manager.get(session_id)
+            ctx = scoped_memory_router.retrieve(user_content, wc)
+            memory_context = scoped_memory_router.build_injection(ctx)
             if wc:
                 memory_context = f"## 当前意图: {wc.get('current_intent','unknown')}\n\n{memory_context}"
         else:
-            memory_context = self.memory_manager.get_context_for_query(user_content)
+            memory_context = scoped_memory_manager.get_context_for_query(user_content)
 
         # 5. 构建 system prompt（含人格 + 记忆 + 渐进披露技能 + 命令提示词）
         system_prompt = self.workspace.build_context()
@@ -286,6 +301,43 @@ class AgentV2:
                 system_prompt += f"\n\n{skill_injection}"
         if memory_context:
             system_prompt += f"\n\n{memory_context}"
+
+        # 自动知识库检索：将相关文档片段注入上下文
+        if self.knowledge_retriever:
+            try:
+                conn = self.db._get_conn()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT id FROM document_collections WHERE tenant_id = ?",
+                    (tenant_id,),
+                )
+                collection_ids = [r[0] for r in cursor.fetchall()]
+                if collection_ids:
+                    kb_results = self.knowledge_retriever.retrieve(
+                        query=user_content,
+                        collection_ids=collection_ids,
+                        top_k=8,
+                        tenant_id=tenant_id,
+                        expand=True,
+                    )
+                    # 相关性阈值过滤
+                    relevant = [r for r in kb_results if r.get("score", 0) > 0.25]
+                    # 用 reranker 精排（如果可用）
+                    if relevant and hasattr(self, '_reranker') and self._reranker:
+                        relevant = self._reranker.rerank(
+                            user_content, relevant, top_k=3, text_key="text"
+                        )
+                    else:
+                        relevant = relevant[:3]
+                    if relevant:
+                        kb_lines = ["## 知识库参考资料（请优先参考以下内容回答用户问题）"]
+                        for r in relevant:
+                            src = r.get("source", {})
+                            score = r.get("rerank_score", r.get("score", 0))
+                            kb_lines.append(f"[来源: {src.get('file_name', '未知')} | 相关度: {score:.2f}]\n{r['text'][:800]}")
+                        system_prompt += "\n\n" + "\n\n".join(kb_lines)
+            except Exception:
+                pass
         # v2.4: TaskDetector 自动检测任务意图（/plan 之外）
         is_slash_plan = user_content.startswith("/plan")
         try:
@@ -420,6 +472,7 @@ class AgentV2:
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 tools=self._get_allowed_tool_schemas(),
+                tool_context={"session_id": session_id},
             ):
                 full_response += chunk
                 await channel.send(session_id, {
@@ -589,7 +642,7 @@ class AgentV2:
         # 10. 反思记忆（V3 异步非阻塞，不延迟 done 事件）
         async def _reflect_background():
             try:
-                applied = await self.memory_manager.reflect(
+                applied = await scoped_memory_manager.reflect(
                     user_content,
                     full_response,
                     used_web=used_web_flag["value"],
@@ -629,8 +682,8 @@ class AgentV2:
         })
 
         # 12. v2.2: 异步 Scene Analyzer（不阻塞对话）
-        if hasattr(self, 'wc_manager'):
-            asyncio.create_task(self._run_scene_analyzer(session_id, user_content, full_response))
+        if scoped_wc_manager:
+            asyncio.create_task(self._run_scene_analyzer(session_id, user_content, full_response, tenant_id))
 
     # ========= 模式权限控制 =========
 
@@ -645,11 +698,11 @@ class AgentV2:
             return None
         return [t.to_function_schema() for t in self.tool_registry.list_all() if t.name in self.READONLY_TOOLS]
 
-    async def _run_scene_analyzer(self, session_id: str, user_msg: str, assistant_msg: str):
+    async def _run_scene_analyzer(self, session_id: str, user_msg: str, assistant_msg: str, tenant_id: str = "default"):
         """v2.2: 异步运行 Scene Analyzer，结果写入 Working Context"""
         try:
             from ..analysis.scene_analyzer import SceneAnalyzer
-            analyzer = SceneAnalyzer(self.provider, self.wc_manager, self.db)
+            analyzer = SceneAnalyzer(self.provider, type(self.wc_manager)(self.db, tenant_id=tenant_id), self.db)
             await analyzer.analyze(session_id, user_msg, assistant_msg)
         except Exception as e:
             print(f"[Agent] SceneAnalyzer 失败: {e}")
@@ -708,4 +761,3 @@ class AgentV2:
         if images:
             msg["images"] = images
         return msg
-

@@ -12,10 +12,14 @@ from tars.memory.entity_id import compute_entity_id
 class MemoryRouter:
     """四路并行 + 融合打分 + 降级切换"""
 
-    def __init__(self, db, embedding_provider: Optional[EmbeddingProvider] = None):
+    def __init__(self, db, embedding_provider: Optional[EmbeddingProvider] = None, tenant_id: str = "default"):
         self.db = db
         self.ep = embedding_provider
-        self.hybrid = HybridSearch(db, embedding_provider)
+        self.tenant_id = tenant_id
+        self.hybrid = HybridSearch(db, embedding_provider, tenant_id=tenant_id)
+
+    def for_tenant(self, tenant_id: str):
+        return MemoryRouter(self.db, self.ep, tenant_id=tenant_id)
 
     def retrieve(self, user_msg: str, working_ctx: dict = None, limit: int = 6) -> Dict[str, Any]:
         """主入口：四路召回 + 融合。返回 dict 供 system prompt 拼装"""
@@ -79,10 +83,10 @@ class MemoryRouter:
             placeholders = ",".join(["?"] * len(entity_info))
             cur.execute(f"""
                 SELECT id, content, category, importance, event_time
-                FROM memories WHERE entity_refs IS NOT NULL
+                FROM memories WHERE tenant_id = ? AND entity_refs IS NOT NULL
                 AND ({" OR ".join([f"entity_refs LIKE ?" for _ in entity_info])})
                 ORDER BY event_time DESC LIMIT 5
-            """, [f"%{eid}%" for eid in entity_info])
+            """, [self.tenant_id, *[f"%{eid}%" for eid in entity_info]])
             for row in cur.fetchall():
                 mid = f"ep_{row[0]}"
                 imp = row[3] or 0.5
@@ -98,8 +102,8 @@ class MemoryRouter:
         for eid in focus[:3]:
             cur.execute("""
                 SELECT id, content, importance, event_time FROM memories
-                WHERE entity_refs LIKE ? ORDER BY event_time DESC LIMIT 2
-            """, (f"%{eid}%",))
+                WHERE tenant_id = ? AND entity_refs LIKE ? ORDER BY event_time DESC LIMIT 2
+            """, (self.tenant_id, f"%{eid}%",))
             for row in cur.fetchall():
                 mid = f"tl_{row[0]}"
                 if mid not in scored:
@@ -118,7 +122,7 @@ class MemoryRouter:
                 scored[mid] = ({"type": "knowledge", "content": mem.content, "category": mem.category}, 0.3)
 
     def _keyword_route(self, user_msg: str, scored: dict):
-        results = self.db.search_memories(user_msg, limit=3)
+        results = self.db.search_memories(user_msg, limit=3, tenant_id=self.tenant_id)
         for mem in results:
             mid = f"kw_{mem.id}"
             if mid not in scored:

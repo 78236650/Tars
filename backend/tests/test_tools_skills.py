@@ -184,6 +184,28 @@ class TestToolDispatcher:
         assert result.output == "hello"
 
     @pytest.mark.asyncio
+    async def test_execute_tool_merges_context_arguments(self):
+        from tars.tools.dispatcher import ToolDispatcher
+        from tars.tools.registry import ToolRegistry
+        from tars.tools.base import BaseTool, ToolResult
+
+        class EchoTool(BaseTool):
+            name = "echo"
+            description = "echo"
+            parameters_schema = {"type": "object", "properties": {"msg": {"type": "string"}, "session_id": {"type": "string"}}}
+
+            async def execute(self, **kwargs):
+                return ToolResult(success=True, output=kwargs.get("session_id", ""))
+
+        reg = ToolRegistry()
+        reg.register(EchoTool())
+        d = ToolDispatcher(reg)
+
+        result = await d.execute_tool("echo", {"msg": "hello"}, context={"session_id": "session-a"})
+        assert result.success is True
+        assert result.output == "session-a"
+
+    @pytest.mark.asyncio
     async def test_execute_tool_not_found(self):
         from tars.tools.dispatcher import ToolDispatcher
         from tars.tools.registry import ToolRegistry
@@ -194,6 +216,43 @@ class TestToolDispatcher:
         result = await d.execute_tool("nonexistent", {})
         assert result.success is False
         assert "不存在" in result.error
+
+    @pytest.mark.asyncio
+    async def test_prompt_fallback_injects_response_format_constraint(self):
+        from tars.tools.dispatcher import ToolDispatcher
+        from tars.tools.registry import ToolRegistry
+        from tars.models.base import ModelResponse
+
+        class FakeProvider:
+            def __init__(self):
+                self.calls = []
+
+            async def chat(self, messages, **kwargs):
+                self.calls.append({"messages": messages, "kwargs": kwargs})
+                return ModelResponse(content='{"ok": true}', model="fake")
+
+        provider = FakeProvider()
+        d = ToolDispatcher(ToolRegistry(), provider=provider)
+        response_format = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "ok": {"type": "boolean"}
+                }
+            }
+        }
+
+        await d._call_with_prompt_fallback(
+            [{"role": "user", "content": "say ok"}],
+            stream=False,
+            response_format=response_format,
+        )
+
+        system_content = provider.calls[0]["messages"][0].content
+        assert "JSON" in system_content
+        assert '"ok"' in system_content
+        assert provider.calls[0]["kwargs"]["response_format"]["type"] == "json_schema"
 
 
 # ============================================================
@@ -278,12 +337,11 @@ class TestBuiltinCommand:
 
 class TestBuiltinWeb:
     @pytest.mark.asyncio
-    async def test_web_no_url(self):
-        from tars.tools.builtin.web import WebTool
-        tool = WebTool()
+    async def test_web_search_no_query(self):
+        from tars.tools.builtin.web_search import WebSearchTool
+        tool = WebSearchTool()
         result = await tool.execute()
         assert result.success is False
-        assert "URL" in result.error
 
 
 # ============================================================

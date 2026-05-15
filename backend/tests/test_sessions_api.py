@@ -1,5 +1,6 @@
 """Sessions API + Database 方法测试"""
 import sys
+import sqlite3
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -84,6 +85,19 @@ class TestSessionsAPI:
         assert resp.status_code == 200
         assert len(resp.json()) == 2
 
+    def test_sessions_are_isolated_by_tenant_header(self, client):
+        tenant_a = {"X-Tenant-Id": "tenant_a"}
+        tenant_b = {"X-Tenant-Id": "tenant_b"}
+
+        first = client.post("/api/sessions/", headers=tenant_a).json()
+        second = client.post("/api/sessions/", headers=tenant_b).json()
+
+        resp_a = client.get("/api/sessions/", headers=tenant_a)
+        resp_b = client.get("/api/sessions/", headers=tenant_b)
+
+        assert [item["id"] for item in resp_a.json()] == [first["id"]]
+        assert [item["id"] for item in resp_b.json()] == [second["id"]]
+
     def test_get_messages_empty(self, client):
         s = client.post("/api/sessions/").json()
         resp = client.get(f"/api/sessions/{s['id']}/messages")
@@ -112,6 +126,67 @@ class TestSessionsAPI:
         listing = client.get("/api/sessions/").json()
         target = next(x for x in listing if x["id"] == s["id"])
         assert target["title"] == "FastAPI 项目"
+
+    def test_legacy_sessions_schema_still_supports_listing_and_messages(self, tmp_path):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from tars.database import Database
+        from tars.api.sessions import router, init_sessions_api
+
+        db_path = tmp_path / "legacy.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT,
+                user_id TEXT,
+                title TEXT,
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP,
+                summary TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                role TEXT,
+                content TEXT,
+                timestamp TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            """
+            INSERT INTO sessions (id, agent_id, user_id, title, created_at, updated_at, summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-session",
+                "default",
+                "default",
+                "Legacy Title",
+                "2026-05-16T00:00:00+08:00",
+                "2026-05-16T00:05:00+08:00",
+                None,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        db = Database(db_path=str(db_path))
+        app = FastAPI()
+        app.include_router(router)
+        init_sessions_api(db)
+        client = TestClient(app)
+
+        listing = client.get("/api/sessions/")
+        assert listing.status_code == 200
+        assert listing.json()[0]["title"] == "Legacy Title"
+
+        messages = client.get("/api/sessions/legacy-session/messages")
+        assert messages.status_code == 200
+        assert messages.json() == []
 
 
 class TestEndToEnd:

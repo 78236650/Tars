@@ -6,7 +6,7 @@ import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 
@@ -15,11 +15,18 @@ def get_local_now():
     return datetime.now(timezone(timedelta(hours=8)))
 
 
+def _parse_db_datetime(value):
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
+
+
 @dataclass
 class Session:
     id: str
     agent_id: str = "default"
     user_id: str = "default"
+    tenant_id: str = "default"
     title: str = "New Session"
     created_at: datetime = None
     updated_at: datetime = None
@@ -40,6 +47,7 @@ class Memory:
     id: str
     content: str
     category: str  # user_preference, project_record, important_decision, general
+    tenant_id: str = "default"
     importance: float = 0.5  # 0-1
     created_at: datetime = None
     updated_at: datetime = None
@@ -60,6 +68,24 @@ class CronJob:
     updated_at: datetime = None
     last_run: Optional[datetime] = None
     next_run: Optional[datetime] = None
+
+
+@dataclass
+class ReminderNotification:
+    id: str
+    user_id: str
+    job_id: str
+    session_id: Optional[str]
+    task_name: str
+    message: str
+    delivery_status: str
+    error_message: Optional[str] = None
+    summary_logs: List[Dict[str, Any]] = None
+    is_read: bool = False
+    triggered_at: datetime = None
+    read_at: Optional[datetime] = None
+    created_at: datetime = None
+    updated_at: datetime = None
 
 
 class Database:
@@ -96,12 +122,18 @@ class Database:
                 id TEXT PRIMARY KEY,
                 agent_id TEXT,
                 user_id TEXT,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
                 title TEXT,
                 created_at TIMESTAMP,
                 updated_at TIMESTAMP,
                 summary TEXT
             )
         """)
+
+        try:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        except sqlite3.OperationalError:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -117,6 +149,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
                 content TEXT NOT NULL,
                 category TEXT NOT NULL,
                 importance REAL DEFAULT 0.5,
@@ -126,6 +159,11 @@ class Database:
                 embedding BLOB
             )
         """)
+
+        try:
+            cursor.execute("ALTER TABLE memories ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        except sqlite3.OperationalError:
+            pass
 
         # 数据库迁移：为旧表添加 embedding 列
         try:
@@ -137,11 +175,34 @@ class Database:
         # core memory 4 块固定区块（Letta 模式）
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS core_memory_blocks (
-                name TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
                 content TEXT NOT NULL DEFAULT '',
-                updated_at TEXT
+                updated_at TEXT,
+                PRIMARY KEY (tenant_id, name)
             )
         """)
+
+        cursor.execute("PRAGMA table_info(core_memory_blocks)")
+        core_cols = cursor.fetchall()
+        core_pk = [row[1] for row in core_cols if row[5] > 0]
+        if core_cols and core_pk == ["name"]:
+            cursor.execute("ALTER TABLE core_memory_blocks RENAME TO core_memory_blocks_legacy")
+            cursor.execute("""
+                CREATE TABLE core_memory_blocks (
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    name TEXT NOT NULL,
+                    content TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT,
+                    PRIMARY KEY (tenant_id, name)
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO core_memory_blocks (tenant_id, name, content, updated_at)
+                SELECT 'default', name, content, updated_at
+                FROM core_memory_blocks_legacy
+            """)
+            cursor.execute("DROP TABLE core_memory_blocks_legacy")
 
         DEFAULT_BLOCKS = {
             "persona": "TARS：理性、简洁、注重证据的工程助手。回答以代码/事实为主，避免空话。",
@@ -152,8 +213,11 @@ class Database:
         now_str = get_local_now().isoformat()
         for name, content in DEFAULT_BLOCKS.items():
             cursor.execute(
-                "INSERT OR IGNORE INTO core_memory_blocks (name, content, updated_at) VALUES (?, ?, ?)",
-                (name, content, now_str),
+                """
+                INSERT OR IGNORE INTO core_memory_blocks (name, tenant_id, content, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (name, "default", content, now_str),
             )
 
         # memories 表迁移：access_count + source
@@ -190,6 +254,34 @@ class Database:
                 last_run TIMESTAMP,
                 next_run TIMESTAMP
             )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reminder_notifications (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                session_id TEXT,
+                task_name TEXT NOT NULL,
+                message TEXT NOT NULL,
+                delivery_status TEXT NOT NULL,
+                error_message TEXT,
+                summary_logs TEXT NOT NULL DEFAULT '[]',
+                is_read INTEGER DEFAULT 0,
+                triggered_at TIMESTAMP NOT NULL,
+                read_at TIMESTAMP,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (job_id) REFERENCES cronjobs(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reminder_notifications_user_triggered
+            ON reminder_notifications(user_id, triggered_at DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reminder_notifications_job_triggered
+            ON reminder_notifications(job_id, triggered_at DESC)
         """)
 
         cursor.execute("""
@@ -275,16 +367,51 @@ class Database:
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS working_contexts (
-                session_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                session_id TEXT NOT NULL,
                 focus_entities TEXT DEFAULT '[]',
                 current_intent TEXT DEFAULT 'unknown',
                 intent_confidence REAL DEFAULT 0,
                 open_threads TEXT DEFAULT '[]',
                 active_skills TEXT DEFAULT '[]',
                 last_scene_snapshot TEXT DEFAULT '{}',
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, session_id)
             )
         """)
+
+        cursor.execute("PRAGMA table_info(working_contexts)")
+        wc_cols = cursor.fetchall()
+        wc_pk = [row[1] for row in wc_cols if row[5] > 0]
+        if wc_cols and wc_pk == ["session_id"]:
+            cursor.execute("ALTER TABLE working_contexts RENAME TO working_contexts_legacy")
+            cursor.execute("""
+                CREATE TABLE working_contexts (
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    session_id TEXT NOT NULL,
+                    focus_entities TEXT DEFAULT '[]',
+                    current_intent TEXT DEFAULT 'unknown',
+                    intent_confidence REAL DEFAULT 0,
+                    open_threads TEXT DEFAULT '[]',
+                    active_skills TEXT DEFAULT '[]',
+                    last_scene_snapshot TEXT DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, session_id)
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO working_contexts (
+                    tenant_id, session_id, focus_entities, current_intent,
+                    intent_confidence, open_threads, active_skills,
+                    last_scene_snapshot, updated_at
+                )
+                SELECT
+                    'default', session_id, focus_entities, current_intent,
+                    intent_confidence, open_threads, active_skills,
+                    last_scene_snapshot, updated_at
+                FROM working_contexts_legacy
+            """)
+            cursor.execute("DROP TABLE working_contexts_legacy")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dead_letter_queue (
@@ -369,26 +496,94 @@ class Database:
                 pass
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_skill ON tasks(skill_id)")
 
+        # === BI Analytics: 数据源表 ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bi_datasources (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
+                db_type TEXT NOT NULL,
+                connection_url TEXT NOT NULL,
+                readonly INTEGER DEFAULT 1,
+                schema_snapshot TEXT DEFAULT '{}',
+                schema_annotations TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bi_datasources_tenant ON bi_datasources(tenant_id)")
+
+        # === Knowledge Base: 文档集合表 ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS document_collections (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_collections_tenant ON document_collections(tenant_id)")
+
+        # === Knowledge Base: 文档文件表 ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS document_files (
+                id TEXT PRIMARY KEY,
+                collection_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_path TEXT,
+                file_type TEXT,
+                chunk_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (collection_id) REFERENCES document_collections(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_files_collection ON document_files(collection_id)")
+
         conn.commit()
 
-    def create_session(self, user_id: str = "default", title: str = "New Session") -> Session:
+    def create_session(
+        self,
+        user_id: str = "default",
+        title: str = "New Session",
+        tenant_id: str = "default",
+    ) -> Session:
         session_id = str(uuid.uuid4())
         now = get_local_now()
 
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (session_id, "default", user_id, title, now, now, None)
+            """
+            INSERT INTO sessions (id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, "default", user_id, tenant_id, title, now, now, None),
         )
         conn.commit()
 
-        return Session(id=session_id, user_id=user_id, title=title, created_at=now, updated_at=now)
+        return Session(
+            id=session_id,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            title=title,
+            created_at=now,
+            updated_at=now,
+        )
 
-    def get_session(self, session_id: str) -> Optional[Session]:
+    def get_session(self, session_id: str, tenant_id: str = "default") -> Optional[Session]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute(
+            """
+            SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary
+            FROM sessions
+            WHERE id = ? AND tenant_id = ?
+            """,
+            (session_id, tenant_id),
+        )
         row = cursor.fetchone()
 
         if row:
@@ -396,10 +591,11 @@ class Database:
                 id=row[0],
                 agent_id=row[1],
                 user_id=row[2],
-                title=row[3],
-                created_at=datetime.fromisoformat(row[4]),
-                updated_at=datetime.fromisoformat(row[5]),
-                summary=row[6]
+                tenant_id=row[3],
+                title=row[4],
+                created_at=_parse_db_datetime(row[5]),
+                updated_at=_parse_db_datetime(row[6]),
+                summary=row[7],
             )
         return None
 
@@ -437,18 +633,29 @@ class Database:
                 session_id=row[1],
                 role=row[2],
                 content=row[3],
-                timestamp=datetime.fromisoformat(row[4])
+                timestamp=_parse_db_datetime(row[4])
             ))
 
         return messages
 
-    def list_sessions(self, user_id: str = "default", limit: int = 50) -> List[Session]:
+    def list_sessions(
+        self,
+        user_id: str = "default",
+        tenant_id: str = "default",
+        limit: int = 50,
+    ) -> List[Session]:
         """按 updated_at 倒序返回会话列表"""
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
-            (user_id, limit),
+            """
+            SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary
+            FROM sessions
+            WHERE user_id = ? AND tenant_id = ?
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (user_id, tenant_id, limit),
         )
         sessions = []
         for row in cursor.fetchall():
@@ -456,36 +663,37 @@ class Database:
                 id=row[0],
                 agent_id=row[1],
                 user_id=row[2],
-                title=row[3],
-                created_at=datetime.fromisoformat(row[4]) if isinstance(row[4], str) else row[4],
-                updated_at=datetime.fromisoformat(row[5]) if isinstance(row[5], str) else row[5],
-                summary=row[6],
+                tenant_id=row[3],
+                title=row[4],
+                created_at=_parse_db_datetime(row[5]),
+                updated_at=_parse_db_datetime(row[6]),
+                summary=row[7],
             ))
         return sessions
 
-    def delete_session(self, session_id: str) -> bool:
+    def delete_session(self, session_id: str, tenant_id: str = "default") -> bool:
         """删除会话及关联消息"""
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute("SELECT id FROM sessions WHERE id = ? AND tenant_id = ?", (session_id, tenant_id))
         if not cursor.fetchone():
             return False
         cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-        cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute("DELETE FROM sessions WHERE id = ? AND tenant_id = ?", (session_id, tenant_id))
         conn.commit()
         return True
 
-    def update_session_title(self, session_id: str, title: str) -> bool:
+    def update_session_title(self, session_id: str, title: str, tenant_id: str = "default") -> bool:
         """更新会话标题"""
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute("SELECT id FROM sessions WHERE id = ? AND tenant_id = ?", (session_id, tenant_id))
         if not cursor.fetchone():
             return False
         now = get_local_now()
         cursor.execute(
-            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
-            (title, now, session_id),
+            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
+            (title, now, session_id, tenant_id),
         )
         conn.commit()
         return True
@@ -496,7 +704,8 @@ class Database:
         category: str = "general",
         importance: float = 0.5,
         embedding: bytes = None,
-        source: str = "conversation"
+        source: str = "conversation",
+        tenant_id: str = "default",
     ) -> Memory:
         memory_id = str(uuid.uuid4())
         now = get_local_now()
@@ -504,8 +713,12 @@ class Database:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO memories (id, content, category, importance, created_at, updated_at, last_accessed, embedding, access_count, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (memory_id, content, category, importance, now, now, None, embedding, 0, source)
+            """
+            INSERT INTO memories
+            (id, tenant_id, content, category, importance, created_at, updated_at, last_accessed, embedding, access_count, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (memory_id, tenant_id, content, category, importance, now, now, None, embedding, 0, source),
         )
 
         cursor.execute(
@@ -519,6 +732,7 @@ class Database:
             id=memory_id,
             content=content,
             category=category,
+            tenant_id=tenant_id,
             importance=importance,
             created_at=now,
             updated_at=now
@@ -536,7 +750,7 @@ class Database:
                 return True
         return False
 
-    def search_memories(self, query: str, limit: int = 5) -> List[Memory]:
+    def search_memories(self, query: str, limit: int = 5, tenant_id: str = "default") -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
 
@@ -550,19 +764,19 @@ class Database:
         if safe_query:
             try:
                 cursor.execute("""
-                    SELECT m.id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
+                    SELECT m.id, m.tenant_id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
                     FROM memories m
                     JOIN memories_fts fts ON m.rowid = fts.rowid
-                    WHERE memories_fts MATCH ?
+                    WHERE memories_fts MATCH ? AND m.tenant_id = ?
                     ORDER BY rank
                     LIMIT ?
-                """, (safe_query, limit))
+                """, (safe_query, tenant_id, limit))
                 for row in cursor.fetchall():
                     memories.append(Memory(
-                        id=row[0], content=row[1], category=row[2],
-                        importance=row[3], created_at=datetime.fromisoformat(row[4]),
-                        updated_at=datetime.fromisoformat(row[5]),
-                        last_accessed=datetime.fromisoformat(row[6]) if row[6] else None,
+                        id=row[0], tenant_id=row[1], content=row[2], category=row[3],
+                        importance=row[4], created_at=datetime.fromisoformat(row[5]),
+                        updated_at=datetime.fromisoformat(row[6]),
+                        last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
                     ))
             except sqlite3.OperationalError:
                 pass
@@ -571,15 +785,15 @@ class Database:
         if not memories and has_cjk:
             try:
                 cursor.execute("""
-                    SELECT id, content, category, importance, created_at, updated_at, last_accessed
-                    FROM memories WHERE content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
-                """, (f"%{query}%", limit))
+                    SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
+                    FROM memories WHERE tenant_id = ? AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
+                """, (tenant_id, f"%{query}%", limit))
                 for row in cursor.fetchall():
                     memories.append(Memory(
-                        id=row[0], content=row[1], category=row[2],
-                        importance=row[3], created_at=datetime.fromisoformat(row[4]),
-                        updated_at=datetime.fromisoformat(row[5]),
-                        last_accessed=datetime.fromisoformat(row[6]) if row[6] else None,
+                        id=row[0], tenant_id=row[1], content=row[2], category=row[3],
+                        importance=row[4], created_at=datetime.fromisoformat(row[5]),
+                        updated_at=datetime.fromisoformat(row[6]),
+                        last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
                     ))
             except sqlite3.OperationalError:
                 pass
@@ -588,15 +802,15 @@ class Database:
         if not memories:
             try:
                 cursor.execute("""
-                    SELECT id, content, category, importance, created_at, updated_at, last_accessed
-                    FROM memories WHERE content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
-                """, (f"%{query}%", limit))
+                    SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
+                    FROM memories WHERE tenant_id = ? AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
+                """, (tenant_id, f"%{query}%", limit))
                 for row in cursor.fetchall():
                     memories.append(Memory(
-                        id=row[0], content=row[1], category=row[2],
-                        importance=row[3], created_at=datetime.fromisoformat(row[4]),
-                        updated_at=datetime.fromisoformat(row[5]),
-                        last_accessed=datetime.fromisoformat(row[6]) if row[6] else None,
+                        id=row[0], tenant_id=row[1], content=row[2], category=row[3],
+                        importance=row[4], created_at=datetime.fromisoformat(row[5]),
+                        updated_at=datetime.fromisoformat(row[6]),
+                        last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
                     ))
             except sqlite3.OperationalError:
                 pass
@@ -606,56 +820,59 @@ class Database:
 
         return memories
 
-    def get_memories_by_category(self, category: str, limit: int = 10) -> List[Memory]:
+    def get_memories_by_category(self, category: str, limit: int = 10, tenant_id: str = "default") -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, content, category, importance, created_at, updated_at, last_accessed
+            SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
             FROM memories
-            WHERE category = ?
+            WHERE tenant_id = ? AND category = ?
             ORDER BY importance DESC, updated_at DESC
             LIMIT ?
-        """, (category, limit))
+        """, (tenant_id, category, limit))
 
         memories = []
         for row in cursor.fetchall():
             memories.append(Memory(
                 id=row[0],
-                content=row[1],
-                category=row[2],
-                importance=row[3],
-                created_at=datetime.fromisoformat(row[4]),
-                updated_at=datetime.fromisoformat(row[5]),
-                last_accessed=datetime.fromisoformat(row[6]) if row[6] else None
+                tenant_id=row[1],
+                content=row[2],
+                category=row[3],
+                importance=row[4],
+                created_at=datetime.fromisoformat(row[5]),
+                updated_at=datetime.fromisoformat(row[6]),
+                last_accessed=datetime.fromisoformat(row[7]) if row[7] else None
             ))
 
         return memories
 
-    def get_recent_memories(self, limit: int = 20) -> List[Memory]:
+    def get_recent_memories(self, limit: int = 20, tenant_id: str = "default") -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, content, category, importance, created_at, updated_at, last_accessed
+            SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
             FROM memories
+            WHERE tenant_id = ?
             ORDER BY updated_at DESC
             LIMIT ?
-        """, (limit,))
+        """, (tenant_id, limit))
 
         memories = []
         for row in cursor.fetchall():
             memories.append(Memory(
                 id=row[0],
-                content=row[1],
-                category=row[2],
-                importance=row[3],
-                created_at=datetime.fromisoformat(row[4]),
-                updated_at=datetime.fromisoformat(row[5]),
-                last_accessed=datetime.fromisoformat(row[6]) if row[6] else None
+                tenant_id=row[1],
+                content=row[2],
+                category=row[3],
+                importance=row[4],
+                created_at=datetime.fromisoformat(row[5]),
+                updated_at=datetime.fromisoformat(row[6]),
+                last_accessed=datetime.fromisoformat(row[7]) if row[7] else None
             ))
 
         return memories
 
-    def update_memory(self, memory_id: str, content: str, importance: float = None):
+    def update_memory(self, memory_id: str, content: str, importance: float = None, tenant_id: str = "default"):
         now = get_local_now()
 
         conn = self._get_conn()
@@ -665,24 +882,24 @@ class Database:
             cursor.execute("""
                 UPDATE memories
                 SET content = ?, importance = ?, updated_at = ?
-                WHERE id = ?
-            """, (content, importance, now, memory_id))
+                WHERE id = ? AND tenant_id = ?
+            """, (content, importance, now, memory_id, tenant_id))
         else:
             cursor.execute("""
                 UPDATE memories
                 SET content = ?, updated_at = ?
-                WHERE id = ?
-            """, (content, now, memory_id))
+                WHERE id = ? AND tenant_id = ?
+            """, (content, now, memory_id, tenant_id))
 
         cursor.execute("""
             UPDATE memories_fts
             SET content = ?
-            WHERE rowid = (SELECT rowid FROM memories WHERE id = ?)
-        """, (content, memory_id))
+            WHERE rowid = (SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?)
+        """, (content, memory_id, tenant_id))
 
         conn.commit()
 
-    def reinforce_memory(self, memory_id: str, importance_delta: float = 0.02):
+    def reinforce_memory(self, memory_id: str, importance_delta: float = 0.02, tenant_id: str = "default"):
         """命中召回：access_count+1, last_accessed=now, importance 微增"""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -693,33 +910,37 @@ class Database:
             SET access_count = COALESCE(access_count, 0) + 1,
                 last_accessed = ?,
                 importance = MIN(1.0, COALESCE(importance, 0.5) + ?)
-            WHERE id = ?
+            WHERE id = ? AND tenant_id = ?
             """,
-            (now, importance_delta, memory_id),
+            (now, importance_delta, memory_id, tenant_id),
         )
         conn.commit()
 
-    def get_all_memories_with_metadata(self):
+    def get_all_memories_with_metadata(self, tenant_id: str = "default"):
         """返回 (Memory, embedding_blob, last_accessed_iso, importance, source) 列表"""
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, content, category, importance, created_at, updated_at, embedding, last_accessed, source FROM memories"
+            """
+            SELECT id, tenant_id, content, category, importance, created_at, updated_at, embedding, last_accessed, source
+            FROM memories WHERE tenant_id = ?
+            """,
+            (tenant_id,),
         )
         results = []
         for row in cursor.fetchall():
             mem = Memory(
-                id=row[0], content=row[1], category=row[2], importance=row[3],
-                created_at=row[4], updated_at=row[5],
+                id=row[0], tenant_id=row[1], content=row[2], category=row[3], importance=row[4],
+                created_at=row[5], updated_at=row[6],
             )
-            last_accessed_str = str(row[7]) if row[7] else (str(row[4]) if row[4] else "")
-            results.append((mem, row[6], last_accessed_str, row[3] or 0.5, row[8] or "conversation"))
+            last_accessed_str = str(row[8]) if row[8] else (str(row[5]) if row[5] else "")
+            results.append((mem, row[7], last_accessed_str, row[4] or 0.5, row[9] or "conversation"))
         return results
 
-    def delete_memory(self, memory_id: str):
+    def delete_memory(self, memory_id: str, tenant_id: str = "default"):
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+        cursor.execute("DELETE FROM memories WHERE id = ? AND tenant_id = ?", (memory_id, tenant_id))
         conn.commit()
 
     def decay_importance(self):
@@ -756,11 +977,14 @@ class Database:
         conn.commit()
         return deleted
 
-    def forget_core_line(self, block: str, line_contains: str) -> bool:
+    def forget_core_line(self, block: str, line_contains: str, tenant_id: str = "default") -> bool:
         """从 core memory 区块中删除匹配的行"""
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT content FROM core_memory_blocks WHERE name = ?", (block,))
+        cursor.execute(
+            "SELECT content FROM core_memory_blocks WHERE name = ? AND tenant_id = ?",
+            (block, tenant_id),
+        )
         row = cursor.fetchone()
         if not row:
             return False
@@ -772,11 +996,39 @@ class Database:
         new_content = "\n".join(new_lines)
         now = get_local_now().isoformat()
         cursor.execute(
-            "UPDATE core_memory_blocks SET content = ?, updated_at = ? WHERE name = ?",
-            (new_content, now, block),
+            "UPDATE core_memory_blocks SET content = ?, updated_at = ? WHERE name = ? AND tenant_id = ?",
+            (new_content, now, block, tenant_id),
         )
         conn.commit()
         return True
+
+    def get_document_file(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at FROM document_files WHERE id = ?",
+            (doc_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "collection_id": row[1],
+            "file_name": row[2],
+            "file_path": row[3],
+            "file_type": row[4],
+            "chunk_count": row[5],
+            "status": row[6],
+            "created_at": row[7],
+        }
+
+    def delete_document_file(self, doc_id: str) -> bool:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM document_files WHERE id = ?", (doc_id,))
+        conn.commit()
+        return cursor.rowcount > 0
 
     def _update_memory_access(self, memory_id: str):
         now = get_local_now()
@@ -809,6 +1061,47 @@ class Database:
         return results
 
     # ============ CronJob 定时任务方法 ============
+    def _parse_datetime(self, value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(value)
+
+    def _row_to_cronjob(self, row) -> CronJob:
+        return CronJob(
+            id=row[0],
+            user_id=row[1],
+            name=row[2],
+            description=row[3],
+            cron_expression=row[4],
+            task_type=row[5],
+            task_config=row[6],
+            enabled=bool(row[7]),
+            created_at=self._parse_datetime(row[8]),
+            updated_at=self._parse_datetime(row[9]),
+            last_run=self._parse_datetime(row[10]),
+            next_run=self._parse_datetime(row[11]),
+        )
+
+    def _row_to_reminder_notification(self, row) -> ReminderNotification:
+        return ReminderNotification(
+            id=row[0],
+            user_id=row[1],
+            job_id=row[2],
+            session_id=row[3],
+            task_name=row[4],
+            message=row[5],
+            delivery_status=row[6],
+            error_message=row[7],
+            summary_logs=json.loads(row[8] or "[]"),
+            is_read=bool(row[9]),
+            triggered_at=self._parse_datetime(row[10]),
+            read_at=self._parse_datetime(row[11]),
+            created_at=self._parse_datetime(row[12]),
+            updated_at=self._parse_datetime(row[13]),
+        )
+
     def create_cronjob(
         self,
         user_id: str,
@@ -851,43 +1144,30 @@ class Database:
         row = cursor.fetchone()
 
         if row:
-            return CronJob(
-                id=row[0],
-                user_id=row[1],
-                name=row[2],
-                description=row[3],
-                cron_expression=row[4],
-                task_type=row[5],
-                task_config=row[6],
-                enabled=bool(row[7]),
-                created_at=datetime.fromisoformat(row[8]),
-                updated_at=datetime.fromisoformat(row[9]),
-                last_run=datetime.fromisoformat(row[10]) if row[10] else None,
-                next_run=datetime.fromisoformat(row[11]) if row[11] else None
-            )
+            return self._row_to_cronjob(row)
         return None
 
     def get_user_cronjobs(self, user_id: str) -> List[CronJob]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM cronjobs WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            "SELECT * FROM cronjobs WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        )
 
         cronjobs = []
         for row in cursor.fetchall():
-            cronjobs.append(CronJob(
-                id=row[0],
-                user_id=row[1],
-                name=row[2],
-                description=row[3],
-                cron_expression=row[4],
-                task_type=row[5],
-                task_config=row[6],
-                enabled=bool(row[7]),
-                created_at=datetime.fromisoformat(row[8]),
-                updated_at=datetime.fromisoformat(row[9]),
-                last_run=datetime.fromisoformat(row[10]) if row[10] else None,
-                next_run=datetime.fromisoformat(row[11]) if row[11] else None
-            ))
+            cronjobs.append(self._row_to_cronjob(row))
+        return cronjobs
+
+    def get_enabled_cronjobs(self) -> List[CronJob]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM cronjobs WHERE enabled = 1")
+
+        cronjobs = []
+        for row in cursor.fetchall():
+            cronjobs.append(self._row_to_cronjob(row))
         return cronjobs
 
     def update_cronjob(self, cronjob_id: str, **kwargs):
@@ -925,33 +1205,191 @@ class Database:
         cursor.execute("DELETE FROM cronjobs WHERE id = ?", (cronjob_id,))
         conn.commit()
 
+    def create_reminder_notification(
+        self,
+        user_id: str,
+        job_id: str,
+        session_id: Optional[str],
+        task_name: str,
+        message: str,
+        delivery_status: str,
+        error_message: Optional[str] = None,
+        summary_logs: Optional[List[Dict[str, Any]]] = None,
+        triggered_at: Optional[datetime] = None,
+    ) -> ReminderNotification:
+        notification_id = str(uuid.uuid4())
+        now = get_local_now()
+        triggered = triggered_at or now
+
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO reminder_notifications (
+                id, user_id, job_id, session_id, task_name, message, delivery_status,
+                error_message, summary_logs, is_read, triggered_at, read_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                notification_id,
+                user_id,
+                job_id,
+                session_id,
+                task_name,
+                message,
+                delivery_status,
+                error_message,
+                json.dumps(summary_logs or [], ensure_ascii=False),
+                0,
+                triggered.isoformat(),
+                None,
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+        conn.commit()
+
+        return ReminderNotification(
+            id=notification_id,
+            user_id=user_id,
+            job_id=job_id,
+            session_id=session_id,
+            task_name=task_name,
+            message=message,
+            delivery_status=delivery_status,
+            error_message=error_message,
+            summary_logs=summary_logs or [],
+            is_read=False,
+            triggered_at=triggered,
+            read_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+
+    def list_reminder_notifications(
+        self,
+        user_id: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> List[ReminderNotification]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM reminder_notifications
+            WHERE user_id = ?
+            ORDER BY triggered_at DESC, created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (user_id, limit, offset),
+        )
+        return [self._row_to_reminder_notification(row) for row in cursor.fetchall()]
+
+    def count_reminder_notifications(self, user_id: str) -> int:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM reminder_notifications WHERE user_id = ?",
+            (user_id,),
+        )
+        return int(cursor.fetchone()[0])
+
+    def count_unread_reminder_notifications(self, user_id: str) -> int:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM reminder_notifications WHERE user_id = ? AND is_read = 0",
+            (user_id,),
+        )
+        return int(cursor.fetchone()[0])
+
+    def get_reminder_notification(self, notification_id: str) -> Optional[ReminderNotification]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM reminder_notifications WHERE id = ?",
+            (notification_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_reminder_notification(row)
+        return None
+
+    def mark_reminder_notification_read(self, notification_id: str) -> Optional[ReminderNotification]:
+        notification = self.get_reminder_notification(notification_id)
+        if not notification:
+            return None
+        if notification.is_read:
+            return notification
+
+        now = get_local_now().isoformat()
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE reminder_notifications
+            SET is_read = 1, read_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (now, now, notification_id),
+        )
+        conn.commit()
+        return self.get_reminder_notification(notification_id)
+
+    def get_latest_reminder_notification_for_job(
+        self,
+        job_id: str,
+    ) -> Optional[ReminderNotification]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM reminder_notifications
+            WHERE job_id = ?
+            ORDER BY triggered_at DESC, created_at DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_reminder_notification(row)
+        return None
+
     # ============ v2.2 Working Context ============
 
-    def get_working_context(self, session_id: str) -> dict:
+    def get_working_context(self, session_id: str, tenant_id: str = "default") -> dict:
         conn = self._get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM working_contexts WHERE session_id = ?", (session_id,))
+        cur.execute(
+            "SELECT * FROM working_contexts WHERE tenant_id = ? AND session_id = ?",
+            (tenant_id, session_id),
+        )
         row = cur.fetchone()
         if not row:
             return {}
         import json
         return {
-            "session_id": row[0],
-            "focus_entities": json.loads(row[1] or "[]"),
-            "current_intent": row[2] or "unknown",
-            "intent_confidence": row[3] or 0,
-            "open_threads": json.loads(row[4] or "[]"),
-            "active_skills": json.loads(row[5] or "[]"),
-            "last_scene_snapshot": json.loads(row[6] or "{}"),
-            "updated_at": row[7],
+            "tenant_id": row[0],
+            "session_id": row[1],
+            "focus_entities": json.loads(row[2] or "[]"),
+            "current_intent": row[3] or "unknown",
+            "intent_confidence": row[4] or 0,
+            "open_threads": json.loads(row[5] or "[]"),
+            "active_skills": json.loads(row[6] or "[]"),
+            "last_scene_snapshot": json.loads(row[7] or "{}"),
+            "updated_at": row[8],
         }
 
-    def upsert_working_context(self, session_id: str, **kwargs):
+    def upsert_working_context(self, session_id: str, tenant_id: str = "default", **kwargs):
         conn = self._get_conn()
         cur = conn.cursor()
         import json
         now = get_local_now().isoformat()
-        cur.execute("SELECT session_id FROM working_contexts WHERE session_id = ?", (session_id,))
+        cur.execute(
+            "SELECT session_id FROM working_contexts WHERE tenant_id = ? AND session_id = ?",
+            (tenant_id, session_id),
+        )
         exists = cur.fetchone()
         if exists:
             sets = []
@@ -963,12 +1401,15 @@ class Database:
                     sets.append(f"{k} = ?")
                     vals.append(json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v)
             sets.append("updated_at = ?"); vals.append(now)
-            vals.append(session_id)
-            cur.execute(f"UPDATE working_contexts SET {', '.join(sets)} WHERE session_id = ?", vals)
+            vals.extend([tenant_id, session_id])
+            cur.execute(
+                f"UPDATE working_contexts SET {', '.join(sets)} WHERE tenant_id = ? AND session_id = ?",
+                vals,
+            )
         else:
             cur.execute(
-                "INSERT INTO working_contexts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (session_id,
+                "INSERT INTO working_contexts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (tenant_id, session_id,
                  json.dumps(kwargs.get("focus_entities", []), ensure_ascii=False),
                  kwargs.get("current_intent", "unknown"),
                  kwargs.get("intent_confidence", 0),
@@ -979,11 +1420,17 @@ class Database:
             )
         conn.commit()
 
-    def cleanup_working_contexts(self, max_age_hours: int = 72):
+    def cleanup_working_contexts(self, max_age_hours: int = 72, tenant_id: str | None = None):
         conn = self._get_conn()
         cur = conn.cursor()
         cutoff = (get_local_now() - timedelta(hours=max_age_hours)).isoformat()
-        cur.execute("DELETE FROM working_contexts WHERE updated_at < ?", (cutoff,))
+        if tenant_id is None:
+            cur.execute("DELETE FROM working_contexts WHERE updated_at < ?", (cutoff,))
+        else:
+            cur.execute(
+                "DELETE FROM working_contexts WHERE tenant_id = ? AND updated_at < ?",
+                (tenant_id, cutoff),
+            )
         conn.commit()
 
     def add_dead_letter(self, op: str, error: str, session_id: str = None):

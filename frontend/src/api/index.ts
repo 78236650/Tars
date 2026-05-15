@@ -14,6 +14,14 @@ import type {
   ModelsOverviewResponse,
   ModelSwitchBody,
   ModelSwitchResult,
+  DataSource,
+  BIQueryResult,
+  BIChartResult,
+  ReminderNotification,
+  ReminderNotificationListData,
+  KnowledgeCollection,
+  KnowledgeDocument,
+  KnowledgeSearchResult,
 } from '@/types'
 
 const api = axios.create({
@@ -211,5 +219,124 @@ export const sessionsApi = {
 
   updateTitle: async (id: string, title: string): Promise<void> => {
     await api.patch(`/sessions/${id}`, { title })
+  },
+}
+
+export const reminderNotificationsApi = {
+  list: async (params?: { limit?: number; offset?: number }): Promise<ReminderNotificationListData> => {
+    const response = await api.get<ApiResponse<ReminderNotificationListData>>('/reminder-notifications', { params })
+    return response.data.data as ReminderNotificationListData
+  },
+
+  getDetail: async (id: string): Promise<ReminderNotification> => {
+    const response = await api.get<ApiResponse<ReminderNotification>>(`/reminder-notifications/${id}`)
+    return response.data.data as ReminderNotification
+  },
+
+  markRead: async (id: string): Promise<ReminderNotification> => {
+    const response = await api.post<ApiResponse<ReminderNotification>>(`/reminder-notifications/${id}/read`)
+    return response.data.data as ReminderNotification
+  },
+}
+
+// ========= BI Analytics API =========
+
+export const biApi = {
+  listDataSources: async (): Promise<{ datasources: DataSource[] }> => {
+    const response = await api.get('/datasources/')
+    return response.data
+  },
+
+  getDataSource: async (id: string): Promise<DataSource> => {
+    const response = await api.get(`/datasources/${id}`)
+    return response.data
+  },
+
+  createDataSource: async (data: { name: string; db_type: string; connection_url: string }): Promise<{ success: boolean; datasource: DataSource }> => {
+    const response = await api.post('/datasources/', data)
+    return response.data
+  },
+
+  updateDataSource: async (id: string, data: Partial<{ name: string; db_type: string; connection_url: string }>): Promise<{ success: boolean; datasource: DataSource }> => {
+    const response = await api.put(`/datasources/${id}`, data)
+    return response.data
+  },
+
+  deleteDataSource: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/datasources/${id}`)
+    return response.data
+  },
+
+  testConnection: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/datasources/${id}/test`)
+    return response.data
+  },
+
+  refreshSchema: async (id: string): Promise<{ success: boolean; schema_snapshot: Record<string, any> }> => {
+    const response = await api.post(`/datasources/${id}/refresh-schema`)
+    return response.data
+  },
+
+  updateAnnotations: async (id: string, annotations: Record<string, any>): Promise<{ success: boolean; schema_annotations: Record<string, any> }> => {
+    const response = await api.put(`/datasources/${id}/annotations`, { annotations })
+    return response.data
+  },
+
+  executeQuery: async (id: string, sql: string): Promise<BIQueryResult> => {
+    const response = await api.post(`/datasources/${id}/query`, { sql })
+    return response.data
+  },
+
+  generateChart: async (id: string, sql: string, chart_type?: string, user_question?: string): Promise<BIChartResult> => {
+    const response = await api.post(`/datasources/${id}/chart`, { sql, chart_type, user_question })
+    return response.data
+  },
+}
+
+// ========= Knowledge Base API =========
+
+export const knowledgeApi = {
+  listCollections: async (): Promise<{ collections: KnowledgeCollection[] }> => {
+    const response = await api.get('/knowledge/collections')
+    return response.data
+  },
+
+  createCollection: async (data: { name: string; description?: string }): Promise<{ success: boolean; collection: KnowledgeCollection }> => {
+    const response = await api.post('/knowledge/collections', data)
+    return response.data
+  },
+
+  deleteCollection: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/knowledge/collections/${id}`)
+    return response.data
+  },
+
+  listDocuments: async (collectionId: string): Promise<{ documents: KnowledgeDocument[] }> => {
+    const response = await api.get(`/knowledge/collections/${collectionId}/documents`)
+    return response.data
+  },
+
+  uploadDocument: async (collectionId: string, file: File): Promise<{ success: boolean; document: KnowledgeDocument }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post(`/knowledge/collections/${collectionId}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
+  deleteDocument: async (collectionId: string, docId: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/knowledge/collections/${collectionId}/documents/${docId}`)
+    return response.data
+  },
+
+  search: async (query: string, collectionIds?: string[], top_k?: number): Promise<{ query: string; results: KnowledgeSearchResult[]; total: number }> => {
+    const response = await api.post('/knowledge/search', { query, collection_ids: collectionIds, top_k })
+    return response.data
+  },
+
+  queryCollection: async (collectionId: string, query: string, top_k?: number): Promise<{ query: string; collection_id: string; results: KnowledgeSearchResult[]; total: number }> => {
+    const response = await api.post(`/knowledge/collections/${collectionId}/query`, { query, top_k })
+    return response.data
   },
 }

@@ -1,25 +1,38 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
+import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
-import TaskCard from '@/components/chat/TaskCard.vue'
+import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
+import ReminderNotificationsDrawer from '@/components/chat/ReminderNotificationsDrawer.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 
 const router = useRouter()
-const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
+const reminderNotificationsStore = useReminderNotificationsStore()
 const wsStore = useWsStore()
 const { t } = useI18n()
-const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[] }[]>([])
+const { unreadCount, isDrawerOpen } = storeToRefs(reminderNotificationsStore)
+const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[], thinking?: any }[]>([])
 const inputMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+const openReminderNotifications = async () => {
+  try {
+    await reminderNotificationsStore.openDrawer()
+  } catch {}
+}
+
+const closeReminderNotifications = () => {
+  reminderNotificationsStore.closeDrawer()
+}
 
 const autoResize = () => {
   const el = inputRef.value
@@ -59,7 +72,7 @@ const setupWsHandler = () => {
   wsStore.connect()
 
   const wsHandler = {
-    onMessage: (data: any) => {
+    onMessage: async (data: any) => {
 
     if (data.type === 'text_chunk') {
       wsStore.isGenerating = true
@@ -73,12 +86,8 @@ const setupWsHandler = () => {
         lastMsg.content += data.content
       }
     } else if (data.type === 'tool_calling') {
-      // v2.6.1: 工具调用已转为 thinking_step，这里仅保留日志
-      console.log('[ChatView] 工具调用:', data.tool, data.parameters)
     } else if (data.type === 'tool_result') {
-      // v2.6.1: 工具结果已转为 thinking_step with detail，不再创建独立消息
       wsStore.isGenerating = true
-      console.log('[ChatView] 工具结果:', data.tool, data.success ? '✓' : '✕')
     } else if (data.type === 'warning') {
       messages.value.push({
         id: Date.now().toString() + '_warn',
@@ -86,6 +95,23 @@ const setupWsHandler = () => {
         content: `⚠️ ${data.message}`,
         timestamp: data.timestamp
       })
+    } else if (data.type === 'cron_reminder') {
+      const shouldShowInChat = !(
+        chatStore.currentSessionId &&
+        data.session_id &&
+        data.session_id !== chatStore.currentSessionId
+      )
+      if (shouldShowInChat) {
+        messages.value.push({
+          id: `${Date.now()}_cron_reminder`,
+          role: 'system',
+          content: `⏰ ${data.message}`,
+          timestamp: data.timestamp
+        })
+      }
+      try {
+        await reminderNotificationsStore.refreshAfterRealtimeReminder()
+      } catch {}
     } else if (data.type === 'file_processing') {
       // 可选：显示文件处理中状态
     } else if (data.type === 'thinking_start') {
@@ -367,6 +393,9 @@ onMounted(async () => {
   if (chatStore.currentSessionId) {
     await loadSessionMessages(chatStore.currentSessionId)
   }
+  try {
+    await reminderNotificationsStore.loadList()
+  } catch {}
   document.addEventListener('keydown', handleKeydown)
 })
 
@@ -401,6 +430,7 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs text-slate-500">{{ settingsStore.currentModel || '' }}</span>
+          <ReminderBellButton :unread-count="unreadCount" @open="openReminderNotifications" />
 
           <button @click="router.push('/settings')" class="p-2 rounded-lg hover:bg-slate-700 transition-colors" title="设置">
             <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -495,5 +525,6 @@ onUnmounted(() => {
         </div>
       </footer>
     </main>
+    <ReminderNotificationsDrawer :open="isDrawerOpen" @close="closeReminderNotifications" />
   </div>
 </template>

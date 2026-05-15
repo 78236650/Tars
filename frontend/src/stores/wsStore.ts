@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { resolveWebSocketUrl } from '@/utils/websocket'
 
 export interface WsEventHandler {
   onMessage?: (data: any) => void
@@ -32,7 +33,7 @@ export const useWsStore = defineStore('ws', () => {
   const connect = () => {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) return
 
-    ws.value = new WebSocket(`ws://localhost:8000/ws`)
+    ws.value = new WebSocket(resolveWebSocketUrl())
 
     ws.value.onopen = () => {
       isConnected.value = true
@@ -43,7 +44,13 @@ export const useWsStore = defineStore('ws', () => {
     }
 
     ws.value.onmessage = (event) => {
-      const data = JSON.parse(event.data)
+      let data: any
+      try {
+        data = JSON.parse(event.data)
+      } catch {
+        console.warn('[ws] 非 JSON 消息已忽略:', String(event.data).slice(0, 200))
+        return
+      }
 
       if (data.type === 'text_chunk' || data.type === 'generation_start' || data.type === 'tool_calling' || data.type === 'tool_result' || data.type === 'thinking_start' || data.type === 'thinking_step') {
         isGenerating.value = true
@@ -128,6 +135,8 @@ export const useWsStore = defineStore('ws', () => {
   const send = (payload: any) => {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) {
       ws.value.send(JSON.stringify(payload))
+    } else {
+      console.warn('[ws] 消息未发送：WebSocket 未连接', payload?.session_id)
     }
   }
 

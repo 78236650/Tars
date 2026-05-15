@@ -35,6 +35,7 @@ class LLMProvider(ABC):
         temperature: float = 0.7,
         max_tokens: int | None = None,
         tools: List[Dict] | None = None,
+        response_format: Dict[str, Any] | None = None,
         **kwargs
     ) -> ModelResponse | AsyncGenerator[str, None]:
         """

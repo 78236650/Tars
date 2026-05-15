@@ -16,7 +16,7 @@ from tars.agent.agent import AgentV2
 from tars.database import Database, UserStore
 from tars.gateway.permission import PermissionManager, UserRole
 from tars.evolution import EvolutionManager
-from tars.scheduler import init_scheduler, shutdown_scheduler
+from tars.scheduler import init_scheduler, shutdown_scheduler, get_scheduler
 from tars.models.config import router as model_config_router
 
 # 新的工具/技能/SkillHub 系统
@@ -30,7 +30,7 @@ from tars.tools.builtin.web_fetch import WebFetchTool
 from tars.tools.builtin.python_exec import PythonExecTool
 from tars.memory.archival_insert_tool import ArchivalInsertTool
 from tars.tools.sandbox import WorkspaceSandbox
-from tars.skills import skill_registry, SkillLoader
+from tars.skills import skill_registry, SkillLoader, PipelineLoader, SkillPipelineEngine, SkillPipelineRegistry
 from tars.skillhub import SkillHubClient, SkillInstaller
 from tars.files import FileStorage, FileParser
 from tars.orchestration import TaskPlannerTool, TaskExecutor
@@ -40,9 +40,14 @@ from tars.api.skillhub import router as skillhub_router, init_skillhub_api
 from tars.api.files import router as files_router, init_file_storage
 from tars.api.sessions import router as sessions_router, init_sessions_api
 from tars.api.tasks import router as tasks_router, init_tasks_api
+from tars.api.invoke import router as invoke_router, init_invoke_api
+from tars.api.bi import router as bi_router, init_bi_api
+from tars.api.knowledge import router as knowledge_router, init_knowledge_api
+from tars.tenant import TenantContextCache
+from tars.cron import CronRuntime
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="2.2.0")
+app = FastAPI(title="TARS Agent", version="2.7.0")
 
 # CORS 配置
 app.add_middleware(
@@ -84,7 +89,8 @@ tool_registry.register(ShellTool(sandbox=workspace_sandbox))
 tool_registry.register(ProcessTool())
 tool_registry.register(NetworkTool())
 tool_registry.register(MemoryTool(db=db))
-tool_registry.register(CronJobTool(db=db))
+cronjob_tool = CronJobTool(db=db)
+tool_registry.register(cronjob_tool)
 tool_registry.register(WebSearchTool())
 tool_registry.register(WebFetchTool())
 tool_registry.register(PythonExecTool(workspace_dir=str(project_dir.parent)))
@@ -107,6 +113,11 @@ skill_loader = SkillLoader(
 )
 skill_loader._db = db  # v2.5: 权限数据写入 skills_v3
 skill_loader.load_all()
+
+pipelines_dir = project_dir.parent / "pipelines"
+pipelines_dir.mkdir(exist_ok=True)
+pipeline_registry = SkillPipelineRegistry()
+PipelineLoader(str(pipelines_dir), pipeline_registry).load_all()
 
 # ========= 初始化 SkillHub =========
 skillhub_client = SkillHubClient()
@@ -138,19 +149,42 @@ except Exception as e:
     embedding_provider = None
     print(f"[Startup] 嵌入模型加载失败（语义搜索不可用）: {e}")
 
-memory_manager = MemoryManager(db=db, embedding_provider=embedding_provider)
+from tars.vectorstore import ChromaVectorStore
+
+vector_store = ChromaVectorStore(
+    persist_directory=str(project_dir / "data" / "vectorstore"),
+    embedding_provider=embedding_provider,
+)
+if vector_store.is_available:
+    print("[Startup] Chroma 向量数据库初始化成功")
+else:
+    print("[Startup] Chroma 向量数据库不可用，将使用 SQLite BLOB 回退")
+
+memory_manager = MemoryManager(db=db, embedding_provider=embedding_provider, vector_store=vector_store)
+tenant_context_cache = TenantContextCache(max_size=100)
 
 # 注册 core memory 编辑工具（V3）
 for tool in memory_manager.get_tools():
     tool_registry.register(tool)
 
+# 注册知识库搜索工具
+from tars.tools.builtin.knowledge_search import KnowledgeSearchTool
+from tars.knowledge.retriever import KnowledgeRetriever
+knowledge_retriever = KnowledgeRetriever(vector_store, embedding_provider)
+tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever))
+
 # ========= 初始化 Agent =========
+from tars.reranker.cross_encoder import CrossEncoderReranker
+_reranker = CrossEncoderReranker()
+
 agent = AgentV2(
     db=db, tool_registry=tool_registry, skill_registry=skill_registry,
     file_storage=file_storage, file_parser=file_parser,
     memory_manager=memory_manager,
     task_executor=task_executor,
+    knowledge_retriever=knowledge_retriever,
 )
+agent._reranker = _reranker
 agent.skill_loader = skill_loader
 
 # v2.5: 初始化权限引擎
@@ -170,6 +204,8 @@ for skill in skill_registry.list_all():
 memory_manager.set_provider(agent.provider)
 connection_manager = ConnectionManager()
 connection_manager.set_agent(agent)
+cron_runtime = CronRuntime(db=db, scheduler=get_scheduler(), connection_manager=connection_manager)
+cronjob_tool.set_runtime(cron_runtime)
 
 # ========= 挂载路由 =========
 app.include_router(model_config_router)
@@ -179,8 +215,26 @@ app.include_router(skillhub_router)
 app.include_router(files_router)
 app.include_router(sessions_router)
 app.include_router(tasks_router)
+app.include_router(invoke_router)
+app.include_router(bi_router)
+app.include_router(knowledge_router)
 init_sessions_api(db)
 init_tasks_api(db, agent)
+init_bi_api(db)
+init_knowledge_api(db, vector_store, embedding_provider)
+
+init_invoke_api(
+    agent=agent,
+    tenant_cache=tenant_context_cache,
+    memory_manager=memory_manager,
+    user_store=user_store,
+    pipeline_engine=SkillPipelineEngine(
+        pipeline_registry=pipeline_registry,
+        skill_registry=skill_registry,
+        tool_registry=tool_registry,
+        provider=agent.provider,
+    ),
+)
 
 # ================ API 路由 ================
 
@@ -569,6 +623,51 @@ class CronJobResponse(BaseModel):
     message: str
     data: Optional[Dict[str, Any]] = None
 
+
+def _serialize_reminder_notification(notification, include_logs: bool = True) -> Dict[str, Any]:
+    data = {
+        "id": notification.id,
+        "job_id": notification.job_id,
+        "session_id": notification.session_id,
+        "task_name": notification.task_name,
+        "message": notification.message,
+        "delivery_status": notification.delivery_status,
+        "error_message": notification.error_message,
+        "is_read": notification.is_read,
+        "triggered_at": notification.triggered_at.isoformat() if notification.triggered_at else None,
+        "read_at": notification.read_at.isoformat() if notification.read_at else None,
+        "created_at": notification.created_at.isoformat() if notification.created_at else None,
+        "updated_at": notification.updated_at.isoformat() if notification.updated_at else None,
+    }
+    if include_logs:
+        data["summary_logs"] = notification.summary_logs
+    return data
+
+
+def _serialize_cronjob(job, include_config: bool = False) -> Dict[str, Any]:
+    data = {
+        "id": job.id,
+        "name": job.name,
+        "description": job.description,
+        "cron": job.cron_expression,
+        "task_type": job.task_type,
+        "enabled": job.enabled,
+        "created_at": job.created_at.isoformat(),
+        "last_run": job.last_run.isoformat() if job.last_run else None,
+        "next_run": job.next_run.isoformat() if job.next_run else None,
+        "latest_notification": None,
+    }
+    if include_config:
+        data["task_config"] = json.loads(job.task_config)
+
+    latest_notification = db.get_latest_reminder_notification_for_job(job.id)
+    if latest_notification:
+        data["latest_notification"] = _serialize_reminder_notification(
+            latest_notification,
+            include_logs=False,
+        )
+    return data
+
 @app.get("/api/cronjobs", response_model=CronJobResponse)
 async def get_cronjobs(user_id: str = "default"):
     """获取用户的定时任务列表"""
@@ -577,20 +676,7 @@ async def get_cronjobs(user_id: str = "default"):
         "success": True,
         "message": "success",
         "data": {
-            "jobs": [
-                {
-                    "id": job.id,
-                    "name": job.name,
-                    "description": job.description,
-                    "cron": job.cron_expression,
-                    "task_type": job.task_type,
-                    "enabled": job.enabled,
-                    "created_at": job.created_at.isoformat(),
-                    "last_run": job.last_run.isoformat() if job.last_run else None,
-                    "next_run": job.next_run.isoformat() if job.next_run else None
-                }
-                for job in jobs
-            ],
+            "jobs": [_serialize_cronjob(job) for job in jobs],
             "total": len(jobs)
         }
     }
@@ -605,18 +691,54 @@ async def get_cronjob(job_id: str):
     return {
         "success": True,
         "message": "success",
+        "data": _serialize_cronjob(job, include_config=True)
+    }
+
+
+@app.get("/api/reminder-notifications", response_model=CronJobResponse)
+async def list_reminder_notifications(
+    user_id: str = "default",
+    limit: int = 20,
+    offset: int = 0,
+):
+    notifications = db.list_reminder_notifications(user_id, limit=limit, offset=offset)
+    return {
+        "success": True,
+        "message": "success",
         "data": {
-            "id": job.id,
-            "name": job.name,
-            "description": job.description,
-            "cron": job.cron_expression,
-            "task_type": job.task_type,
-            "task_config": json.loads(job.task_config),
-            "enabled": job.enabled,
-            "created_at": job.created_at.isoformat(),
-            "last_run": job.last_run.isoformat() if job.last_run else None,
-            "next_run": job.next_run.isoformat() if job.next_run else None
-        }
+            "notifications": [
+                _serialize_reminder_notification(notification, include_logs=False)
+                for notification in notifications
+            ],
+            "total": db.count_reminder_notifications(user_id),
+            "unread_total": db.count_unread_reminder_notifications(user_id),
+            "limit": limit,
+            "offset": offset,
+        },
+    }
+
+
+@app.get("/api/reminder-notifications/{notification_id}", response_model=CronJobResponse)
+async def get_reminder_notification(notification_id: str):
+    notification = db.get_reminder_notification(notification_id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="通知不存在")
+    return {
+        "success": True,
+        "message": "success",
+        "data": _serialize_reminder_notification(notification, include_logs=True),
+    }
+
+
+@app.post("/api/reminder-notifications/{notification_id}/read", response_model=CronJobResponse)
+async def mark_reminder_notification_read(notification_id: str):
+    notification = db.mark_reminder_notification_read(notification_id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="通知不存在")
+    return {
+        "success": True,
+        "message": "提醒通知已标记已读",
+        "data": _serialize_reminder_notification(notification, include_logs=True),
     }
 
 @app.post("/api/cronjobs", response_model=CronJobResponse)
@@ -630,6 +752,7 @@ async def create_cronjob(request: CronJobCreateRequest, user_id: str = "default"
         task_config=json.dumps(request.task_config or {}),
         description=request.description
     )
+    await cron_runtime.sync_job(job.id)
     
     return {
         "success": True,
@@ -661,6 +784,7 @@ async def update_cronjob(job_id: str, request: CronJobUpdateRequest):
         update_data["task_config"] = json.dumps(request.task_config)
     
     db.update_cronjob(job_id, **update_data)
+    await cron_runtime.sync_job(job_id)
     
     return {"success": True, "message": "定时任务更新成功"}
 
@@ -672,6 +796,10 @@ async def enable_cronjob(job_id: str, enabled: bool = True):
         raise HTTPException(status_code=404, detail="任务不存在")
     
     db.update_cronjob(job_id, enabled=enabled)
+    if enabled:
+        await cron_runtime.sync_job(job_id)
+    else:
+        cron_runtime.unschedule_job(job_id)
     status = "启用" if enabled else "禁用"
     return {"success": True, "message": f"定时任务{status}成功"}
 
@@ -683,17 +811,21 @@ async def delete_cronjob(job_id: str):
         raise HTTPException(status_code=404, detail="任务不存在")
     
     db.delete_cronjob(job_id)
+    cron_runtime.unschedule_job(job_id)
     return {"success": True, "message": "定时任务删除成功"}
 
 # ================ WebSocket 路由 ================
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def _serve_websocket(websocket: WebSocket, tenant_id: str):
     # 生成唯一的连接 ID
     import uuid
     connection_id = str(uuid.uuid4())
-    
-    await connection_manager.connect(connection_id, websocket)
+    tenant_context = tenant_context_cache.get_or_create(
+        tenant_id or "default",
+        lambda current_tenant: memory_manager.for_tenant(current_tenant),
+    )
+
+    await connection_manager.connect(connection_id, websocket, tenant_context=tenant_context)
     try:
         while True:
             data = await websocket.receive_text()
@@ -709,6 +841,16 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         connection_manager.disconnect(connection_id)
 
+
+@app.websocket("/ws")
+async def websocket_endpoint_default(websocket: WebSocket):
+    await _serve_websocket(websocket, "default")
+
+
+@app.websocket("/ws/{tenant_id}")
+async def websocket_endpoint_tenant(websocket: WebSocket, tenant_id: str):
+    await _serve_websocket(websocket, tenant_id)
+
 # ================ 启动 ================
 
 def init_skills():
@@ -719,6 +861,7 @@ def init_skills():
 async def startup_event():
     """启动事件"""
     await init_scheduler()
+    await cron_runtime.load_from_db()
     # 遗忘清理
     stats = memory_manager.cleanup()
     if stats["decayed"] or stats["deleted"]:

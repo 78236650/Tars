@@ -82,14 +82,23 @@ class EndpointStore:
         params = []
 
         allowed_fields = ["name", "base_url", "api_key", "models", "enabled"]
-        for field in allowed_fields:
-            if field in kwargs:
-                value = kwargs[field]
-                if field == "models":
-                    value = json.dumps(value, ensure_ascii=False)
-                elif field == "enabled":
+        for fname in allowed_fields:
+            if fname in kwargs:
+                value = kwargs[fname]
+                if fname == "models":
+                    if value is None:
+                        raw_list: list = []
+                    elif isinstance(value, list):
+                        raw_list = value
+                    else:
+                        raw_list = [value]
+                    value = json.dumps(
+                        [str(x).strip() for x in raw_list if x is not None and str(x).strip()],
+                        ensure_ascii=False,
+                    )
+                elif fname == "enabled":
                     value = 1 if value else 0
-                updates.append(f"{field} = ?")
+                updates.append(f"{fname} = ?")
                 params.append(value)
 
         if not updates:

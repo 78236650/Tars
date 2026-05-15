@@ -59,6 +59,7 @@ class Reflector:
         self.core = core
         self.archival = archival
         self.db = db
+        self.tenant_id = getattr(core, "tenant_id", "default")
 
     async def reflect(
         self,
@@ -126,7 +127,8 @@ class Reflector:
             attrs = json.loads(row[1] or "{}")
             phase = attrs.get("phase", "")
             cur.execute(
-                "SELECT content FROM memories WHERE category='decision' ORDER BY event_time DESC LIMIT 1"
+                "SELECT content FROM memories WHERE tenant_id = ? AND category='decision' ORDER BY event_time DESC LIMIT 1",
+                (self.tenant_id,),
             )
             dec_row = cur.fetchone()
             current_task = dec_row[0][:40] if dec_row else ""
@@ -182,7 +184,7 @@ class Reflector:
         line_contains = op.get("line_contains", "").strip()
         if block not in BLOCK_NAMES or not line_contains:
             return False
-        return self.core.db.forget_core_line(block, line_contains)
+        return self.core.db.forget_core_line(block, line_contains, tenant_id=self.tenant_id)
 
     def _apply_update_core(self, op: dict) -> bool:
         block = op.get("block", "")
@@ -366,8 +368,11 @@ class Reflector:
         et = event_time or now.isoformat()
         refs_json = json.dumps(entity_refs, ensure_ascii=False) if entity_refs else None
         cur.execute(
-            "INSERT INTO memories(id,content,category,importance,created_at,updated_at,last_accessed,access_count,source,event_time,entity_refs) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (mid, content, category, importance, now, now, None, 0, "conversation", et, refs_json),
+            """
+            INSERT INTO memories(id,tenant_id,content,category,importance,created_at,updated_at,last_accessed,access_count,source,event_time,entity_refs)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (mid, self.tenant_id, content, category, importance, now, now, None, 0, "conversation", et, refs_json),
         )
         try:
             cur.execute("INSERT INTO memories_fts(rowid,content,category) VALUES(last_insert_rowid(),?,?)", (content, category))

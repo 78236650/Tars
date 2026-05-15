@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
@@ -18,6 +19,26 @@ const manualModelsText = ref('')
 const addForm = ref({ name: '', base_url: '', api_key: '' })
 const editForm = ref({ name: '', base_url: '', api_key: '', modelsText: '' })
 const busyEndpointId = ref<string | null>(null)
+
+function formatApiError(e: unknown): string {
+  if (axios.isAxiosError(e)) {
+    const d = e.response?.data as unknown
+    if (typeof d === 'string') return d
+    if (d && typeof d === 'object' && 'detail' in d) {
+      const det = (d as { detail: unknown }).detail
+      if (typeof det === 'string') return det
+      if (Array.isArray(det)) {
+        return det
+          .map((x: { msg?: string; loc?: unknown }) => x?.msg || JSON.stringify(x))
+          .filter(Boolean)
+          .join('; ')
+      }
+    }
+    return e.message || 'Request failed'
+  }
+  if (e instanceof Error) return e.message
+  return String(e)
+}
 
 onMounted(() => {
   settingsStore.loadModels()
@@ -78,8 +99,8 @@ const saveEdit = async () => {
     await settingsStore.updateEndpoint(editingEndpoint.value.id, payload as any)
     toast.success(t('common.success'))
     closeEdit()
-  } catch {
-    toast.error(t('common.error'))
+  } catch (e) {
+    toast.error(formatApiError(e))
   }
 }
 
@@ -97,8 +118,8 @@ const createEndpoint = async () => {
     toast.success(t('modelsPage.endpointCreated'))
     showAddEndpoint.value = false
     addForm.value = { name: '', base_url: '', api_key: '' }
-  } catch {
-    toast.error(t('common.error'))
+  } catch (e) {
+    toast.error(formatApiError(e))
   }
 }
 
@@ -107,8 +128,8 @@ const removeEndpoint = async (id: string) => {
   try {
     await settingsStore.deleteEndpoint(id)
     toast.success(t('common.success'))
-  } catch {
-    toast.error(t('common.error'))
+  } catch (e) {
+    toast.error(formatApiError(e))
   }
 }
 
@@ -122,9 +143,10 @@ const fetchModels = async (id: string) => {
       } else {
         toast.success(t('modelsPage.fetchEmpty'))
       }
+      void settingsStore.loadModels().catch(() => {})
     }
-  } catch {
-    toast.error(t('common.error'))
+  } catch (e) {
+    toast.error(formatApiError(e))
   } finally {
     busyEndpointId.value = null
   }
@@ -135,8 +157,8 @@ const testConn = async (id: string) => {
   try {
     const r = await settingsStore.testEndpoint(id)
     toast[r.success ? 'success' : 'error'](r.message)
-  } catch {
-    toast.error(t('common.error'))
+  } catch (e) {
+    toast.error(formatApiError(e))
   } finally {
     busyEndpointId.value = null
   }
@@ -155,8 +177,9 @@ const applyManualModels = async (ep: Endpoint) => {
     await settingsStore.updateEndpoint(ep.id, { models })
     toast.success(t('common.success'))
     manualModelsText.value = ''
-  } catch {
-    toast.error(t('common.error'))
+    void settingsStore.loadModels().catch(() => {})
+  } catch (e) {
+    toast.error(formatApiError(e))
   }
 }
 

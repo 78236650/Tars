@@ -2,6 +2,7 @@
 # Layer 1: WebSocket 通道实现
 
 import json
+import traceback
 from datetime import datetime, timezone, timedelta
 from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
@@ -16,9 +17,12 @@ def now_iso():
 class WebSocketChannel(Channel):
     """WebSocket 通道"""
 
-    def __init__(self, websocket: WebSocket):
+    def __init__(self, websocket: WebSocket, tenant_context=None, manager=None, connection_id: str | None = None):
         self.websocket = websocket
         self.agent = None
+        self.tenant_context = tenant_context
+        self.manager = manager
+        self.connection_id = connection_id
 
     def set_agent(self, agent):
         """设置 Agent 引用"""
@@ -37,16 +41,23 @@ class WebSocketChannel(Channel):
 
     async def send(self, session_id: str, event: dict) -> None:
         """发送完整事件"""
-        await self.websocket.send_json(event)
+        try:
+            await self.websocket.send_json(event)
+        except Exception as e:
+            print(f"[WebSocket] send_json 失败（客户端可能已断开）: {type(e).__name__}: {e}")
+            raise
 
     async def stream(self, session_id: str, chunk: str) -> None:
         """流式推送文本片段"""
-        await self.websocket.send_json({
-            "type": "text_chunk",
-            "session_id": session_id,
-            "content": chunk,
-            "timestamp": now_iso()
-        })
+        await self.send(
+            session_id,
+            {
+                "type": "text_chunk",
+                "session_id": session_id,
+                "content": chunk,
+                "timestamp": now_iso(),
+            },
+        )
 
     async def handle_message(self, raw_message: str, websocket: WebSocket = None):
         """处理用户消息 - 路由到 Agent 层"""
@@ -70,6 +81,8 @@ class WebSocketChannel(Channel):
             })
 
             message = await self.receive(raw_message)
+            if self.manager and self.connection_id:
+                self.manager.bind_session(message.session_id, self.connection_id)
             print(f"[WebSocket] 解析后消息内容: {message.content[:200] if message.content else 'empty'}...")
 
             file_ids = data.get("file_ids")
@@ -80,6 +93,8 @@ class WebSocketChannel(Channel):
                     user_content=message.content,
                     channel=self,
                     file_ids=file_ids,
+                    tenant_context=self.tenant_context,
+                    request_context={"transport": "websocket"},
                 )
             else:
                 print(f"[WebSocket] Agent 未设置!")
@@ -96,18 +111,22 @@ class WebSocketChannel(Channel):
                 "timestamp": now_iso()
             })
         except Exception as e:
-            await self.send("default", {
-                "type": "generation_end",
-                "timestamp": now_iso()
-            })
-
-            await self.send("default", {
-                "type": "error",
-                "session_id": "default",
-                "message": f"消息处理失败: {str(e)}",
-                "code": "message_error",
-                "timestamp": now_iso()
-            })
+            print(f"[WebSocket] 消息处理异常: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            try:
+                await self.send("default", {
+                    "type": "generation_end",
+                    "timestamp": now_iso()
+                })
+                await self.send("default", {
+                    "type": "error",
+                    "session_id": "default",
+                    "message": f"消息处理失败: {str(e)}",
+                    "code": "message_error",
+                    "timestamp": now_iso()
+                })
+            except Exception as send_err:
+                print(f"[WebSocket] 发送 error 事件失败（连接可能已关闭）: {send_err}")
 
 
 class ConnectionManager:
@@ -115,27 +134,62 @@ class ConnectionManager:
 
     def __init__(self):
         self.active_connections: dict[str, WebSocketChannel] = {}
+        self.session_connections: dict[str, str] = {}
         self.agent = None
 
     def set_agent(self, agent):
         """设置全局 Agent 引用"""
         self.agent = agent
 
-    async def connect(self, session_id: str, websocket: WebSocket) -> WebSocketChannel:
+    async def connect(self, connection_id: str, websocket: WebSocket, tenant_context=None) -> WebSocketChannel:
         """接受连接并返回通道实例"""
         await websocket.accept()
-        channel = WebSocketChannel(websocket)
+        channel = WebSocketChannel(
+            websocket,
+            tenant_context=tenant_context,
+            manager=self,
+            connection_id=connection_id,
+        )
         if self.agent:
             channel.set_agent(self.agent)
-        self.active_connections[session_id] = channel
+        self.active_connections[connection_id] = channel
         return channel
 
-    def disconnect(self, session_id: str):
-        """断开连接"""
-        if session_id in self.active_connections:
-            del self.active_connections[session_id]
+    def bind_session(self, session_id: str, connection_id: str):
+        """将聊天会话绑定到当前连接。"""
+        if session_id:
+            self.session_connections[session_id] = connection_id
 
-    async def send_personal_message(self, session_id: str, event: dict):
-        """发送个人消息"""
-        if session_id in self.active_connections:
-            await self.active_connections[session_id].send(session_id, event)
+    def unbind_session(self, session_id: str):
+        self.session_connections.pop(session_id, None)
+
+    def disconnect(self, connection_id: str):
+        """断开连接"""
+        if connection_id in self.active_connections:
+            del self.active_connections[connection_id]
+        stale_sessions = [
+            session_id
+            for session_id, mapped_connection_id in self.session_connections.items()
+            if mapped_connection_id == connection_id
+        ]
+        for session_id in stale_sessions:
+            self.unbind_session(session_id)
+
+    async def send_personal_message(self, session_id: str, event: dict) -> bool:
+        """发送个人消息，返回是否成功投递"""
+        connection_id = self.session_connections.get(session_id, session_id)
+        if connection_id in self.active_connections:
+            await self.active_connections[connection_id].send(session_id, event)
+            return True
+        return False
+
+    async def broadcast(self, event: dict):
+        """广播消息到所有活跃连接"""
+        stale_ids = []
+        for connection_id, channel in list(self.active_connections.items()):
+            try:
+                await channel.send(event.get("session_id", "default"), event)
+            except Exception:
+                stale_ids.append(connection_id)
+        for connection_id in stale_ids:
+            self.disconnect(connection_id)

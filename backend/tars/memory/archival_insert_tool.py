@@ -50,8 +50,11 @@ class ArchivalInsertTool(BaseTool):
         cur = conn.cursor()
         refs_json = json.dumps(entity_refs, ensure_ascii=False) if entity_refs else None
         cur.execute(
-            "INSERT INTO memories(id,content,category,importance,created_at,updated_at,access_count,source,event_time,entity_refs) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (mid, content, category, importance, now, now, 0, "urgent", now.isoformat(), refs_json),
+            """
+            INSERT INTO memories(id,tenant_id,content,category,importance,created_at,updated_at,access_count,source,event_time,entity_refs)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (mid, "default", content, category, importance, now, now, 0, "urgent", now.isoformat(), refs_json),
         )
         try:
             cur.execute("INSERT INTO memories_fts(rowid,content,category) VALUES(last_insert_rowid(),?,?)", (content, category))

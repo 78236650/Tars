@@ -260,7 +260,7 @@ def test_expand_deduplication():
 import io
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from tars.api.knowledge import router, init_knowledge_api
+from tars.api.knowledge import router as knowledge_router, init_knowledge_api
 import tars.api.knowledge as knowledge_module
 
 
@@ -279,7 +279,7 @@ def _make_batch_app():
     knowledge_module._indexer = indexer
 
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(knowledge_router)
     return TestClient(app), db, indexer
 
 
@@ -382,7 +382,7 @@ def test_embedding_manager_reinitialize_exception():
 # --- Settings API tests ---
 
 import tars.api.settings as settings_module
-from tars.api.settings import router, init_settings_api
+from tars.api.settings import router as settings_router, init_settings_api
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -390,7 +390,7 @@ from fastapi.testclient import TestClient
 def _make_settings_app(manager=None):
     settings_module._embedding_manager = manager
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(settings_router)
     return TestClient(app)
 
 

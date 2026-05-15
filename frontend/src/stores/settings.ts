@@ -182,12 +182,8 @@ export const useSettingsStore = defineStore('settings', () => {
           _applyOverview(again)
         }
       }
-    } catch {
-      ollamaModels.value = []
-      endpoints.value = []
-      currentModel.value = ''
-      currentProvider.value = 'ollama'
-      currentEndpointId.value = null
+    } catch (e) {
+      console.error('loadModels failed', e)
     } finally {
       loading.value = false
     }
@@ -199,7 +195,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const createEndpoint = async (payload: { name: string; base_url: string; api_key?: string }) => {
     const ep = await modelApi.createEndpoint(payload)
-    await loadModels()
+    const rest = endpoints.value.filter((e) => e.id !== ep.id)
+    endpoints.value = [ep, ...rest]
+    void loadModels().catch((err) => console.warn('loadModels after createEndpoint', err))
     return ep
   }
 
@@ -214,13 +212,18 @@ export const useSettingsStore = defineStore('settings', () => {
     }>
   ) => {
     const ep = await modelApi.updateEndpoint(id, payload)
-    await loadModels()
+    const i = endpoints.value.findIndex((e) => e.id === ep.id)
+    if (i >= 0) {
+      endpoints.value[i] = ep
+    }
+    void loadModels().catch((err) => console.warn('loadModels after updateEndpoint', err))
     return ep
   }
 
   const deleteEndpoint = async (id: string) => {
     await modelApi.deleteEndpoint(id)
-    await loadModels()
+    endpoints.value = endpoints.value.filter((e) => e.id !== id)
+    void loadModels().catch((err) => console.warn('loadModels after deleteEndpoint', err))
   }
 
   const fetchEndpointModels = async (id: string) => {
