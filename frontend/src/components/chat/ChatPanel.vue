@@ -3,8 +3,10 @@ import { ref, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
 import PlanCard from './PlanCard.vue'
 import TaskCard from './TaskCard.vue'
+import ChartRenderer from '@/components/bi/ChartRenderer.vue'
 import type { ToolCallEvent } from '@/types'
 import { marked } from 'marked'
+import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
 import typescript from 'highlight.js/lib/languages/typescript'
@@ -42,15 +44,18 @@ hljs.registerLanguage('plaintext', plaintext)
 hljs.registerLanguage('text', plaintext)
 
 // 配置 marked + highlight.js
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-  highlight: (code: string, lang: string) => {
+marked.use(markedHighlight({
+  langPrefix: 'hljs language-',
+  highlight(code: string, lang: string) {
     if (lang && hljs.getLanguage(lang)) {
       return hljs.highlight(code, { language: lang }).value
     }
     return hljs.highlightAuto(code).value
   },
+}))
+marked.setOptions({
+  breaks: true,
+  gfm: true,
 })
 
 // Markdown 渲染 + 代码块包裹
@@ -79,8 +84,22 @@ interface ThinkingState {
   steps: ThinkingStep[]
 }
 
+interface ChatMessage {
+  id: string
+  role: string
+  content: string
+  timestamp: string
+  toolCalls?: ToolCallEvent[]
+  plan?: any
+  planSteps?: any[]
+  attachments?: any[]
+  thinking?: ThinkingState
+  task?: any
+  biChart?: any
+}
+
 const props = defineProps<{
-  messages: { id: string; role: string; content: string; timestamp: string; toolCalls?: ToolCallEvent[]; plan?: any; planSteps?: any[]; attachments?: any[]; thinking?: ThinkingState; task?: any }[]
+  messages: ChatMessage[]
   isGenerating?: boolean
 }>()
 
@@ -249,6 +268,17 @@ onMounted(() => {
               </div>
               <div v-if="msg.content" class="markdown-body text-sm text-slate-300 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
 
+              <!-- BI 图表渲染 -->
+              <div v-if="msg.biChart" class="mt-3">
+                <div class="text-xs text-slate-500 mb-2">📊 {{ msg.biChart.title || '数据图表' }}</div>
+                <ChartRenderer
+                  :chart-type="msg.biChart.chart_type"
+                  :echarts-option="msg.biChart.echarts_option"
+                  :title="msg.biChart.title"
+                />
+                <div v-if="msg.biChart.data_summary" class="text-xs text-slate-500 mt-2">{{ msg.biChart.data_summary }}</div>
+              </div>
+
               <!-- 工具调用 -->
               <div v-if="msg.toolCalls?.length" class="mt-3 space-y-1.5">
                 <div v-for="tc in msg.toolCalls" :key="tc.id || tc.tool" class="bg-slate-800/60 border border-slate-700/60 rounded-lg overflow-hidden">
@@ -264,6 +294,14 @@ onMounted(() => {
                   <div v-if="!collapsedTools.has(tc.id || tc.tool)" class="px-3 pb-2">
                     <div v-if="tc.output" class="text-xs text-slate-400 bg-slate-900/50 rounded p-2 max-h-32 overflow-auto font-mono whitespace-pre-wrap">{{ tc.output }}</div>
                     <div v-if="tc.error" class="text-xs text-red-400 bg-red-900/20 rounded p-2">{{ tc.error }}</div>
+                    <!-- BI 工具结果中的图表 -->
+                    <div v-if="tc.metadata?.chart" class="mt-2">
+                      <ChartRenderer
+                        :chart-type="tc.metadata.chart.chart_type"
+                        :echarts-option="tc.metadata.chart.echarts_option"
+                        :title="tc.metadata.chart.title"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

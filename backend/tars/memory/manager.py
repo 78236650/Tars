@@ -16,19 +16,42 @@ class MemoryManager:
         db,
         provider=None,
         embedding_provider: Optional[EmbeddingProvider] = None,
+        tenant_id: str = "default",
+        vector_store=None,
     ):
         self.db = db
         self.provider = provider
         self.embedding_provider = embedding_provider
+        self.tenant_id = tenant_id
+        self.vector_store = vector_store
 
-        self.core = CoreMemoryManager(db)
-        self.archival = ArchivalManager(db, embedding_provider)
-        self.search = HybridSearch(db, embedding_provider)
+        self.core = CoreMemoryManager(db, tenant_id=tenant_id)
+        self.archival = ArchivalManager(db, embedding_provider, tenant_id=tenant_id, vector_store=vector_store)
+        self.search = HybridSearch(db, embedding_provider, tenant_id=tenant_id, vector_store=vector_store)
         self.reflector = Reflector(provider, self.core, self.archival, db=db)
+        self.reflector.tenant_id = tenant_id
 
     def set_provider(self, provider):
         self.provider = provider
         self.reflector.provider = provider
+
+    def set_tenant(self, tenant_id: str):
+        self.tenant_id = tenant_id
+        self.core.tenant_id = tenant_id
+        self.archival.tenant_id = tenant_id
+        self.search.tenant_id = tenant_id
+        self.reflector.tenant_id = tenant_id
+        return self
+
+    def for_tenant(self, tenant_id: str):
+        scoped = MemoryManager(
+            db=self.db,
+            provider=self.provider,
+            embedding_provider=self.embedding_provider,
+            tenant_id=tenant_id,
+            vector_store=self.vector_store,
+        )
+        return scoped
 
     def get_context_for_query(self, query: str, limit: int = 5) -> str:
         """构建注入 system prompt 的记忆上下文：core memory + 检索到的 archival"""

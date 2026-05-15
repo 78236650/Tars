@@ -39,6 +39,16 @@ const router = createRouter({
       path: '/tools',
       name: 'tools',
       component: () => import('@/views/ToolsView.vue')
+    },
+    {
+      path: '/bi',
+      name: 'bi',
+      component: () => import('@/views/BiAnalyticsView.vue')
+    },
+    {
+      path: '/knowledge',
+      name: 'knowledge',
+      component: () => import('@/views/KnowledgeView.vue')
     }
   ]
 })

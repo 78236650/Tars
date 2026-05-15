@@ -7,8 +7,12 @@ const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 
 onMounted(async () => {
-  await authStore.initAuth()
-  await settingsStore.initSettings()
+  try {
+    await authStore.initAuth()
+    await settingsStore.initSettings()
+  } catch (e) {
+    console.error('[App] 启动初始化失败', e)
+  }
 })
 </script>
 

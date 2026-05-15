@@ -1,6 +1,7 @@
 # TARS Model Configuration API — Ollama + OpenAI-compatible endpoints
 import logging
 import os
+import sqlite3
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -48,6 +49,19 @@ def get_agent() -> Agent:
 
 def _ollama_base_url() -> str:
     return os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+
+def _normalize_model_ids(names: Optional[List[Any]]) -> List[str]:
+    if not names:
+        return []
+    out: List[str] = []
+    for x in names:
+        if x is None:
+            continue
+        s = str(x).strip()
+        if s:
+            out.append(s)
+    return out
 
 
 def _endpoint_to_dict(ep: Endpoint) -> Dict[str, Any]:
@@ -124,7 +138,7 @@ async def _try_fetch_models_for_endpoint(ep: Endpoint) -> Endpoint:
     probe = ep.models[0] if ep.models else "gpt-3.5-turbo"
     try:
         prov = CustomProvider(base_url=ep.base_url, model=probe, api_key=ep.api_key)
-        names = await prov.list_models()
+        names = _normalize_model_ids(await prov.list_models())
         updated = store.update(ep.id, models=names)
         return updated or ep
     except Exception as e:
@@ -135,9 +149,18 @@ async def _try_fetch_models_for_endpoint(ep: Endpoint) -> Endpoint:
 @router.post("/endpoints", response_model=Dict[str, Any])
 async def create_endpoint(body: EndpointCreate):
     store = get_endpoint_store()
-    ep = store.create(name=body.name, base_url=body.base_url, api_key=body.api_key, models=[])
-    ep = await _try_fetch_models_for_endpoint(ep)
-    return _endpoint_to_dict(ep)
+    try:
+        ep = store.create(name=body.name, base_url=body.base_url, api_key=body.api_key, models=[])
+        ep = await _try_fetch_models_for_endpoint(ep)
+        return _endpoint_to_dict(ep)
+    except sqlite3.Error as e:
+        logger.exception("create_endpoint: sqlite error")
+        raise HTTPException(status_code=400, detail=f"数据库错误: {e}") from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("create_endpoint: unexpected error")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/endpoints/{endpoint_id}", response_model=Dict[str, Any])

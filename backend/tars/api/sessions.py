@@ -1,5 +1,5 @@
 """Sessions REST API"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
@@ -38,44 +38,49 @@ def _message_to_dict(m):
 
 
 @router.get("/")
-def list_sessions():
+def list_sessions(x_tenant_id: Optional[str] = Header(default="default")):
     if not _db:
         raise HTTPException(500, "DB not initialized")
-    return [_session_to_dict(s) for s in _db.list_sessions()]
+    return [_session_to_dict(s) for s in _db.list_sessions(tenant_id=x_tenant_id or "default")]
 
 
 @router.post("/")
-def create_session():
+def create_session(x_tenant_id: Optional[str] = Header(default="default")):
     if not _db:
         raise HTTPException(500, "DB not initialized")
-    s = _db.create_session(title="New Chat")
+    s = _db.create_session(title="New Chat", tenant_id=x_tenant_id or "default")
     return _session_to_dict(s)
 
 
 @router.get("/{session_id}/messages")
-def get_session_messages(session_id: str):
+def get_session_messages(session_id: str, x_tenant_id: Optional[str] = Header(default="default")):
     if not _db:
         raise HTTPException(500, "DB not initialized")
-    if not _db.get_session(session_id):
+    tenant_id = x_tenant_id or "default"
+    if not _db.get_session(session_id, tenant_id=tenant_id):
         raise HTTPException(404, "Session not found")
     return [_message_to_dict(m) for m in _db.get_messages(session_id)]
 
 
 @router.delete("/{session_id}")
-def delete_session(session_id: str):
+def delete_session(session_id: str, x_tenant_id: Optional[str] = Header(default="default")):
     if not _db:
         raise HTTPException(500, "DB not initialized")
-    ok = _db.delete_session(session_id)
+    ok = _db.delete_session(session_id, tenant_id=x_tenant_id or "default")
     if not ok:
         raise HTTPException(404, "Session not found")
     return {"success": True}
 
 
 @router.patch("/{session_id}")
-def update_session_title(session_id: str, payload: TitleUpdateRequest):
+def update_session_title(
+    session_id: str,
+    payload: TitleUpdateRequest,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     if not _db:
         raise HTTPException(500, "DB not initialized")
-    ok = _db.update_session_title(session_id, payload.title)
+    ok = _db.update_session_title(session_id, payload.title, tenant_id=x_tenant_id or "default")
     if not ok:
         raise HTTPException(404, "Session not found")
     return {"success": True}

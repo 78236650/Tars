@@ -3,38 +3,85 @@ TARS Scheduler - 定时任务调度器
 支持 cron 表达式的任务调度系统
 """
 import asyncio
-import json
 import uuid
-from datetime import datetime
-from typing import Dict, Any, List, Optional, Callable, Coroutine
-from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Callable, Coroutine, Set
+from dataclasses import dataclass, field
 
 
-# 简单的 cron 表达式解析器（支持基本的格式 * * * * *）
 class CronExpression:
     def __init__(self, expression: str):
-        """
-        初始化 cron 表达式
-        格式: 分钟 小时 日期 月份 星期
-        """
+        """初始化 cron 表达式，格式: 分钟 小时 日期 月份 星期"""
         self.parts = expression.strip().split()
         if len(self.parts) != 5:
             raise ValueError("Cron 表达式格式必须是 * * * * *")
+        self._minute = self._parse_part(self.parts[0], 0, 59)
+        self._hour = self._parse_part(self.parts[1], 0, 23)
+        self._day = self._parse_part(self.parts[2], 1, 31)
+        self._month = self._parse_part(self.parts[3], 1, 12)
+        self._weekday = self._parse_part(self.parts[4], 0, 7)
 
     def next_run(self, from_time: Optional[datetime] = None) -> datetime:
-        """
-        计算下一次运行时间（简化版本，支持基本的 * 和数字）
-        """
+        """计算下一次运行时间，支持 `*`、数字、范围、步长、逗号列表。"""
         if from_time is None:
-            from_time = datetime.now()
+            from_time = _local_now()
 
-        next_time = from_time.replace(second=0, microsecond=0)
-        
-        # 简单版本：每分钟执行一次
-        from datetime import timedelta
-        next_time = next_time + timedelta(minutes=1)
-        
-        return next_time
+        candidate = from_time.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        max_lookahead = 366 * 24 * 60
+        for _ in range(max_lookahead):
+            if self._matches(candidate):
+                return candidate
+            candidate += timedelta(minutes=1)
+        raise ValueError(f"Cron 表达式在一年内未找到可执行时间: {self.expression}")
+
+    @property
+    def expression(self) -> str:
+        return " ".join(self.parts)
+
+    def _matches(self, dt: datetime) -> bool:
+        cron_weekday = (dt.weekday() + 1) % 7
+        return (
+            dt.minute in self._minute
+            and dt.hour in self._hour
+            and dt.day in self._day
+            and dt.month in self._month
+            and cron_weekday in self._weekday
+        )
+
+    def _parse_part(self, token: str, minimum: int, maximum: int) -> Set[int]:
+        values: Set[int] = set()
+        for part in token.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if part == "*":
+                values.update(range(minimum, maximum + 1))
+                continue
+
+            base, step = (part.split("/", 1) + ["1"])[:2] if "/" in part else (part, "1")
+            step_value = int(step)
+            if step_value <= 0:
+                raise ValueError("Cron 步长必须大于 0")
+
+            if base == "*":
+                start, end = minimum, maximum
+            elif "-" in base:
+                start_str, end_str = base.split("-", 1)
+                start, end = int(start_str), int(end_str)
+            else:
+                start = end = int(base)
+
+            if start < minimum or end > maximum or start > end:
+                raise ValueError(f"Cron 字段超出范围: {token}")
+            values.update(range(start, end + 1, step_value))
+
+        if not values:
+            raise ValueError(f"无效的 Cron 字段: {token}")
+        return values
+
+
+def _local_now() -> datetime:
+    return datetime.now(timezone(timedelta(hours=8)))
 
 
 @dataclass
@@ -46,7 +93,7 @@ class ScheduledTask:
     enabled: bool = True
     last_run: Optional[datetime] = None
     next_run: Optional[datetime] = None
-    created_at: datetime = datetime.now()
+    created_at: datetime = field(default_factory=_local_now)
 
 
 class TaskScheduler:
@@ -77,8 +124,13 @@ class TaskScheduler:
             except:
                 pass
     
-    def add_task(self, name: str, cron_expression: str,
-                 task: Callable[[], Coroutine[Any, Any, Any]]) -> str:
+    def add_task(
+        self,
+        name: str,
+        cron_expression: str,
+        task: Callable[[], Coroutine[Any, Any, Any]],
+        task_id: Optional[str] = None,
+    ) -> str:
         """
         添加定时任务
         
@@ -90,10 +142,10 @@ class TaskScheduler:
         Returns:
             task_id: 任务 ID
         """
-        task_id = str(uuid.uuid4())
+        task_id = task_id or str(uuid.uuid4())
         cron = CronExpression(cron_expression)
         next_run = cron.next_run()
-        
+
         scheduled_task = ScheduledTask(
             task_id=task_id,
             name=name,
@@ -125,7 +177,7 @@ class TaskScheduler:
         while self.running:
             self._event.clear()
             
-            now = datetime.now()
+            now = _local_now()
             tasks_to_run = []
             
             # 检查所有任务
@@ -152,7 +204,7 @@ class TaskScheduler:
     async def _run_task(self, task: ScheduledTask):
         """执行单个任务"""
         try:
-            task.last_run = datetime.now()
+            task.last_run = _local_now()
             
             # 计算下一次运行时间
             cron = CronExpression(task.cron_expression)
@@ -165,19 +217,17 @@ class TaskScheduler:
     
     def _calculate_next_check(self) -> datetime:
         """计算下一次检查时间"""
-        from datetime import timedelta
-        
         if not self.tasks:
-            return datetime.now() + timedelta(minutes=1)
-        
+            return _local_now() + timedelta(minutes=1)
+
         next_times = [t.next_run for t in self.tasks.values()
                      if t.enabled and t.next_run]
-        
+
         if not next_times:
-            return datetime.now() + timedelta(minutes=1)
-        
+            return _local_now() + timedelta(minutes=1)
+
         next_run = min(next_times)
-        return min(next_run, datetime.now() + timedelta(minutes=1))
+        return min(next_run, _local_now() + timedelta(minutes=1))
 
 
 # ============ 全局调度器实例 ============

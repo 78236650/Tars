@@ -1,6 +1,58 @@
 # Changelog
 
-## v2.5.0 (2026-05-09)
+## v2.7.0 (2026-05-16)
+
+### 核心架构升级
+
+- ✅ **多租户支持（TenantContext）**：请求级租户隔离，LRU 缓存，所有数据表加 tenant_id
+- ✅ **REST 同步调用接口**：`POST /api/invoke`，支持同步 + SSE 流式
+- ✅ **Skill Pipeline 编排**：声明式 YAML pipeline，skill 间变量传递
+- ✅ **结构化输出**：ToolDispatcher 支持 response_format / JSON schema 约束
+
+### 模型配置重构
+
+- ✅ Provider 简化为 Ollama + OpenAI 兼容两类
+- ✅ 新增 Endpoint 概念，支持端点 + 模型列表管理
+- ✅ 侧边栏无 tab 分组，统一 `/api/models/switch` 热切换
+
+### BI Analytics Skill
+
+- ✅ 多数据库支持（MySQL/PostgreSQL/Oracle/SQL Server/ClickHouse）
+- ✅ SQL Agent + 自我修正（最多 3 轮 LLM 重试）
+- ✅ SQL 安全层：只允许 SELECT/WITH，LIMIT 1000，30s 超时
+- ✅ Schema 自动抓取 + LLM 推断 + 用户标注
+- ✅ ECharts 图表生成 + 前端渲染组件
+
+### 向量搜索与知识库升级
+
+- ✅ Reranker 精排集成到搜索管线
+- ✅ PDF/DOCX 文档解析（pymupdf + python-docx）
+- ✅ 知识库查询扩展（同义词变体）
+- ✅ 批量索引 API
+- ✅ Embedding 模型运行时切换
+- ✅ Agent 自动注入知识库上下文（top-3 相关片段）
+- ✅ chunk_size 300 + overlap 100 + 文件名前缀
+
+### 通知系统修复
+
+- ✅ WebSocket 投递失败时自动 fallback 到 broadcast
+- ✅ cron reminder 按 session_id 定向投递
+- ✅ API 序列化 None 保护
+
+### 修复
+
+- ✅ sql_agent ChannelMessage → ChatMessage
+- ✅ ChromaDB 维度冲突（384 vs 512）
+- ✅ 知识库文档删除清理 Chroma chunks
+
+### 依赖变更
+
+- 新增：chromadb, pymupdf, python-docx, sqlalchemy, pymysql, psycopg2-binary, sqlparse
+- 后端启动方式：`.venv/bin/python -m uvicorn tars.main:app --host 0.0.0.0 --port 8000`
+
+---
+
+## v2.6.0 (2026-05-11)
 
 ### 新增
 

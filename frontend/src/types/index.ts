@@ -151,6 +151,43 @@ export interface SkillHubPackage {
   usage?: string
 }
 
+export interface BIChartData {
+  chart_type: string
+  title: string
+  echarts_option: Record<string, any>
+  data_summary: string
+  raw_data?: Record<string, any>[]
+}
+
+export interface KnowledgeCollection {
+  id: string
+  name: string
+  description?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface KnowledgeDocument {
+  id: string
+  file_name: string
+  file_type: string
+  chunk_count: number
+  status: string
+  created_at: string
+}
+
+export interface KnowledgeSearchResult {
+  text: string
+  metadata: Record<string, any>
+  score: number
+  source: {
+    collection_id: string
+    file_name: string
+    chunk_index: number
+    chunk_total: number
+  }
+}
+
 export interface ToolCallEvent {
   id?: string
   tool: string
@@ -160,6 +197,7 @@ export interface ToolCallEvent {
   error?: string
   duration?: number
   timestamp: string
+  metadata?: Record<string, any>
 }
 
 export interface ChatSession {
@@ -174,6 +212,37 @@ export interface ChatHistoryMessage {
   role: string
   content: string
   timestamp: string
+}
+
+export interface ReminderSummaryLog {
+  step: string
+  status: string
+  message: string
+  timestamp?: string
+}
+
+export interface ReminderNotification {
+  id: string
+  job_id: string
+  session_id: string | null
+  task_name: string
+  message: string
+  delivery_status: string
+  error_message: string | null
+  is_read: boolean
+  triggered_at: string
+  read_at: string | null
+  created_at: string
+  updated_at: string
+  summary_logs?: ReminderSummaryLog[]
+}
+
+export interface ReminderNotificationListData {
+  notifications: ReminderNotification[]
+  total: number
+  unread_total: number
+  limit: number
+  offset: number
 }
 
 /** OpenAI 兼容 API 端点（模型配置页） */
@@ -210,4 +279,34 @@ export interface ModelSwitchResult {
   success: boolean
   message?: string
   current?: ModelsOverviewResponse['current']
+}
+
+// ========= BI Analytics =========
+
+export interface DataSource {
+  id: string
+  name: string
+  db_type: string
+  readonly: boolean
+  schema_snapshot: Record<string, any>
+  schema_annotations: Record<string, any>
+  created_at: string
+  updated_at: string
+}
+
+export interface BIQueryResult {
+  success: boolean
+  data: Record<string, any>[]
+  columns: string[]
+  row_count: number
+  error: string | null
+  sql: string
+}
+
+export interface BIChartResult {
+  chart_type: string
+  title: string
+  echarts_option: Record<string, any>
+  data_summary: string
+  raw_data: Record<string, any>[]
 }

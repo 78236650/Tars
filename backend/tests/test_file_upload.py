@@ -210,7 +210,7 @@ class TestFileUploadAPI:
         assert data["file"]["preview"].startswith("data:image/")
 
     def test_upload_too_large(self, client):
-        big_content = b"x" * (21 * 1024 * 1024)
+        big_content = b"x" * (51 * 1024 * 1024)
         resp = client.post(
             "/api/files/upload",
             files={"file": ("big.bin", big_content, "application/octet-stream")},

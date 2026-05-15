@@ -19,16 +19,20 @@ def _now_iso() -> str:
 class CoreMemoryManager:
     """4 块固定区块的读写 + 自动 trim"""
 
-    def __init__(self, db, max_size: int = 2048):
+    def __init__(self, db, max_size: int = 2048, tenant_id: str = "default"):
         self.db = db
         self.max_size = max_size
+        self.tenant_id = tenant_id
 
     def get(self, block: str) -> str:
         if block not in BLOCK_NAMES:
             return ""
         conn = self.db._get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT content FROM core_memory_blocks WHERE name = ?", (block,))
+        cur.execute(
+            "SELECT content FROM core_memory_blocks WHERE name = ? AND tenant_id = ?",
+            (block, self.tenant_id),
+        )
         row = cur.fetchone()
         return row[0] if row else ""
 
@@ -42,8 +46,13 @@ class CoreMemoryManager:
         conn = self.db._get_conn()
         cur = conn.cursor()
         cur.execute(
-            "UPDATE core_memory_blocks SET content = ?, updated_at = ? WHERE name = ?",
-            (content, _now_iso(), block),
+            """
+            INSERT INTO core_memory_blocks (name, tenant_id, content, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(tenant_id, name)
+            DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at
+            """,
+            (block, self.tenant_id, content, _now_iso()),
         )
         conn.commit()
         return True

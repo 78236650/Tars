@@ -70,7 +70,7 @@ loadParams();
       
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div v-for="(value, key) in params" :key="key" class="bg-slate-700 rounded-lg p-4">
-          <label class="block text-sm text-slate-400 mb-2 capitalize">{{ key.replace('_', ' ') }}</label>
+          <label class="block text-sm text-slate-400 mb-2 capitalize">{{ String(key).replace('_', ' ') }}</label>
           <input
             type="range"
             v-model.number="localParams[key]"
@@ -79,7 +79,7 @@ loadParams();
             step="0.1"
             class="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
           />
-          <p class="text-sm text-white mt-2 text-center">{{ value.toFixed(1) }}</p>
+          <p class="text-sm text-white mt-2 text-center">{{ Number(value).toFixed(1) }}</p>
         </div>
       </div>
       

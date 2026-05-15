@@ -17,6 +17,8 @@ class SKILL:
     def __init__(self, name: str = "", description: str = "",
                  body: str = "", dir_path: str = "",
                  permissions: list = None,
+                 depends_on: list = None,
+                 outputs: dict = None,
                  tars_version_min: str = "",
                  requires_packages: list = None,
                  has_pdca: bool = False, has_scripts: bool = False):
@@ -25,6 +27,8 @@ class SKILL:
         self.body = body                          # Markdown 正文
         self.dir_path = dir_path                  # 技能目录
         self.permissions = permissions or []
+        self.depends_on = depends_on or []
+        self.outputs = outputs or {}
         self.tars_version_min = tars_version_min
         self.requires_packages = requires_packages or []
         self.has_pdca = has_pdca
@@ -38,6 +42,8 @@ class SKILL:
             "has_pdca": self.has_pdca,
             "has_scripts": self.has_scripts,
             "permissions": self.permissions,
+            "depends_on": self.depends_on,
+            "outputs": self.outputs,
             "tars_version_min": self.tars_version_min,
             "body": self.body,
         }
@@ -84,6 +90,8 @@ def parse_skill_md(file_path: str) -> Optional[SKILL]:
         body=body,
         dir_path=dir_path,
         permissions=meta.get("permissions", []),
+        depends_on=meta.get("depends_on", []),
+        outputs=meta.get("outputs", {}),
         tars_version_min=meta.get("tars_version_min", ""),
         requires_packages=meta.get("requires_packages", []),
         has_pdca=has_pdca,

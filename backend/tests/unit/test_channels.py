@@ -1,6 +1,6 @@
 import pytest
 from tars.channels.base import ChannelMessage, Channel
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 
 class TestChannelMessage:
@@ -44,7 +44,8 @@ class TestChannelMessage:
     def test_timestamp_default_utcnow(self):
         msg = ChannelMessage(channel="web", user_id="test", session_id="s1", content="test")
         assert msg.timestamp is not None
-        assert (datetime.utcnow() - msg.timestamp).total_seconds() < 1
+        now = datetime.now(timezone(timedelta(hours=8)))
+        assert abs((now - msg.timestamp).total_seconds()) < 2
 
 
 class TestChannelAbstract:

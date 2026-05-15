@@ -59,12 +59,20 @@ class ToolDispatcher:
                 return True
         return False
 
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
+    async def execute_tool(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ToolResult:
         tool = self.registry.get(tool_name)
         if not tool:
             return ToolResult(success=False, output="", error=f"工具 '{tool_name}' 不存在")
         try:
-            return await tool.execute(**arguments)
+            merged_arguments = dict(arguments)
+            for key, value in (context or {}).items():
+                merged_arguments.setdefault(key, value)
+            return await tool.execute(**merged_arguments)
         except Exception as e:
             return ToolResult(success=False, output="", error=f"工具执行失败: {e}")
 
@@ -77,6 +85,8 @@ class ToolDispatcher:
         on_tool_result: Optional[Callable] = None,
         max_rounds: int = 5,
         tools: Optional[List[Dict]] = None,
+        response_format: Optional[Dict[str, Any]] = None,
+        tool_context: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[str, None]:
         """带工具调用的对话，自动处理多轮工具调用循环。
         tools 参数可选，传入时覆盖默认的全部工具 schema。"""
@@ -95,11 +105,11 @@ class ToolDispatcher:
         for _ in range(max_rounds):
             if use_native:
                 response = await self._call_with_native_tools(
-                    working_messages, tools_schemas, stream
+                    working_messages, tools_schemas, stream, response_format=response_format
                 )
             else:
                 response = await self._call_with_prompt_fallback(
-                    working_messages, stream
+                    working_messages, stream, response_format=response_format
                 )
 
             tool_call = self._extract_tool_call(response, use_native)
@@ -152,7 +162,7 @@ class ToolDispatcher:
             if on_tool_call:
                 await on_tool_call(tool_name, arguments)
 
-            result = await self.execute_tool(tool_name, arguments)
+            result = await self.execute_tool(tool_name, arguments, context=tool_context)
 
             if on_tool_result:
                 await on_tool_result(tool_name, result)
@@ -209,7 +219,7 @@ class ToolDispatcher:
         return result
 
     async def _call_with_native_tools(
-        self, messages: List[Dict], tools: List[Dict], stream: bool
+        self, messages: List[Dict], tools: List[Dict], stream: bool, response_format: Optional[Dict[str, Any]] = None
     ) -> Any:
         from ..models import ChatMessage
         chat_messages = []
@@ -224,22 +234,56 @@ class ToolDispatcher:
                 tool_calls=m.get("tool_calls"),
             ))
 
-        response = await self.provider.chat(chat_messages, stream=False, tools=tools)
+        response = await self.provider.chat(
+            chat_messages,
+            stream=False,
+            tools=tools,
+            response_format=response_format,
+        )
         return response
 
     async def _call_with_prompt_fallback(
-        self, messages: List[Dict], stream: bool
+        self, messages: List[Dict], stream: bool, response_format: Optional[Dict[str, Any]] = None
     ) -> Any:
         from ..models import ChatMessage
+        working_messages = list(messages)
+        if response_format:
+            working_messages = self._inject_response_format_prompt(working_messages, response_format)
         chat_messages = []
-        for m in messages:
+        for m in working_messages:
             content = m.get("content")
             if content is None:
                 content = ""
             chat_messages.append(ChatMessage(role=m["role"], content=content))
 
-        response = await self.provider.chat(chat_messages, stream=False)
+        response = await self.provider.chat(
+            chat_messages,
+            stream=False,
+            response_format=response_format,
+        )
         return response
+
+    def _inject_response_format_prompt(
+        self,
+        messages: List[Dict[str, Any]],
+        response_format: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        schema = response_format.get("schema", {})
+        format_type = response_format.get("type", "json_schema")
+        schema_text = json.dumps(schema, ensure_ascii=False, indent=2) if schema else "{}"
+        instruction = (
+            "## 结构化输出要求\n\n"
+            f"请严格输出 JSON，且必须符合以下 {format_type} 约束。\n"
+            "不要输出额外解释、Markdown 或代码块。\n\n"
+            f"{schema_text}"
+        )
+
+        result = list(messages)
+        if result and result[0].get("role") == "system":
+            result[0] = {**result[0], "content": result[0]["content"] + "\n\n" + instruction}
+        else:
+            result.insert(0, {"role": "system", "content": instruction})
+        return result
 
     def _extract_tool_call(self, response: Any, native: bool) -> Optional[Tuple[str, Dict]]:
         """从响应中提取工具调用"""

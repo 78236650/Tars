@@ -4,6 +4,7 @@ import json
 import httpx
 from typing import List, AsyncGenerator, Optional
 from .base import LLMProvider, ChatMessage, ModelResponse
+from .http_client import llm_async_client
 
 
 class OllamaProvider(LLMProvider):
@@ -12,7 +13,7 @@ class OllamaProvider(LLMProvider):
     def __init__(self, base_url: str | None = None, model: str | None = None):
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self.client = llm_async_client()
 
     async def chat(
         self,
@@ -22,6 +23,8 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
         max_tokens: int | None = None,
         tools: Optional[List[dict]] = None,
+        response_format: Optional[dict] = None,
+        **kwargs,
     ):
         url = f"{self.base_url}/api/chat"
         target_model = model or self.model
@@ -61,6 +64,12 @@ class OllamaProvider(LLMProvider):
 
         if max_tokens:
             payload["options"]["num_predict"] = max_tokens
+
+        if response_format:
+            if response_format.get("type") == "json_schema" and response_format.get("schema"):
+                payload["format"] = response_format["schema"]
+            else:
+                payload["format"] = "json"
 
         if tools:
             payload["tools"] = tools

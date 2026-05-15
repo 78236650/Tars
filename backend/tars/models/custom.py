@@ -5,6 +5,7 @@ import json
 import httpx
 from typing import List, AsyncGenerator, Dict, Any, Union
 from .base import LLMProvider, ChatMessage, ModelResponse
+from .http_client import llm_async_client
 
 
 def _normalize_openai_response(data: dict, default_model: str) -> dict:
@@ -36,7 +37,7 @@ class CustomProvider(LLMProvider):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key or ""
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self.client = llm_async_client()
 
     async def chat(
         self,
@@ -88,6 +89,10 @@ class CustomProvider(LLMProvider):
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
+        response_format = kwargs.get("response_format")
+        if response_format:
+            payload["response_format"] = response_format
+
         if tools:
             payload["tools"] = tools
             # 工具调用时禁用流式，确保能完整拿到 tool_calls
@@ -121,6 +126,27 @@ class CustomProvider(LLMProvider):
             return generate()
 
     async def list_models(self) -> List[str]:
+        def _coerce_ids(raw) -> List[str]:
+            out: List[str] = []
+            if not raw or not isinstance(raw, list):
+                return out
+            for m in raw:
+                if isinstance(m, str):
+                    s = m.strip()
+                    if s:
+                        out.append(s)
+                elif isinstance(m, dict):
+                    mid = m.get("id") if m.get("id") is not None else m.get("name")
+                    if mid is not None:
+                        s = str(mid).strip()
+                        if s:
+                            out.append(s)
+                else:
+                    s = str(m).strip()
+                    if s:
+                        out.append(s)
+            return out
+
         try:
             headers = {"Content-Type": "application/json"}
             if self.api_key:
@@ -133,10 +159,12 @@ class CustomProvider(LLMProvider):
             )
             if response.status_code == 200:
                 data = response.json()
-                if "data" in data:
-                    return [m.get("id", m.get("name", str(i))) for i, m in enumerate(data["data"])]
-                elif "models" in data:
-                    return data["models"]
+                if isinstance(data, dict) and "data" in data:
+                    ids = _coerce_ids(data.get("data"))
+                    return ids if ids else [self.model]
+                if isinstance(data, dict) and "models" in data:
+                    ids = _coerce_ids(data.get("models"))
+                    return ids if ids else [self.model]
             return [self.model]
         except Exception:
             return [self.model]

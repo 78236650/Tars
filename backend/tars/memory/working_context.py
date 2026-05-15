@@ -6,14 +6,15 @@ from typing import Optional
 class WorkingContextManager:
     """管理 working_contexts 表的读写"""
 
-    def __init__(self, db):
+    def __init__(self, db, tenant_id: str = "default"):
         self.db = db
+        self.tenant_id = tenant_id
 
     def get(self, session_id: str) -> dict:
-        return self.db.get_working_context(session_id) or {}
+        return self.db.get_working_context(session_id, tenant_id=self.tenant_id) or {}
 
     def update(self, session_id: str, **kwargs):
-        self.db.upsert_working_context(session_id, **kwargs)
+        self.db.upsert_working_context(session_id, tenant_id=self.tenant_id, **kwargs)
 
     def set_scene_result(self, session_id: str, scene: dict):
         """将 Scene Analyzer 输出写入 Working Context"""
@@ -34,4 +35,4 @@ class WorkingContextManager:
         )
 
     def cleanup_expired(self, max_age_hours: int = 72):
-        self.db.cleanup_working_contexts(max_age_hours)
+        self.db.cleanup_working_contexts(max_age_hours, tenant_id=self.tenant_id)
