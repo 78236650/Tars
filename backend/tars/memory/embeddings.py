@@ -21,16 +21,14 @@ class LocalEmbeddingProvider(EmbeddingProvider):
     """本地 sentence-transformers 模型（默认 bge-small-zh-v1.5）"""
 
     def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5"):
+        import os
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
         self.model_name = model_name
-        self._model = None
-        self._dim = 512  # bge-small 维度
-
-    def _load_model(self):
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self.model_name)
-            # 获取实际维度
-            self._dim = self._model.get_sentence_embedding_dimension()
+        self._dim = 512
+        from sentence_transformers import SentenceTransformer
+        self._model = SentenceTransformer(self.model_name)
+        self._dim = self._model.get_embedding_dimension()
 
     @property
     def dim(self) -> int:
@@ -39,7 +37,6 @@ class LocalEmbeddingProvider(EmbeddingProvider):
     def encode(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        self._load_model()
         vectors = self._model.encode(texts, normalize_embeddings=True)
         return vectors.tolist()
 
@@ -74,6 +71,44 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                 if vec:
                     self._dim = len(vec)
         return results
+
+
+class EmbeddingManager:
+    """管理 embedding provider 的运行时切换"""
+
+    def __init__(self, provider: EmbeddingProvider = None):
+        self.provider = provider
+        self._provider_type = "local"
+        self._model_name = "BAAI/bge-small-zh-v1.5"
+
+    def get_info(self) -> dict:
+        return {
+            "provider": self._provider_type,
+            "model": self._model_name,
+            "dimension": self.provider.dim if self.provider else 0,
+        }
+
+    def reinitialize(self, provider: str, model: str) -> dict:
+        """切换 embedding provider"""
+        old_dim = self.provider.dim if self.provider else 0
+        try:
+            if provider == "local":
+                new_provider = LocalEmbeddingProvider(model)
+            elif provider == "ollama":
+                new_provider = OllamaEmbeddingProvider(model=model)
+            else:
+                return {"success": False, "error": f"不支持的 provider: {provider}"}
+
+            self.provider = new_provider
+            self._provider_type = provider
+            self._model_name = model
+            new_dim = new_provider.dim
+            warning = None
+            if old_dim and new_dim != old_dim:
+                warning = f"维度从 {old_dim} 变为 {new_dim}，建议重建索引"
+            return {"success": True, "dimension": new_dim, "warning": warning}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 def serialize_vector(vec: List[float]) -> bytes:
