@@ -218,3 +218,38 @@ def test_docx_parser():
         assert "DOCX content" in result
     finally:
         os.unlink(path)
+
+
+# --- KnowledgeRetriever query expansion tests ---
+
+def _make_retriever(query_results=None):
+    from tars.knowledge.retriever import KnowledgeRetriever
+    vector_store = MagicMock()
+    vector_store.query.return_value = query_results or []
+    return KnowledgeRetriever(vector_store=vector_store, use_reranker=False), vector_store
+
+
+def test_expand_true_calls_vector_store_multiple_times():
+    """expand=True with Chinese query triggers synonym expansion → multiple vector_store.query calls"""
+    retriever, vs = _make_retriever()
+    retriever.retrieve("如何安装", collection_ids=["col1"], top_k=2, expand=True)
+    assert vs.query.call_count > 1
+
+
+def test_expand_false_calls_vector_store_once_per_collection():
+    """expand=False → exactly one vector_store.query call per collection"""
+    retriever, vs = _make_retriever()
+    retriever.retrieve("hello", collection_ids=["col1", "col2"], top_k=2, expand=False)
+    assert vs.query.call_count == 2
+
+
+def test_expand_deduplication():
+    """Same document returned by multiple query variants appears only once in results"""
+    from tars.knowledge.retriever import KnowledgeRetriever
+    doc = {"id": "doc1", "document": "some text", "metadata": {"chunk_index": 0, "chunk_total": 1}, "distance": 0.1}
+    vector_store = MagicMock()
+    vector_store.query.return_value = [doc]
+    retriever = KnowledgeRetriever(vector_store=vector_store, use_reranker=False)
+    results = retriever.retrieve("如何安装", collection_ids=["col1"], top_k=10, expand=True)
+    ids = [r["id"] for r in results]
+    assert ids.count("doc1") == 1
