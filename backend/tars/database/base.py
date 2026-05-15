@@ -2,6 +2,7 @@
 # SQLite 会话、消息和记忆存储
 
 import os
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -204,6 +205,36 @@ class Database:
                 updated_at TEXT NOT NULL
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS endpoints (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                api_key TEXT,
+                models TEXT NOT NULL DEFAULT '[]',
+                enabled INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        # 将旧 custom_models 一次性迁移为 endpoints（仅当 endpoints 为空时）
+        try:
+            cursor.execute("SELECT COUNT(*) FROM endpoints")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(
+                    "SELECT id, name, base_url, api_key, model, is_enabled, created_at, updated_at FROM custom_models"
+                )
+                for row in cursor.fetchall():
+                    mid, name, base_url, api_key, model, is_en, cat, uat = row
+                    models_json = json.dumps([model], ensure_ascii=False)
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO endpoints (id, name, base_url, api_key, models, enabled, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (mid, name, base_url, api_key, models_json, is_en or 1, cat, uat))
+        except sqlite3.OperationalError:
+            pass
 
         # === v2.2 记忆认知架构新表 ===
 

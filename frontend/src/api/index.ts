@@ -10,11 +10,16 @@ import type {
   ApiResponse,
   ChatSession,
   ChatHistoryMessage,
+  Endpoint,
+  ModelsOverviewResponse,
+  ModelSwitchBody,
+  ModelSwitchResult,
 } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000
+  // 模型列表 / 切换、大文件等可能超过 10s；过短会表现为「模型连不上」
+  timeout: 120000
 })
 
 api.interceptors.request.use((config) => {
@@ -92,15 +97,64 @@ export const subagentApi = {
 }
 
 export const modelApi = {
-  getModels: async (): Promise<{ models: string[], current_model: string }> => {
-    const response = await api.get<{ models: string[], current_model: string }>('/models')
+  getModelsOverview: async (): Promise<ModelsOverviewResponse> => {
+    const response = await api.get<ModelsOverviewResponse>('/models/')
     return response.data
   },
-  
-  switchModel: async (modelName: string): Promise<ApiResponse> => {
-    const response = await api.post<ApiResponse>('/models/switch', { model_name: modelName })
+
+  switchModel: async (body: ModelSwitchBody): Promise<ModelSwitchResult> => {
+    const response = await api.post<ModelSwitchResult>('/models/switch', {
+      provider: body.provider,
+      model: body.model,
+      endpoint_id: body.endpoint_id ?? undefined,
+    })
     return response.data
-  }
+  },
+
+  listEndpoints: async (): Promise<Endpoint[]> => {
+    const response = await api.get<Endpoint[]>('/models/endpoints')
+    return response.data
+  },
+
+  createEndpoint: async (data: {
+    name: string
+    base_url: string
+    api_key?: string
+  }): Promise<Endpoint> => {
+    const response = await api.post<Endpoint>('/models/endpoints', data)
+    return response.data
+  },
+
+  updateEndpoint: async (
+    id: string,
+    data: Partial<{
+      name: string
+      base_url: string
+      api_key: string
+      models: string[]
+      enabled: boolean
+    }>
+  ): Promise<Endpoint> => {
+    const response = await api.put<Endpoint>(`/models/endpoints/${id}`, data)
+    return response.data
+  },
+
+  deleteEndpoint: async (id: string): Promise<{ success: boolean }> => {
+    const response = await api.delete<{ success: boolean }>(`/models/endpoints/${id}`)
+    return response.data
+  },
+
+  fetchEndpointModels: async (
+    id: string
+  ): Promise<{ success: boolean; models: string[]; changed: boolean }> => {
+    const response = await api.post(`/models/endpoints/${id}/fetch-models`)
+    return response.data
+  },
+
+  testEndpoint: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/models/endpoints/${id}/test`)
+    return response.data
+  },
 }
 
 export default api

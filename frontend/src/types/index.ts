@@ -80,6 +80,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: string
+  attachments?: any[]
+  thinking?: any
 }
 
 export interface AuthState {
@@ -150,11 +152,13 @@ export interface SkillHubPackage {
 }
 
 export interface ToolCallEvent {
+  id?: string
   tool: string
   parameters: Record<string, any>
   success?: boolean
   output?: string
   error?: string
+  duration?: number
   timestamp: string
 }
 
@@ -170,4 +174,40 @@ export interface ChatHistoryMessage {
   role: string
   content: string
   timestamp: string
+}
+
+/** OpenAI 兼容 API 端点（模型配置页） */
+export interface Endpoint {
+  id: string
+  name: string
+  base_url: string
+  api_key: string
+  models: string[]
+  enabled: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ModelsOverviewResponse {
+  ollama_models: string[]
+  ollama_base_url: string
+  ollama_status: string
+  endpoints: Endpoint[]
+  current: {
+    provider: 'ollama' | 'openai_compatible'
+    endpoint_id: string | null
+    model: string
+  }
+}
+
+export interface ModelSwitchBody {
+  provider: 'ollama' | 'openai_compatible'
+  model: string
+  endpoint_id?: string | null
+}
+
+export interface ModelSwitchResult {
+  success: boolean
+  message?: string
+  current?: ModelsOverviewResponse['current']
 }
