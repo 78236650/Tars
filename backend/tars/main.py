@@ -174,9 +174,6 @@ knowledge_retriever = KnowledgeRetriever(vector_store, embedding_provider)
 tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever))
 
 # ========= 初始化 Agent =========
-from tars.reranker.cross_encoder import CrossEncoderReranker
-_reranker = CrossEncoderReranker()
-
 agent = AgentV2(
     db=db, tool_registry=tool_registry, skill_registry=skill_registry,
     file_storage=file_storage, file_parser=file_parser,
@@ -184,7 +181,6 @@ agent = AgentV2(
     task_executor=task_executor,
     knowledge_retriever=knowledge_retriever,
 )
-agent._reranker = _reranker
 agent.skill_loader = skill_loader
 
 # v2.5: 初始化权限引擎
@@ -866,15 +862,12 @@ async def startup_event():
     stats = memory_manager.cleanup()
     if stats["decayed"] or stats["deleted"]:
         print(f"[Startup] 记忆遗忘: importance衰减={stats['decayed']} 删除={stats['deleted']}")
-    # v2.2: 清理过期 Working Context + 启动迁移 worker
+    # v2.2: 清理过期 Working Context
     try:
         db.cleanup_working_contexts()
     except Exception:
         pass
-    try:
-        memory_manager.start_migration_worker()
-    except Exception:
-        pass
+    # migration worker 已禁用（与主线程共享 SQLite 连接导致死锁）
     # v2.4: 崩溃恢复 — 扫描未完成任务，置为 paused
     try:
         conn = db._get_conn()

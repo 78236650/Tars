@@ -302,42 +302,7 @@ class AgentV2:
         if memory_context:
             system_prompt += f"\n\n{memory_context}"
 
-        # 自动知识库检索：将相关文档片段注入上下文
-        if self.knowledge_retriever:
-            try:
-                conn = self.db._get_conn()
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT id FROM document_collections WHERE tenant_id = ?",
-                    (tenant_id,),
-                )
-                collection_ids = [r[0] for r in cursor.fetchall()]
-                if collection_ids:
-                    kb_results = self.knowledge_retriever.retrieve(
-                        query=user_content,
-                        collection_ids=collection_ids,
-                        top_k=8,
-                        tenant_id=tenant_id,
-                        expand=True,
-                    )
-                    # 相关性阈值过滤
-                    relevant = [r for r in kb_results if r.get("score", 0) > 0.25]
-                    # 用 reranker 精排（如果可用）
-                    if relevant and hasattr(self, '_reranker') and self._reranker:
-                        relevant = self._reranker.rerank(
-                            user_content, relevant, top_k=3, text_key="text"
-                        )
-                    else:
-                        relevant = relevant[:3]
-                    if relevant:
-                        kb_lines = ["## 知识库参考资料（请优先参考以下内容回答用户问题）"]
-                        for r in relevant:
-                            src = r.get("source", {})
-                            score = r.get("rerank_score", r.get("score", 0))
-                            kb_lines.append(f"[来源: {src.get('file_name', '未知')} | 相关度: {score:.2f}]\n{r['text'][:800]}")
-                        system_prompt += "\n\n" + "\n\n".join(kb_lines)
-            except Exception:
-                pass
+        # 知识库检索通过 knowledge_search 工具按需调用（已注册到 tool_registry）
         # v2.4: TaskDetector 自动检测任务意图（/plan 之外）
         is_slash_plan = user_content.startswith("/plan")
         try:
