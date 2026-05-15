@@ -253,3 +253,64 @@ def test_expand_deduplication():
     results = retriever.retrieve("如何安装", collection_ids=["col1"], top_k=10, expand=True)
     ids = [r["id"] for r in results]
     assert ids.count("doc1") == 1
+
+
+# --- Batch upload API tests ---
+
+import io
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from tars.api.knowledge import router, init_knowledge_api
+import tars.api.knowledge as knowledge_module
+
+
+def _make_batch_app():
+    db = MagicMock()
+    conn = MagicMock()
+    cursor = MagicMock()
+    cursor.fetchone.return_value = ("coll1",)  # collection exists
+    conn.cursor.return_value = cursor
+    db._get_conn.return_value = conn
+
+    indexer = MagicMock()
+    indexer.index_file.return_value = {"chunk_count": 2, "status": "indexed"}
+
+    knowledge_module._db = db
+    knowledge_module._indexer = indexer
+
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app), db, indexer
+
+
+def test_batch_upload_two_files():
+    client, db, indexer = _make_batch_app()
+    files = [
+        ("files", ("a.txt", io.BytesIO(b"content a"), "text/plain")),
+        ("files", ("b.txt", io.BytesIO(b"content b"), "text/plain")),
+    ]
+    resp = client.post("/api/knowledge/collections/coll1/batch", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert data["indexed"] == 2
+    assert data["failed"] == []
+
+
+def test_batch_upload_partial_failure():
+    client, db, indexer = _make_batch_app()
+    indexer.index_file.side_effect = [
+        {"chunk_count": 1, "status": "indexed"},
+        Exception("parse error"),
+    ]
+    files = [
+        ("files", ("ok.txt", io.BytesIO(b"good"), "text/plain")),
+        ("files", ("bad.txt", io.BytesIO(b"bad"), "text/plain")),
+    ]
+    resp = client.post("/api/knowledge/collections/coll1/batch", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert data["indexed"] == 1
+    assert len(data["failed"]) == 1
+    assert data["failed"][0]["file"] == "bad.txt"
