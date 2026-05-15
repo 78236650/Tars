@@ -314,3 +314,114 @@ def test_batch_upload_partial_failure():
     assert data["indexed"] == 1
     assert len(data["failed"]) == 1
     assert data["failed"][0]["file"] == "bad.txt"
+
+
+# --- EmbeddingManager tests ---
+
+from unittest.mock import patch, MagicMock
+from tars.memory.embeddings import EmbeddingManager
+
+
+def _make_mock_provider(dim=512):
+    p = MagicMock()
+    p.dim = dim
+    return p
+
+
+def test_embedding_manager_get_info():
+    provider = _make_mock_provider(dim=512)
+    mgr = EmbeddingManager(provider=provider)
+    info = mgr.get_info()
+    assert info["provider"] == "local"
+    assert info["model"] == "BAAI/bge-small-zh-v1.5"
+    assert info["dimension"] == 512
+
+
+def test_embedding_manager_get_info_no_provider():
+    mgr = EmbeddingManager()
+    info = mgr.get_info()
+    assert info["dimension"] == 0
+
+
+def test_embedding_manager_reinitialize_ollama():
+    mgr = EmbeddingManager(provider=_make_mock_provider(dim=512))
+    mock_ollama = _make_mock_provider(dim=1024)
+    with patch("tars.memory.embeddings.OllamaEmbeddingProvider", return_value=mock_ollama):
+        result = mgr.reinitialize("ollama", "bge-m3")
+    assert result["success"] is True
+    assert result["dimension"] == 1024
+    assert "维度从 512 变为 1024" in result["warning"]
+    assert mgr._provider_type == "ollama"
+    assert mgr._model_name == "bge-m3"
+
+
+def test_embedding_manager_reinitialize_same_dim_no_warning():
+    mgr = EmbeddingManager(provider=_make_mock_provider(dim=1024))
+    mock_ollama = _make_mock_provider(dim=1024)
+    with patch("tars.memory.embeddings.OllamaEmbeddingProvider", return_value=mock_ollama):
+        result = mgr.reinitialize("ollama", "bge-m3")
+    assert result["success"] is True
+    assert result["warning"] is None
+
+
+def test_embedding_manager_reinitialize_unsupported_provider():
+    mgr = EmbeddingManager()
+    result = mgr.reinitialize("unknown", "some-model")
+    assert result["success"] is False
+    assert "不支持的 provider" in result["error"]
+
+
+def test_embedding_manager_reinitialize_exception():
+    mgr = EmbeddingManager()
+    with patch("tars.memory.embeddings.OllamaEmbeddingProvider", side_effect=RuntimeError("conn failed")):
+        result = mgr.reinitialize("ollama", "bge-m3")
+    assert result["success"] is False
+    assert "conn failed" in result["error"]
+
+
+# --- Settings API tests ---
+
+import tars.api.settings as settings_module
+from tars.api.settings import router, init_settings_api
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _make_settings_app(manager=None):
+    settings_module._embedding_manager = manager
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app)
+
+
+def test_settings_get_embedding_uninitialized():
+    client = _make_settings_app(manager=None)
+    resp = client.get("/api/settings/embedding")
+    assert resp.status_code == 500
+
+
+def test_settings_get_embedding():
+    mgr = MagicMock()
+    mgr.get_info.return_value = {"provider": "local", "model": "BAAI/bge-small-zh-v1.5", "dimension": 512}
+    client = _make_settings_app(manager=mgr)
+    resp = client.get("/api/settings/embedding")
+    assert resp.status_code == 200
+    assert resp.json()["provider"] == "local"
+
+
+def test_settings_put_embedding_success():
+    mgr = MagicMock()
+    mgr.reinitialize.return_value = {"success": True, "dimension": 1024, "warning": None}
+    client = _make_settings_app(manager=mgr)
+    resp = client.put("/api/settings/embedding", json={"provider": "ollama", "model": "bge-m3"})
+    assert resp.status_code == 200
+    assert resp.json()["dimension"] == 1024
+    mgr.reinitialize.assert_called_once_with("ollama", "bge-m3")
+
+
+def test_settings_put_embedding_failure():
+    mgr = MagicMock()
+    mgr.reinitialize.return_value = {"success": False, "error": "不支持的 provider: bad"}
+    client = _make_settings_app(manager=mgr)
+    resp = client.put("/api/settings/embedding", json={"provider": "bad", "model": "x"})
+    assert resp.status_code == 400
