@@ -74,6 +74,7 @@ class CronRuntime:
         message = config.get("message") or job.description or job.name
         triggered_at = _now_local()
         session_id = config.get("session_id")
+        print(f"[CronRuntime] _run_reminder 开始: job={job.name}, session_id={session_id}")
         event = {
             "type": "cron_reminder",
             "job_id": job.id,
@@ -99,29 +100,37 @@ class CronRuntime:
                 )
             )
             try:
+                print(f"[CronRuntime] 尝试 send_personal_message: {session_id}")
                 delivered = await self.connection_manager.send_personal_message(session_id, event)
                 if delivered:
                     delivery_status = "delivered"
+                    print(f"[CronRuntime] 投递成功")
                 else:
                     summary_logs.append(
                         self._build_log_entry("websocket_delivery_attempted", "broadcast", "会话连接不存在，回退广播")
                     )
+                    print(f"[CronRuntime] 会话不存在，回退 broadcast")
                     await self.connection_manager.broadcast(event)
                     delivery_status = "broadcast"
+                    print(f"[CronRuntime] broadcast 完成")
             except Exception as exc:
                 error_message = str(exc)
-                print(f"[CronRuntime] reminder {job.id} 投递失败: {error_message}")
+                print(f"[CronRuntime] 投递异常: {error_message}")
         else:
             error_message = "缺少 session_id，回退广播路径"
             summary_logs.append(
                 self._build_log_entry("websocket_delivery_attempted", "broadcast", "通过 broadcast 投递通知")
             )
             try:
+                print(f"[CronRuntime] 无 session_id，执行 broadcast")
                 await self.connection_manager.broadcast(event)
                 delivery_status = "broadcast"
+                print(f"[CronRuntime] broadcast 完成")
             except Exception as exc:
                 error_message = str(exc)
+                print(f"[CronRuntime] broadcast 异常: {error_message}")
 
+        print(f"[CronRuntime] 写入通知记录...")
         summary_logs.append(
             self._build_log_entry(
                 "delivery_result",
@@ -140,6 +149,7 @@ class CronRuntime:
             summary_logs=summary_logs,
             triggered_at=triggered_at,
         )
+        print(f"[CronRuntime] _run_reminder 完成: {delivery_status}")
 
     def _build_log_entry(self, step: str, status: str, message: str) -> dict[str, str]:
         return {

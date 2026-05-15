@@ -176,22 +176,27 @@ class TaskScheduler:
         """调度器主循环"""
         while self.running:
             self._event.clear()
-            
+
             now = _local_now()
             tasks_to_run = []
-            
+
             # 检查所有任务
             for task_id, task in list(self.tasks.items()):
                 if not task.enabled:
                     continue
-                
+
                 if task.next_run and now >= task.next_run:
                     tasks_to_run.append(task)
-            
-            # 执行到期任务
+
+            # 执行到期任务（先更新 next_run 防止重复触发）
+            if tasks_to_run:
+                print(f"[Scheduler] 触发 {len(tasks_to_run)} 个任务: {[t.name for t in tasks_to_run]}")
             for task in tasks_to_run:
+                task.last_run = now
+                cron = CronExpression(task.cron_expression)
+                task.next_run = cron.next_run(now)
                 asyncio.create_task(self._run_task(task))
-            
+
             # 计算下一次检查时间
             next_check = self._calculate_next_check()
             wait_time = (next_check - now).total_seconds()
@@ -200,20 +205,15 @@ class TaskScheduler:
                     await asyncio.wait_for(self._event.wait(), wait_time)
                 except asyncio.TimeoutError:
                     pass
-    
+
     async def _run_task(self, task: ScheduledTask):
         """执行单个任务"""
         try:
-            task.last_run = _local_now()
-            
-            # 计算下一次运行时间
-            cron = CronExpression(task.cron_expression)
-            task.next_run = cron.next_run(task.last_run)
-            
-            # 执行任务
+            print(f"[Scheduler] _run_task 开始: {task.name}")
             await task.task()
+            print(f"[Scheduler] _run_task 完成: {task.name}")
         except Exception as e:
-            print(f"任务 {task.name} 执行失败: {e}")
+            print(f"[Scheduler] 任务 {task.name} 执行失败: {e}")
     
     def _calculate_next_check(self) -> datetime:
         """计算下一次检查时间"""
