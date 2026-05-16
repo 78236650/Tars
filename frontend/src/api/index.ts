@@ -382,4 +382,14 @@ export const meetingApi = {
     const response = await api.delete(`/meeting/${id}`)
     return response.data
   },
+
+  approveToKnowledge: async (id: string, summary: string, keyPoints: string[]): Promise<{ success: boolean; message: string; knowledge_doc_id: string }> => {
+    const response = await api.post(`/meeting/${id}/approve-to-knowledge`, { summary, key_points: keyPoints })
+    return response.data
+  },
+
+  updateSummary: async (id: string, summary: string, keyPoints: string[]): Promise<{ success: boolean }> => {
+    const response = await api.put(`/meeting/${id}/summary`, { summary, key_points: keyPoints })
+    return response.data
+  },
 }

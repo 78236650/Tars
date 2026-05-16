@@ -328,6 +328,8 @@ export interface Transcription {
   created_at: string | null
   completed_at: string | null
   error_message: string | null
+  approved_at: string | null
+  knowledge_doc_id: string | null
 }
 
 export interface TranscriptionListData {

@@ -88,6 +88,29 @@ class ReminderNotification:
     updated_at: datetime = None
 
 
+@dataclass
+class Transcription:
+    id: str
+    user_id: str
+    file_path: str
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    duration: Optional[float] = None
+    language: Optional[str] = None
+    status: str = "pending"
+    transcript: Optional[str] = None
+    segments: Optional[str] = None
+    summary: Optional[str] = None
+    summary_type: Optional[str] = None
+    key_points: Optional[str] = None
+    model_used: Optional[str] = None
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    approved_at: Optional[str] = None
+    knowledge_doc_id: Optional[str] = None
+
+
 class Database:
     def __init__(self, db_path: Optional[str] = None):
         if not db_path:
@@ -541,6 +564,34 @@ class Database:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_files_collection ON document_files(collection_id)")
+
+        # === Meeting Voice Recognition: transcriptions 表 ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transcriptions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT 'default',
+                file_path TEXT NOT NULL,
+                file_name TEXT,
+                file_size INTEGER,
+                duration REAL,
+                language TEXT,
+                status TEXT DEFAULT 'pending',
+                transcript TEXT,
+                segments TEXT,
+                summary TEXT,
+                summary_type TEXT,
+                key_points TEXT,
+                model_used TEXT,
+                created_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                error_message TEXT,
+                approved_at TEXT,
+                knowledge_doc_id TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transcriptions_user ON transcriptions(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transcriptions_status ON transcriptions(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transcriptions_created ON transcriptions(created_at DESC)")
 
         conn.commit()
 
@@ -1442,3 +1493,151 @@ class Database:
             (op, error, session_id, now),
         )
         conn.commit()
+
+    # ============ Meeting Voice Recognition ============
+
+    def create_transcription(
+        self,
+        user_id: str,
+        file_path: str,
+        file_name: Optional[str] = None,
+        file_size: Optional[int] = None,
+        language: Optional[str] = None,
+        model_used: Optional[str] = None,
+    ) -> Transcription:
+        transcription_id = str(uuid.uuid4())
+        now = get_local_now()
+
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO transcriptions
+            (id, user_id, file_path, file_name, file_size, language, status, model_used, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (transcription_id, user_id, file_path, file_name, file_size, language, "pending", model_used, now),
+        )
+        conn.commit()
+
+        return Transcription(
+            id=transcription_id,
+            user_id=user_id,
+            file_path=file_path,
+            file_name=file_name,
+            file_size=file_size,
+            language=language,
+            status="pending",
+            model_used=model_used,
+            created_at=now,
+        )
+
+    def get_transcription(self, transcription_id: str) -> Optional[Transcription]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, user_id, file_path, file_name, file_size, duration, language, status,
+                   transcript, segments, summary, summary_type, key_points, model_used,
+                   created_at, completed_at, error_message
+            FROM transcriptions WHERE id = ?
+            """,
+            (transcription_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return self._row_to_transcription(row)
+
+    def list_transcriptions(self, user_id: str = "default", limit: int = 50, offset: int = 0) -> List[Transcription]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, user_id, file_path, file_name, file_size, duration, language, status,
+                   transcript, segments, summary, summary_type, key_points, model_used,
+                   created_at, completed_at, error_message
+            FROM transcriptions WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (user_id, limit, offset),
+        )
+        return [self._row_to_transcription(row) for row in cursor.fetchall()]
+
+    def update_transcription(self, transcription_id: str, **kwargs) -> bool:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        allowed_fields = {
+            "duration", "language", "status", "transcript", "segments",
+            "summary", "summary_type", "key_points", "model_used", "error_message",
+        }
+        updates = []
+        params = []
+
+        for key, value in kwargs.items():
+            if key in allowed_fields:
+                updates.append(f"{key} = ?")
+                params.append(value)
+
+        if not updates:
+            return False
+
+        now = get_local_now()
+        updates.append("completed_at = ?")
+        params.append(now)
+        params.append(transcription_id)
+
+        cursor.execute(
+            f"UPDATE transcriptions SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_transcription(self, transcription_id: str) -> bool:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        # 先获取文件路径用于删除文件
+        cursor.execute("SELECT file_path FROM transcriptions WHERE id = ?", (transcription_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        file_path = row[0]
+        cursor.execute("DELETE FROM transcriptions WHERE id = ?", (transcription_id,))
+        conn.commit()
+
+        # 尝试删除关联文件
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+
+        return True
+
+    def _row_to_transcription(self, row) -> Transcription:
+        return Transcription(
+            id=row[0],
+            user_id=row[1],
+            file_path=row[2],
+            file_name=row[3],
+            file_size=row[4],
+            duration=row[5],
+            language=row[6],
+            status=row[7],
+            transcript=row[8],
+            segments=row[9],
+            summary=row[10],
+            summary_type=row[11],
+            key_points=row[12],
+            model_used=row[13],
+            created_at=_parse_db_datetime(row[14]),
+            completed_at=_parse_db_datetime(row[15]),
+            error_message=row[16],
+            approved_at=row[17] if len(row) > 17 else None,
+            knowledge_doc_id=row[18] if len(row) > 18 else None,
+        )
