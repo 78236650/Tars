@@ -36,9 +36,11 @@ def get_endpoint_store() -> EndpointStore:
 
 def _sync_llm_chain(agent: Agent) -> None:
     agent.dispatcher.set_provider(agent.provider)
-    from tars.main import memory_manager
+    from tars.main import memory_manager, meeting_tool
 
     memory_manager.set_provider(agent.provider)
+    if meeting_tool:
+        meeting_tool.provider = agent.provider
 
 
 def get_agent() -> Agent:
