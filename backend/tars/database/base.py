@@ -592,6 +592,15 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transcriptions_user ON transcriptions(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transcriptions_status ON transcriptions(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transcriptions_created ON transcriptions(created_at DESC)")
+        # 迁移：为已有表添加新列
+        try:
+            cursor.execute("ALTER TABLE transcriptions ADD COLUMN approved_at TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE transcriptions ADD COLUMN knowledge_doc_id TEXT")
+        except Exception:
+            pass
 
         conn.commit()
 
