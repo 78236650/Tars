@@ -1,5 +1,40 @@
 # Changelog
 
+## v2.8.1 (2026-05-16)
+
+### 会议助手
+
+- ✅ 实时录音转写（边录边转）：WebSocket 流式传输 + ProcessPoolExecutor 非阻塞
+- ✅ 3 套专业摘要模板：通用商务型（默认）、执行摘要型、项目进度型
+- ✅ 自定义提示词编辑 + 保存
+- ✅ 会议模块独立模型配置（不影响主 Agent）
+- ✅ 录音不足 5 秒自动截断提示
+- ✅ 会议纪要编辑确认入库知识库（摘要索引 + 原文追溯）
+- ✅ 入库文档名使用摘要主题 + 日期
+
+### 知识库增强
+
+- ✅ Agent 主动调用 knowledge_search（system prompt 规则引导）
+- ✅ knowledge_search 未指定 collection 时自动搜索所有 collections
+- ✅ 会议纪要固定 collection（meeting_notes_kb）
+
+### 稳定性修复
+
+- ✅ 调度器无限触发 bug（next_run 在 create_task 前更新）
+- ✅ migration worker 死锁（禁用共享 SQLite 连接的后台线程）
+- ✅ 模型切换后 meeting_tool.provider 同步更新
+- ✅ Vite 代理启用 /api WebSocket 转发
+- ✅ 前端 i18n 补充会议助手翻译 + 类型修复
+- ✅ transcriptions 表自动迁移 approved_at/knowledge_doc_id 列
+
+### 环境变更
+
+- 后端统一使用 `.venv` 虚拟环境
+- 删除旧 `venv` 目录
+- 启动命令：`.venv/bin/python -m uvicorn tars.main:app --host 0.0.0.0 --port 8000`
+
+---
+
 ## v2.7.0 (2026-05-16)
 
 ### 核心架构升级

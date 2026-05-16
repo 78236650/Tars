@@ -9,10 +9,12 @@ from .file_write import FileWriteTool
 from .shell import ShellTool
 from .process import ProcessTool
 from .network import NetworkTool
+from .meeting_recognizer import MeetingRecognizerTool
 
 __all__ = [
     "WeatherTool", "FileTool", "FileListTool",
     "CommandTool", "MemoryTool", "CronJobTool",
     "WebSearchTool", "WebFetchTool",
     "FileWriteTool", "ShellTool", "ProcessTool", "NetworkTool",
+    "MeetingRecognizerTool",
 ]

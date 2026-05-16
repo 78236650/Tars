@@ -23,7 +23,7 @@ from tars.models.config import router as model_config_router
 from tars.tools import registry as tool_registry
 from tars.tools.builtin import (
     WeatherTool, FileTool, FileListTool, CommandTool, MemoryTool, CronJobTool,
-    FileWriteTool, ShellTool, ProcessTool, NetworkTool,
+    FileWriteTool, ShellTool, ProcessTool, NetworkTool, MeetingRecognizerTool,
 )
 from tars.tools.builtin.web_search import WebSearchTool
 from tars.tools.builtin.web_fetch import WebFetchTool
@@ -43,11 +43,12 @@ from tars.api.tasks import router as tasks_router, init_tasks_api
 from tars.api.invoke import router as invoke_router, init_invoke_api
 from tars.api.bi import router as bi_router, init_bi_api
 from tars.api.knowledge import router as knowledge_router, init_knowledge_api
+from tars.api.meeting import router as meeting_router, init_meeting_api
 from tars.tenant import TenantContextCache
 from tars.cron import CronRuntime
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="2.7.0")
+app = FastAPI(title="TARS Agent", version="2.8.1")
 
 # CORS 配置
 app.add_middleware(
@@ -95,6 +96,10 @@ tool_registry.register(WebSearchTool())
 tool_registry.register(WebFetchTool())
 tool_registry.register(PythonExecTool(workspace_dir=str(project_dir.parent)))
 tool_registry.register(ArchivalInsertTool(db=db))
+
+# 会议语音识别工具（provider 在 agent 初始化后注入）
+meeting_tool = MeetingRecognizerTool(model_size="base")
+tool_registry.register(meeting_tool)
 
 # 任务规划工具
 task_planner_tool = TaskPlannerTool()
@@ -203,6 +208,9 @@ connection_manager.set_agent(agent)
 cron_runtime = CronRuntime(db=db, scheduler=get_scheduler(), connection_manager=connection_manager)
 cronjob_tool.set_runtime(cron_runtime)
 
+# 注入 LLM provider 到会议识别工具（用于摘要生成）
+meeting_tool.provider = agent.provider
+
 # ========= 挂载路由 =========
 app.include_router(model_config_router)
 app.include_router(tools_router)
@@ -214,10 +222,12 @@ app.include_router(tasks_router)
 app.include_router(invoke_router)
 app.include_router(bi_router)
 app.include_router(knowledge_router)
+app.include_router(meeting_router)
 init_sessions_api(db)
 init_tasks_api(db, agent)
 init_bi_api(db)
 init_knowledge_api(db, vector_store, embedding_provider)
+init_meeting_api(db, meeting_tool)
 
 init_invoke_api(
     agent=agent,
