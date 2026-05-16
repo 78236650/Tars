@@ -898,6 +898,8 @@ async def startup_event():
 async def shutdown_event():
     """关闭事件"""
     await shutdown_scheduler()
+    from tars.tools.builtin.meeting_recognizer import shutdown_whisper_pool
+    shutdown_whisper_pool()
 
 if __name__ == "__main__":
     # 初始化技能系统

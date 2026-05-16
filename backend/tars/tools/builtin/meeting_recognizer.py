@@ -9,7 +9,7 @@ from pathlib import Path
 from ..base import BaseTool, ToolResult
 
 
-# 全局进程池（Whisper 是 CPU 密集型，必须在独立进程中运行）
+# 全局进程池（Whisper 是 CPU 密集型，限制 1 worker 避免内存爆炸）
 _whisper_pool: Optional[ProcessPoolExecutor] = None
 
 # 支持的音频格式
@@ -19,8 +19,15 @@ SUPPORTED_AUDIO_FORMATS = {".mp3", ".wav", ".m4a", ".mp4", ".webm", ".ogg", ".fl
 def _get_whisper_pool() -> ProcessPoolExecutor:
     global _whisper_pool
     if _whisper_pool is None:
-        _whisper_pool = ProcessPoolExecutor(max_workers=2)
+        _whisper_pool = ProcessPoolExecutor(max_workers=1)
     return _whisper_pool
+
+
+def shutdown_whisper_pool():
+    global _whisper_pool
+    if _whisper_pool is not None:
+        _whisper_pool.shutdown(wait=False)
+        _whisper_pool = None
 
 
 def _sync_transcribe(file_path: str, language: Optional[str] = None, model_size: str = "base") -> dict:
