@@ -302,7 +302,8 @@ class AgentV2:
         if memory_context:
             system_prompt += f"\n\n{memory_context}"
 
-        # 知识库检索通过 knowledge_search 工具按需调用（已注册到 tool_registry）
+        # 知识库使用规则注入 system prompt
+        system_prompt += "\n\n## 知识库使用规则\n回答用户问题前，如果问题涉及项目信息、历史决策、会议内容、技术方案或业务知识，请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。"
         # v2.4: TaskDetector 自动检测任务意图（/plan 之外）
         is_slash_plan = user_content.startswith("/plan")
         try:

@@ -9,7 +9,8 @@ class KnowledgeSearchTool(BaseTool):
 
     name: str = "knowledge_search"
     description: str = (
-        "搜索知识库中的文档内容。当用户询问关于上传的文档、资料、知识库中的信息时使用此工具。"
+        "搜索知识库中的文档和会议纪要。回答用户问题前应优先调用此工具检查是否有相关资料。"
+        "适用场景：用户提问涉及项目信息、历史决策、会议内容、技术方案、业务知识时，都应先搜索知识库。"
         "支持自然语言查询，返回最相关的文档片段。"
     )
     parameters_schema: Dict[str, Any] = {
