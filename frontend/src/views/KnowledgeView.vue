@@ -10,8 +10,8 @@ import KnowledgeManager from '@/components/knowledge/KnowledgeManager.vue'
 
 <style scoped>
 .knowledge-view {
-  height: 100vh;
+  height: 100%;
   overflow-y: auto;
-  background: #f3f4f6;
+  background: transparent;
 }
 </style>

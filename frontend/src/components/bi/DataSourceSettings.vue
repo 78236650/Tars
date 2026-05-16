@@ -32,10 +32,14 @@
       </div>
     </div>
 
-    <!-- 创建数据源弹窗 -->
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
-      <div class="modal">
-        <h3>新建数据源</h3>
+    <AppSurfaceDialog
+      :open="showCreateModal"
+      title="新建数据源"
+      description="统一配置 BI 数据源连接信息"
+      size="lg"
+      @close="showCreateModal = false"
+    >
+      <div class="space-y-4">
         <div class="form-group">
           <label>名称</label>
           <input v-model="createForm.name" type="text" placeholder="如：生产库-订单" />
@@ -60,25 +64,33 @@
             SQLite: sqlite:///path/to/db.db
           </div>
         </div>
-        <div class="modal-actions">
+      </div>
+
+      <template #footer>
+        <div class="surface-actions">
           <button class="btn-secondary" @click="showCreateModal = false">取消</button>
           <button class="btn-primary" :disabled="creating" @click="createDataSource">
             {{ creating ? '创建中...' : '创建' }}
           </button>
         </div>
-      </div>
-    </div>
+      </template>
+    </AppSurfaceDialog>
 
-    <!-- 标注编辑器弹窗 -->
-    <div v-if="showAnnotatorModal" class="modal-overlay" @click.self="showAnnotatorModal = false">
-      <div class="modal modal-large">
+    <AppSurfaceDrawer
+      :open="showAnnotatorModal"
+      :title="selectedDataSource ? `Schema 标注 - ${selectedDataSource.name}` : 'Schema 标注'"
+      description="编辑表结构业务语义、字段说明与关系信息"
+      side="right"
+      @close="showAnnotatorModal = false"
+    >
+      <div class="schema-annotator-shell">
         <SchemaAnnotator
           :datasource="selectedDataSource"
           @save="onAnnotationsSave"
           @close="showAnnotatorModal = false"
         />
       </div>
-    </div>
+    </AppSurfaceDrawer>
   </div>
 </template>
 
@@ -86,6 +98,8 @@
 import { ref, onMounted } from 'vue'
 import { biApi } from '@/api'
 import type { DataSource } from '@/types'
+import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
+import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import SchemaAnnotator from './SchemaAnnotator.vue'
 
 const datasources = ref<DataSource[]>([])
@@ -188,32 +202,33 @@ onMounted(loadDataSources)
 .title {
   font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
+  color: #f5f0e8;
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: #d97706;
+  color: #0c0b09;
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: #f59e0b;
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #374151;
-  border: none;
+  background: rgba(255,255,255,0.06);
+  color: #d6d3d1;
+  border: 1px solid rgba(255,255,255,0.08);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -221,7 +236,7 @@ onMounted(loadDataSources)
 }
 
 .btn-secondary:hover {
-  background: #d1d5db;
+  background: rgba(255,255,255,0.1);
 }
 
 .datasource-list {
@@ -231,10 +246,10 @@ onMounted(loadDataSources)
 }
 
 .datasource-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.12);
+  border-radius: 12px;
   padding: 16px;
-  background: white;
+  background: rgba(255,255,255,0.03);
 }
 
 .card-header {
@@ -253,12 +268,12 @@ onMounted(loadDataSources)
 .ds-name {
   font-weight: 600;
   font-size: 16px;
-  color: #1f2937;
+  color: #e7e5e4;
 }
 
 .ds-type {
-  background: #dbeafe;
-  color: #1e40af;
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -279,16 +294,16 @@ onMounted(loadDataSources)
 }
 
 .btn-icon:hover {
-  background: #f3f4f6;
+  background: rgba(255,255,255,0.06);
 }
 
 .btn-danger:hover {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .card-body {
   font-size: 13px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .schema-summary,
@@ -300,39 +315,7 @@ onMounted(loadDataSources)
 .empty {
   text-align: center;
   padding: 40px;
-  color: #6b7280;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  width: 480px;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.modal-large {
-  width: 720px;
-}
-
-.modal h3 {
-  margin-bottom: 16px;
-  font-size: 18px;
+  color: #78716c;
 }
 
 .form-group {
@@ -344,30 +327,41 @@ onMounted(loadDataSources)
   margin-bottom: 6px;
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: #d6d3d1;
 }
 
 .form-group input,
 .form-group select {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .form-group .hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #6b7280;
+  color: #78716c;
   line-height: 1.5;
 }
 
-.modal-actions {
+.surface-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 20px;
+}
+
+.schema-annotator-shell :deep(.annotator-header) {
+  display: none;
 }
 </style>

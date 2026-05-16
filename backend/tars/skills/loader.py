@@ -71,9 +71,13 @@ class SkillLoader:
 
             # PluginSkill: 加载 Python 代码并注册为 Tool
             if is_plugin and self.tool_registry:
-                tool = load_plugin_tool(entry_path)
-                if tool:
-                    self.tool_registry.register(tool)
+                tools = load_plugin_tool(entry_path)
+                if tools:
+                    if isinstance(tools, list):
+                        for t in tools:
+                            self.tool_registry.register(t)
+                    else:
+                        self.tool_registry.register(tools)
 
             # 存到 skills_v3 表
             try:

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import Sidebar from '@/components/layout/Sidebar.vue'
 import ToolCard from '@/components/tools/ToolCard.vue'
 import ToolDetailModal from '@/components/tools/ToolDetailModal.vue'
 import AddToolModal from '@/components/tools/AddToolModal.vue'
@@ -162,23 +161,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-slate-900">
-    <Sidebar />
-
-    <main class="flex-1 flex flex-col">
-      <header class="flex items-center justify-between px-6 py-4 border-b border-slate-700">
+  <div class="flex h-full min-h-0 flex-col overflow-hidden">
+      <header class="flex items-center justify-between border-b border-amber-100/10 px-6 py-4">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <span class="text-white font-bold text-lg">T</span>
+          <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-amber-700 shadow-[0_10px_30px_rgba(217,119,6,0.35)]">
+            <span class="text-lg font-bold text-stone-950">T</span>
           </div>
           <div>
-            <h1 class="text-lg font-semibold text-white">{{ t('tools.title') }}</h1>
-            <p class="text-sm text-slate-400">{{ t('tools.subtitle') }}</p>
+            <h1 class="text-lg font-semibold text-stone-100">{{ t('tools.title') }}</h1>
+            <p class="text-sm text-stone-400">{{ t('tools.subtitle') }}</p>
           </div>
         </div>
         <button
           @click="showAddModal = true"
-          class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors"
+          class="flex items-center gap-2 rounded-2xl bg-amber-500 px-4 py-2 font-medium text-stone-950 transition hover:bg-amber-400"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -188,38 +184,38 @@ onMounted(() => {
       </header>
 
       <!-- Tab 栏 -->
-      <div class="flex border-b border-slate-700 px-6">
+      <div class="flex border-b border-amber-100/10 px-6">
         <button
           @click="onTabChange('builtin')"
-          class="px-5 py-3 text-sm font-medium transition-colors"
-          :class="activeTab === 'builtin' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-white'"
+          class="px-5 py-3 text-sm font-medium transition"
+          :class="activeTab === 'builtin' ? 'border-b-2 border-amber-400 text-amber-200' : 'text-stone-400 hover:text-stone-100'"
         >{{ t('tools.tabBuiltin') }}</button>
         <button
           @click="onTabChange('skills')"
-          class="px-5 py-3 text-sm font-medium transition-colors"
-          :class="activeTab === 'skills' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-white'"
+          class="px-5 py-3 text-sm font-medium transition"
+          :class="activeTab === 'skills' ? 'border-b-2 border-amber-400 text-amber-200' : 'text-stone-400 hover:text-stone-100'"
         >{{ t('tools.tabSkills') }} ({{ skills.length }})</button>
         <button
           @click="onTabChange('skillhub')"
-          class="px-5 py-3 text-sm font-medium transition-colors"
-          :class="activeTab === 'skillhub' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-slate-400 hover:text-white'"
+          class="px-5 py-3 text-sm font-medium transition"
+          :class="activeTab === 'skillhub' ? 'border-b-2 border-amber-400 text-amber-200' : 'text-stone-400 hover:text-stone-100'"
         >{{ t('tools.tabSkillhub') }}</button>
       </div>
 
       <div class="flex-1 overflow-y-auto p-6">
-        <div class="max-w-6xl mx-auto">
+        <div class="mx-auto max-w-6xl">
 
           <!-- 搜索栏（内置工具 + 已安装技能 Tab） -->
           <div v-if="activeTab !== 'skillhub'" class="mb-6">
             <div class="relative">
-              <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
               </svg>
               <input
                 v-model="searchQuery"
                 type="text"
                 :placeholder="t('tools.searchPlaceholder')"
-                class="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] py-2 pl-10 pr-4 text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
             </div>
           </div>
@@ -227,12 +223,12 @@ onMounted(() => {
           <!-- Tab 1: 内置工具 -->
           <div v-if="activeTab === 'builtin'">
             <div v-if="loading" class="text-center py-12">
-              <div class="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-amber-400 border-t-transparent"></div>
             </div>
             <div v-else-if="filteredTools.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <ToolCard v-for="tool in filteredTools" :key="tool.id" :tool="tool" @click="handleToolClick(tool)" />
             </div>
-            <div v-else class="text-center py-12 text-slate-400">{{ t('tools.noTools') }}</div>
+            <div v-else class="py-12 text-center text-stone-400">{{ t('tools.noTools') }}</div>
           </div>
 
           <!-- Tab 2: 已安装技能 -->
@@ -241,24 +237,24 @@ onMounted(() => {
               <div
                 v-for="skill in filteredSkills"
                 :key="skill.id"
-                class="bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-blue-500 cursor-pointer transition-colors"
+                class="cursor-pointer rounded-[24px] border border-amber-100/10 bg-[#171411]/82 p-6 transition hover:border-amber-300/25 hover:bg-amber-500/10"
                 @click="handleToolClick(skill)"
               >
                 <div class="flex items-start justify-between mb-3">
-                  <h3 class="text-lg font-semibold text-white">{{ skill.name }}</h3>
-                  <div class="w-3 h-3 rounded-full" :class="skill.enabled ? 'bg-green-500' : 'bg-slate-500'"></div>
+                  <h3 class="text-lg font-semibold text-stone-100">{{ skill.name }}</h3>
+                  <div class="h-3 w-3 rounded-full" :class="skill.enabled ? 'bg-emerald-400' : 'bg-stone-600'"></div>
                 </div>
-                <p class="text-sm text-slate-400 mb-4 line-clamp-2">{{ skill.description }}</p>
+                <p class="mb-4 line-clamp-2 text-sm text-stone-400">{{ skill.description }}</p>
                 <div class="flex items-center gap-2 flex-wrap">
-                  <span class="text-xs px-2 py-1 rounded-full" :class="skill.type === 'plugin' ? 'bg-green-600/20 text-green-400' : 'bg-purple-600/20 text-purple-400'">
+                  <span class="rounded-full px-2 py-1 text-xs" :class="skill.type === 'plugin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'">
                     {{ skill.type === 'plugin' ? 'Plugin' : 'Prompt' }}
                   </span>
-                  <span class="text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-300">{{ skill.source }}</span>
-                  <span v-if="skill.version" class="text-xs text-slate-500">v{{ skill.version }}</span>
+                  <span class="rounded-full bg-white/[0.05] px-2 py-1 text-xs text-stone-300">{{ skill.source }}</span>
+                  <span v-if="skill.version" class="text-xs text-stone-500">v{{ skill.version }}</span>
                 </div>
               </div>
             </div>
-            <div v-else class="text-center py-12 text-slate-400">{{ t('tools.noSkills') }}</div>
+            <div v-else class="py-12 text-center text-stone-400">{{ t('tools.noSkills') }}</div>
           </div>
 
           <!-- Tab 3: SkillHub 商店 -->
@@ -266,21 +262,21 @@ onMounted(() => {
             <!-- 搜索栏 + 分类过滤 -->
             <div class="flex flex-wrap items-center gap-3 mb-5">
               <div class="flex-1 min-w-[240px] relative">
-                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                 </svg>
                 <input
                   v-model="hubSearchQuery"
                   type="text"
                   :placeholder="t('tools.hubSearchPlaceholder')"
-                  class="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] py-2.5 pl-10 pr-4 text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
                   @keyup.enter="searchHub"
                 />
               </div>
               <button
                 @click="searchHub"
                 :disabled="hubSearching"
-                class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 rounded-lg text-white text-sm transition-colors"
+                class="rounded-2xl bg-amber-500 px-5 py-2.5 text-sm font-medium text-stone-950 transition hover:bg-amber-400 disabled:bg-stone-700 disabled:text-stone-300"
               >{{ hubSearching ? t('tools.searching') : t('common.search') }}</button>
             </div>
 
@@ -288,64 +284,64 @@ onMounted(() => {
             <div class="flex gap-2 mb-5">
               <button
                 @click="hubFilter = 'all'"
-                class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-                :class="hubFilter === 'all' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
+                class="rounded-full px-3 py-1.5 text-xs font-medium transition"
+                :class="hubFilter === 'all' ? 'bg-amber-500 text-stone-950' : 'bg-white/[0.05] text-stone-300 hover:bg-amber-500/10'"
               >{{ t('tools.filterAll') }}</button>
               <button
                 @click="hubFilter = 'plugin'"
-                class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-                :class="hubFilter === 'plugin' ? 'bg-green-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
+                class="rounded-full px-3 py-1.5 text-xs font-medium transition"
+                :class="hubFilter === 'plugin' ? 'bg-amber-500 text-stone-950' : 'bg-white/[0.05] text-stone-300 hover:bg-amber-500/10'"
               >{{ t('tools.filterPlugin') }}</button>
               <button
                 @click="hubFilter = 'prompt'"
-                class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-                :class="hubFilter === 'prompt' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
+                class="rounded-full px-3 py-1.5 text-xs font-medium transition"
+                :class="hubFilter === 'prompt' ? 'bg-amber-500 text-stone-950' : 'bg-white/[0.05] text-stone-300 hover:bg-amber-500/10'"
               >{{ t('tools.filterPrompt') }}</button>
             </div>
 
             <!-- 加载中 -->
             <div v-if="hubSearching && !hubLoaded" class="text-center py-12">
-              <div class="inline-block w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-              <p class="mt-3 text-slate-400">{{ t('common.loading') }}</p>
+              <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-amber-400 border-t-transparent"></div>
+              <p class="mt-3 text-stone-400">{{ t('common.loading') }}</p>
             </div>
 
             <!-- 目录结果（空搜索词时的默认展示）-->
             <div v-else-if="filteredHubResults.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div v-for="pkg in filteredHubResults" :key="pkg.id" class="bg-slate-800 rounded-xl p-5 border transition-colors"
-                :class="pkg.installed ? 'border-green-700' : 'border-slate-700'">
+              <div v-for="pkg in filteredHubResults" :key="pkg.id" class="rounded-[24px] border bg-[#171411]/82 p-5 transition"
+                :class="pkg.installed ? 'border-amber-300/25' : 'border-amber-100/10'">
                 <div class="flex items-start justify-between mb-3">
                   <div>
                     <div class="flex items-center gap-2">
-                      <h4 class="font-semibold text-white">{{ pkg.name }}</h4>
+                      <h4 class="font-semibold text-stone-100">{{ pkg.name }}</h4>
                       <!-- 类型标签 -->
-                      <span class="text-xs px-1.5 py-0.5 rounded-full" :class="pkg.type === 'plugin' ? 'bg-green-600/20 text-green-400' : 'bg-purple-600/20 text-purple-400'">
+                      <span class="rounded-full px-1.5 py-0.5 text-xs" :class="pkg.type === 'plugin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'">
                         {{ pkg.type === 'plugin' ? 'Tool' : 'Prompt' }}
                       </span>
                       <!-- 已安装标签 -->
-                      <span v-if="pkg.installed" class="text-xs px-1.5 py-0.5 rounded-full bg-green-600/20 text-green-400 border border-green-600/30">
+                      <span v-if="pkg.installed" class="rounded-full border border-amber-400/20 bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-200">
                         {{ t('tools.installed') }}
                       </span>
                     </div>
-                    <p class="text-xs text-slate-400 mt-1">{{ pkg.author }} &middot; v{{ pkg.version }}</p>
+                    <p class="mt-1 text-xs text-stone-400">{{ pkg.author }} &middot; v{{ pkg.version }}</p>
                   </div>
                   <button
                     v-if="!pkg.installed"
                     @click="installFromHub(pkg.id)"
                     :disabled="installingId === pkg.id"
-                    class="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 rounded-lg text-white text-sm transition-colors flex-shrink-0"
+                    class="flex-shrink-0 rounded-xl bg-amber-500 px-3 py-1.5 text-sm font-medium text-stone-950 transition hover:bg-amber-400 disabled:bg-stone-700 disabled:text-stone-300"
                   >{{ installingId === pkg.id ? t('tools.installing') : t('common.install') }}</button>
                   <button
                     v-else
                     @click="installFromHub(pkg.id)"
                     :disabled="installingId === pkg.id"
-                    class="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 rounded-lg text-white text-sm transition-colors flex-shrink-0"
+                    class="flex-shrink-0 rounded-xl border border-amber-100/10 bg-white/[0.04] px-3 py-1.5 text-sm text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10 disabled:bg-stone-800 disabled:text-stone-500"
                   >{{ installingId === pkg.id ? t('tools.installing') : t('tools.reinstall') }}</button>
                 </div>
 
-                <p class="text-sm text-slate-400 line-clamp-2 mb-2">{{ pkg.description }}</p>
+                <p class="mb-2 line-clamp-2 text-sm text-stone-400">{{ pkg.description }}</p>
 
                 <!-- 安装反馈消息 -->
-                <div v-if="installMessage?.id === pkg.id" class="mb-3 p-3 rounded-lg text-sm"
+                <div v-if="installMessage?.id === pkg.id" class="mb-3 rounded-2xl p-3 text-sm"
                   :class="installMessage.success ? 'bg-green-900/30 border border-green-700 text-green-300' : 'bg-red-900/30 border border-red-700 text-red-300'">
                   <div class="flex items-start gap-2">
                     <svg v-if="installMessage.success" class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -362,27 +358,26 @@ onMounted(() => {
                 </div>
 
                 <!-- 标签行 -->
-                <div class="flex items-center gap-3 text-xs text-slate-500">
+                <div class="flex items-center gap-3 text-xs text-stone-500">
                   <span v-if="pkg.stars" class="flex items-center gap-1">
                     <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                     {{ pkg.stars }}
                   </span>
-                  <span v-for="tag in pkg.tags.slice(0, 4)" :key="tag" class="px-2 py-0.5 bg-slate-700 rounded-full">{{ tag }}</span>
+                  <span v-for="tag in pkg.tags.slice(0, 4)" :key="tag" class="rounded-full bg-white/[0.05] px-2 py-0.5">{{ tag }}</span>
                 </div>
               </div>
             </div>
 
             <!-- 空目录 -->
             <div v-else-if="hubLoaded && filteredHubResults.length === 0" class="text-center py-12">
-              <svg class="w-12 h-12 mx-auto text-slate-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="mx-auto mb-3 h-12 w-12 text-stone-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
               </svg>
-              <p class="text-slate-400">{{ t('tools.catalogEmpty') }}</p>
+              <p class="text-stone-400">{{ t('tools.catalogEmpty') }}</p>
             </div>
           </div>
         </div>
       </div>
-    </main>
 
     <ToolDetailModal v-if="selectedTool" :tool="selectedTool" @close="handleCloseDetail" />
     <AddToolModal v-if="showAddModal" @close="showAddModal = false; loadSkills()" />

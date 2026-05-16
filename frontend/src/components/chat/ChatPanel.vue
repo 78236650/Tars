@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
+import { defineAsyncComponent } from 'vue'
+const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRenderer.vue'))
+
 import PlanCard from './PlanCard.vue'
 import TaskCard from './TaskCard.vue'
-import ChartRenderer from '@/components/bi/ChartRenderer.vue'
 import type { ToolCallEvent } from '@/types'
 import { marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
@@ -270,30 +272,30 @@ onMounted(() => {
 
               <!-- BI 图表渲染 -->
               <div v-if="msg.biChart" class="mt-3">
-                <div class="text-xs text-slate-500 mb-2">📊 {{ msg.biChart.title || '数据图表' }}</div>
+                <div class="text-xs text-stone-500 mb-2">📊 {{ msg.biChart.title || '数据图表' }}</div>
                 <ChartRenderer
                   :chart-type="msg.biChart.chart_type"
                   :echarts-option="msg.biChart.echarts_option"
                   :title="msg.biChart.title"
                 />
-                <div v-if="msg.biChart.data_summary" class="text-xs text-slate-500 mt-2">{{ msg.biChart.data_summary }}</div>
+                <div v-if="msg.biChart.data_summary" class="text-xs text-stone-500 mt-2">{{ msg.biChart.data_summary }}</div>
               </div>
 
               <!-- 工具调用 -->
               <div v-if="msg.toolCalls?.length" class="mt-3 space-y-1.5">
-                <div v-for="tc in msg.toolCalls" :key="tc.id || tc.tool" class="bg-slate-800/60 border border-slate-700/60 rounded-lg overflow-hidden">
-                  <button @click="toggleToolCard(tc.id || tc.tool)" class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-700/50 transition-colors">
+                <div v-for="tc in msg.toolCalls" :key="tc.id || tc.tool" class="bg-stone-800/70 border border-amber-100/10 rounded-lg overflow-hidden">
+                  <button @click="toggleToolCard(tc.id || tc.tool)" class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-stone-700/60 transition-colors">
                     <svg class="w-3 h-3 transition-transform" :class="collapsedTools.has(tc.id || tc.tool) ? '' : 'rotate-90'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
-                    <span class="text-blue-400 font-medium">🔧 {{ tc.tool }}</span>
-                    <span v-if="tc.duration" class="text-slate-600 ml-auto">{{ tc.duration }}s</span>
-                    <span v-if="tc.output && !tc.error" class="text-green-500 ml-1">✓</span>
+                    <span class="text-amber-400 font-medium">🔧 {{ tc.tool }}</span>
+                    <span v-if="tc.duration" class="text-stone-600 ml-auto">{{ tc.duration }}s</span>
+                    <span v-if="tc.output && !tc.error" class="text-amber-500 ml-1">✓</span>
                     <span v-if="tc.error" class="text-red-500 ml-1">✕</span>
                   </button>
                   <div v-if="!collapsedTools.has(tc.id || tc.tool)" class="px-3 pb-2">
-                    <div v-if="tc.output" class="text-xs text-slate-400 bg-slate-900/50 rounded p-2 max-h-32 overflow-auto font-mono whitespace-pre-wrap">{{ tc.output }}</div>
-                    <div v-if="tc.error" class="text-xs text-red-400 bg-red-900/20 rounded p-2">{{ tc.error }}</div>
+                    <div v-if="tc.output" class="text-xs text-stone-400 bg-stone-950/50 rounded p-2 max-h-32 overflow-auto font-mono whitespace-pre-wrap">{{ tc.output }}</div>
+                    <div v-if="tc.error" class="text-xs text-red-400 bg-red-950/30 rounded p-2">{{ tc.error }}</div>
                     <!-- BI 工具结果中的图表 -->
                     <div v-if="tc.metadata?.chart" class="mt-2">
                       <ChartRenderer
@@ -358,11 +360,11 @@ onMounted(() => {
 </template>
 <style>
 @import "highlight.js/styles/atom-one-dark.css";
-.code-block { position: relative; margin: 1rem 0; border-radius: 0.75rem; overflow: hidden; border: 1px solid rgba(51,65,85,0.5); }
-.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 1rem; background: rgba(30,41,59,0.8); font-size: 0.75rem; }
-.code-block-lang { color: #64748b; }
-.code-block-copy { color: #94a3b8; cursor: pointer; background: none; border: none; font-size: 0.75rem; }
-.code-block-copy:hover { color: #e2e8f0; }
+.code-block { position: relative; margin: 1rem 0; border-radius: 0.75rem; overflow: hidden; border: 1px solid rgba(245,158,11,0.15); }
+.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 1rem; background: rgba(20,17,15,0.9); font-size: 0.75rem; }
+.code-block-lang { color: #78716c; }
+.code-block-copy { color: #a8a29e; cursor: pointer; background: none; border: none; font-size: 0.75rem; }
+.code-block-copy:hover { color: #e7e5e4; }
 .code-block pre { margin: 0; border-radius: 0; }
 .code-block code { display: block; padding: 1rem; }
 .markdown-body h1 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 1.5rem 0 0.75rem; }
@@ -372,16 +374,16 @@ onMounted(() => {
 .markdown-body ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
 .markdown-body ol { list-style: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
 .markdown-body li { margin-bottom: 0.25rem; }
-.markdown-body a { color: #60a5fa; text-decoration: underline; }
+.markdown-body a { color: #fbbf24; text-decoration: underline; }
 .markdown-body strong { color: #f1f5f9; font-weight: 600; }
-.markdown-body code { background: #1e293b; color: #fda4af; font-size: 0.8rem; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: "SF Mono","Fira Code",monospace; }
-.markdown-body pre { background: #0f172a; border: 1px solid rgba(51,65,85,0.5); border-radius: 0.75rem; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
-.markdown-body pre code { background: transparent; color: #cbd5e1; padding: 0; font-size: 0.8rem; line-height: 1.5; }
+.markdown-body code { background: rgba(20,17,15,0.9); color: #fbbf24; font-size: 0.8rem; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: "SF Mono","Fira Code",monospace; border: 1px solid rgba(245,158,11,0.15); }
+.markdown-body pre { background: rgba(8,7,5,0.8); border: 1px solid rgba(245,158,11,0.15); border-radius: 0.75rem; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
+.markdown-body pre code { background: transparent; color: #d6d3d1; padding: 0; font-size: 0.8rem; line-height: 1.5; }
 .markdown-body table { width: 100%; font-size: 0.75rem; border-collapse: collapse; margin: 0.75rem 0; }
-.markdown-body th { background: #1e293b; color: #e2e8f0; padding: 0.5rem 0.75rem; text-align: left; font-weight: 500; border: 1px solid #334155; }
-.markdown-body td { padding: 0.5rem 0.75rem; border: 1px solid rgba(51,65,85,0.5); color: #cbd5e1; }
-.markdown-body blockquote { border-left: 3px solid rgba(96,165,250,0.4); padding-left: 1rem; margin: 0.75rem 0; color: #94a3b8; font-style: italic; }
-.markdown-body hr { border-color: #334155; margin: 1rem 0; }
+.markdown-body th { background: rgba(20,17,15,0.9); color: #e7e5e4; padding: 0.5rem 0.75rem; text-align: left; font-weight: 500; border: 1px solid rgba(245,158,11,0.15); }
+.markdown-body td { padding: 0.5rem 0.75rem; border: 1px solid rgba(245,158,11,0.1); color: #a8a29e; }
+.markdown-body blockquote { border-left: 3px solid rgba(217,119,6,0.4); padding-left: 1rem; margin: 0.75rem 0; color: #a8a29e; font-style: italic; }
+.markdown-body hr { border-color: rgba(245,158,11,0.15); margin: 1rem 0; }
 .markdown-body img { border-radius: 0.5rem; max-width: 100%; margin: 0.75rem 0; }
 /* highlight.js overrides for dark theme */
 .hljs { background: transparent !important; }
@@ -390,7 +392,7 @@ onMounted(() => {
 .thinking-panel {
   margin-top: 12px;
   padding: 8px 12px;
-  background: rgba(100, 116, 139, 0.1);
+  background: rgba(217,119,6,0.06);
   border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
@@ -400,12 +402,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #64748b;
+  color: #78716c;
   user-select: none;
 }
 
 .thinking-header:hover {
-  color: #94a3b8;
+  color: #a8a29e;
 }
 
 .step-count {
@@ -415,7 +417,7 @@ onMounted(() => {
 .thinking-steps {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  border-top: 1px solid rgba(245,158,11,0.15);
 }
 
 .step-item {
@@ -423,7 +425,7 @@ onMounted(() => {
   align-items: flex-start;
   gap: 8px;
   padding: 4px 0;
-  border-left: 2px solid #334155;
+  border-left: 2px solid rgba(245,158,11,0.2);
   margin-left: 4px;
   padding-left: 12px;
 }
@@ -444,12 +446,12 @@ onMounted(() => {
 }
 
 .step-title {
-  color: #94a3b8;
+  color: #a8a29e;
   display: block;
 }
 
 .step-detail {
-  color: #64748b;
+  color: #78716c;
   font-size: 11px;
   display: block;
   margin-top: 2px;

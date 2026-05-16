@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import { skillsApi } from '@/api'
 import { useI18n } from '@/i18n'
 
@@ -44,82 +45,81 @@ const submit = async () => {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')"></div>
-
-    <div class="relative bg-slate-800 rounded-xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-700">
-        <h2 class="text-xl font-semibold text-white">{{ t('addSkill.title') }}</h2>
-        <button @click="emit('close')" class="p-2 hover:bg-slate-700 rounded-lg">
-          <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
+  <AppSurfaceDialog
+    :open="true"
+    :title="t('addSkill.title')"
+    size="xl"
+    @close="emit('close')"
+  >
+    <div class="space-y-4">
+      <div>
+        <label class="mb-2 block text-sm font-medium text-stone-200">{{ t('addSkill.id') }} <span class="text-red-400">*</span></label>
+        <input
+          v-model="form.id"
+          type="text"
+          :placeholder="t('addSkill.idPlaceholder')"
+          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+        />
       </div>
 
-      <div class="flex-1 overflow-y-auto p-6 space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('addSkill.id') }} <span class="text-red-400">*</span></label>
-          <input
-            v-model="form.id"
-            type="text"
-            :placeholder="t('addSkill.idPlaceholder')"
-            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('addSkill.name') }} <span class="text-red-400">*</span></label>
-          <input
-            v-model="form.name"
-            type="text"
-            :placeholder="t('addSkill.namePlaceholder')"
-            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('addSkill.description') }}</label>
-          <input
-            v-model="form.description"
-            type="text"
-            :placeholder="t('addSkill.descPlaceholder')"
-            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('addSkill.tags') }}</label>
-          <input
-            v-model="form.tags"
-            type="text"
-            :placeholder="t('addSkill.tagsPlaceholder')"
-            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('addSkill.template') }} <span class="text-red-400">*</span></label>
-          <textarea
-            v-model="form.prompt_template"
-            rows="8"
-            :placeholder="t('addSkill.templatePlaceholder')"
-            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          ></textarea>
-          <p class="text-xs text-slate-500 mt-1">{{ t('addSkill.templateHint') }}</p>
-        </div>
-
-        <div v-if="error" class="p-3 bg-red-900/50 text-red-400 rounded-lg text-sm">{{ error }}</div>
+      <div>
+        <label class="mb-2 block text-sm font-medium text-stone-200">{{ t('addSkill.name') }} <span class="text-red-400">*</span></label>
+        <input
+          v-model="form.name"
+          type="text"
+          :placeholder="t('addSkill.namePlaceholder')"
+          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+        />
       </div>
 
-      <div class="px-6 py-4 border-t border-slate-700 flex justify-end gap-3">
-        <button @click="emit('close')" class="px-4 py-2 text-slate-400 hover:text-white transition-colors">{{ t('common.cancel') }}</button>
+      <div>
+        <label class="mb-2 block text-sm font-medium text-stone-200">{{ t('addSkill.description') }}</label>
+        <input
+          v-model="form.description"
+          type="text"
+          :placeholder="t('addSkill.descPlaceholder')"
+          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+        />
+      </div>
+
+      <div>
+        <label class="mb-2 block text-sm font-medium text-stone-200">{{ t('addSkill.tags') }}</label>
+        <input
+          v-model="form.tags"
+          type="text"
+          :placeholder="t('addSkill.tagsPlaceholder')"
+          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+        />
+      </div>
+
+      <div>
+        <label class="mb-2 block text-sm font-medium text-stone-200">{{ t('addSkill.template') }} <span class="text-red-400">*</span></label>
+        <textarea
+          v-model="form.prompt_template"
+          rows="8"
+          :placeholder="t('addSkill.templatePlaceholder')"
+          class="w-full resize-none rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 font-mono text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+        ></textarea>
+        <p class="mt-1 text-xs text-stone-500">{{ t('addSkill.templateHint') }}</p>
+      </div>
+
+      <div v-if="error" class="rounded-2xl border border-red-500/20 bg-red-950/40 p-3 text-sm text-red-300">{{ error }}</div>
+    </div>
+
+    <template #footer>
+      <div class="flex justify-end gap-3">
         <button
+          type="button"
+          class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-2 text-stone-200 transition-colors hover:bg-white/[0.08]"
+          @click="emit('close')"
+        >{{ t('common.cancel') }}</button>
+        <button
+          type="button"
           @click="submit"
           :disabled="loading || !isValid()"
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          class="rounded-2xl bg-amber-400 px-4 py-2 font-medium text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-stone-600 disabled:text-stone-300"
         >{{ loading ? t('addSkill.creating') : t('common.create') }}</button>
       </div>
-    </div>
-  </div>
+    </template>
+  </AppSurfaceDialog>
 </template>

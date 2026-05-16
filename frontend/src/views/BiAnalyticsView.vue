@@ -70,11 +70,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
 import { biApi } from '@/api'
 import type { DataSource, BIQueryResult, BIChartResult } from '@/types'
 import DataSourceSettings from '@/components/bi/DataSourceSettings.vue'
-import ChartRenderer from '@/components/bi/ChartRenderer.vue'
+const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRenderer.vue'))
 
 const tabs = [
   { key: 'datasources', label: '数据源管理' },
@@ -147,22 +147,23 @@ onMounted(loadDataSources)
 
 <style scoped>
 .bi-analytics-view {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f3f4f6;
+  background: transparent;
 }
 
 .bi-header {
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
+  background: rgba(20, 17, 15, 0.82);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.1);
   padding: 16px 24px;
+  border-radius: 16px 16px 0 0;
 }
 
 .bi-header h1 {
   font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
+  color: #f5f0e8;
   margin: 0 0 12px 0;
 }
 
@@ -175,19 +176,20 @@ onMounted(loadDataSources)
   padding: 6px 16px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: #78716c;
   cursor: pointer;
   border-radius: 6px;
   font-size: 14px;
 }
 
 .tab-btn:hover {
-  background: #f3f4f6;
+  background: rgba(255,255,255,0.06);
+  color: #d6d3d1;
 }
 
 .tab-btn.active {
-  background: #dbeafe;
-  color: #1e40af;
+  background: rgba(217, 119, 6, 0.16);
+  color: #fbbf24;
   font-weight: 500;
 }
 
@@ -198,9 +200,10 @@ onMounted(loadDataSources)
 }
 
 .query-panel {
-  background: white;
+  background: rgba(20, 17, 15, 0.72);
   border-radius: 8px;
   padding: 20px;
+  border: 1px solid rgba(245, 158, 11, 0.1);
 }
 
 .query-toolbar {
@@ -212,51 +215,56 @@ onMounted(loadDataSources)
 
 .ds-select {
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 6px;
   font-size: 14px;
   min-width: 200px;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
 }
 
 .sql-textarea {
   width: 100%;
   padding: 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 6px;
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 14px;
   resize: vertical;
   box-sizing: border-box;
+  background: rgba(8, 7, 5, 0.72);
+  color: #e7e5e4;
 }
 
 .sql-textarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: #d97706;
+  color: #0c0b09;
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: #f59e0b;
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #374151;
-  border: none;
+  background: rgba(255,255,255,0.06);
+  color: #d6d3d1;
+  border: 1px solid rgba(255,255,255,0.08);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -264,19 +272,19 @@ onMounted(loadDataSources)
 }
 
 .btn-secondary:hover {
-  background: #d1d5db;
+  background: rgba(255,255,255,0.1);
 }
 
 .btn-secondary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .error-message {
   margin-top: 12px;
   padding: 12px;
-  background: #fee2e2;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
   border-radius: 6px;
   font-size: 14px;
 }
@@ -289,7 +297,7 @@ onMounted(loadDataSources)
 .result-summary,
 .chart-summary {
   font-size: 14px;
-  color: #6b7280;
+  color: #78716c;
   margin-bottom: 12px;
 }
 </style>

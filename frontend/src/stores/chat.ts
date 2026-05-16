@@ -3,9 +3,11 @@ import { ref } from 'vue'
 import { sessionsApi } from '@/api'
 import type { ChatSession } from '@/types'
 
+const SESSION_STORAGE_KEY = 'tars_current_session'
+
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref<ChatSession[]>([])
-  const currentSessionId = ref<string | null>(null)
+  const currentSessionId = ref<string | null>(localStorage.getItem(SESSION_STORAGE_KEY))
 
   const loadSessions = async () => {
     sessions.value = await sessionsApi.list()
@@ -15,18 +17,26 @@ export const useChatStore = defineStore('chat', () => {
     const s = await sessionsApi.create()
     sessions.value.unshift(s)
     currentSessionId.value = s.id
+    localStorage.setItem(SESSION_STORAGE_KEY, s.id)
     return s
   }
 
   const switchSession = (id: string) => {
     currentSessionId.value = id
+    localStorage.setItem(SESSION_STORAGE_KEY, id)
   }
 
   const deleteSession = async (id: string) => {
     await sessionsApi.delete(id)
     sessions.value = sessions.value.filter(s => s.id !== id)
     if (currentSessionId.value === id) {
-      currentSessionId.value = sessions.value[0]?.id ?? null
+      const nextId = sessions.value[0]?.id ?? null
+      currentSessionId.value = nextId
+      if (nextId) {
+        localStorage.setItem(SESSION_STORAGE_KEY, nextId)
+      } else {
+        localStorage.removeItem(SESSION_STORAGE_KEY)
+      }
     }
   }
 
@@ -40,8 +50,9 @@ export const useChatStore = defineStore('chat', () => {
     await loadSessions()
     if (sessions.value.length === 0) {
       await createSession()
-    } else if (!currentSessionId.value) {
+    } else if (!currentSessionId.value || !sessions.value.find(s => s.id === currentSessionId.value)) {
       currentSessionId.value = sessions.value[0].id
+      localStorage.setItem(SESSION_STORAGE_KEY, sessions.value[0].id)
     }
   }
 

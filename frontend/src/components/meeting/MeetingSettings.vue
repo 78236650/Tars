@@ -150,51 +150,53 @@ async function resetPrompt() {
 <style scoped>
 .meeting-settings { position: relative; margin-bottom: 12px; }
 .settings-toggle {
-  padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px;
-  background: white; cursor: pointer; font-size: 13px;
+  padding: 6px 12px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px;
+  background: rgba(255,255,255,0.04); cursor: pointer; font-size: 13px; color: #d6d3d1;
 }
-.settings-toggle:hover { background: #f9fafb; }
+.settings-toggle:hover { background: rgba(255,255,255,0.08); }
 
 .settings-panel {
-  margin-top: 8px; padding: 16px; background: white;
-  border: 1px solid #e5e7eb; border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  margin-top: 8px; padding: 16px;
+  background: rgba(20,17,15,0.92);
+  border: 1px solid rgba(245, 158, 11, 0.12); border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 .setting-section { margin-bottom: 16px; }
-.setting-section h4 { margin: 0 0 8px; font-size: 13px; color: #374151; font-weight: 600; }
+.setting-section h4 { margin: 0 0 8px; font-size: 13px; color: #d6d3d1; font-weight: 600; }
 
 .model-selector select {
-  padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px;
-  font-size: 13px; min-width: 180px;
+  padding: 6px 10px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px;
+  font-size: 13px; min-width: 180px; background: rgba(255,255,255,0.04); color: #e7e5e4;
 }
-.model-hint { font-size: 11px; color: #9ca3af; margin-left: 8px; }
+.model-hint { font-size: 11px; color: #78716c; margin-left: 8px; }
 
 .template-list { display: flex; flex-direction: column; gap: 6px; }
 .template-option {
   display: flex; align-items: flex-start; gap: 8px;
-  padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px;
-  cursor: pointer; transition: all 0.15s;
+  padding: 8px 10px; border: 1px solid rgba(245, 158, 11, 0.12); border-radius: 6px;
+  cursor: pointer; transition: all 0.15s; background: rgba(255,255,255,0.02);
 }
-.template-option:hover { border-color: #3b82f6; }
-.template-option.active { border-color: #3b82f6; background: #eff6ff; }
+.template-option:hover { border-color: rgba(245, 158, 11, 0.3); }
+.template-option.active { border-color: #d97706; background: rgba(217, 119, 6, 0.08); }
 .template-option input { margin-top: 2px; }
-.tpl-name { font-size: 13px; font-weight: 500; color: #1f2937; }
-.tpl-desc { margin: 2px 0 0; font-size: 11px; color: #6b7280; }
-.default-badge { font-size: 10px; background: #dbeafe; color: #1d4ed8; padding: 1px 5px; border-radius: 3px; margin-left: 6px; }
+.tpl-name { font-size: 13px; font-weight: 500; color: #d6d3d1; }
+.tpl-desc { margin: 2px 0 0; font-size: 11px; color: #78716c; }
+.default-badge { font-size: 10px; background: rgba(217, 119, 6, 0.15); color: #fbbf24; padding: 1px 5px; border-radius: 3px; margin-left: 6px; }
 
 .prompt-editor {
-  width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;
+  width: 100%; padding: 10px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px;
   font-size: 12px; font-family: monospace; resize: vertical; line-height: 1.5;
+  background: rgba(255,255,255,0.04); color: #e7e5e4;
 }
 .prompt-actions { margin-top: 8px; display: flex; gap: 8px; }
-.btn-save { padding: 5px 12px; background: #3b82f6; color: white; border: none; border-radius: 5px; font-size: 12px; cursor: pointer; }
-.btn-save:hover { background: #2563eb; }
-.btn-reset { padding: 5px 12px; background: white; border: 1px solid #d1d5db; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.btn-save { padding: 5px 12px; background: #d97706; color: #0c0b09; border: none; border-radius: 5px; font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-save:hover { background: #f59e0b; }
+.btn-reset { padding: 5px 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; font-size: 12px; color: #d6d3d1; cursor: pointer; }
 
 .prompt-preview {
-  padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+  padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(245, 158, 11, 0.1); border-radius: 6px;
   font-size: 11px; white-space: pre-wrap; max-height: 150px; overflow-y: auto;
-  color: #4b5563; line-height: 1.5;
+  color: #a8a29e; line-height: 1.5;
 }
 </style>

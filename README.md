@@ -1,6 +1,6 @@
-# TARS AI Agent v2.8.1
+# TARS AI Agent v3.9.0
 
-一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解。
+一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理与自动压缩。
 
 ## 项目结构
 
@@ -44,6 +44,8 @@ TARS/
 │   │   │   ├── manager.py          # MemoryManager 整合层
 │   │   │   ├── embeddings.py       # 嵌入向量 Provider
 │   │   │   ├── deduplicator.py     # 记忆去重
+│   │   │   ├── compressor.py       # 记忆压缩引擎（摘要合并 + 层级归档）
+│   │   │   ├── scheduler.py        # 压缩定时调度（每日 03:00 + 阈值触发）
 │   │   │   └── extractor.py        # LLM/正则提取器
 │   │   ├── orchestration/          # 任务编排
 │   │   │   ├── planner.py          # TaskPlannerTool
@@ -482,6 +484,16 @@ cd backend
 - 🧠 **记忆系统强化** — 核心记忆自动去重 + 行数上限；CJK 中文 LIKE 降级搜索；遗忘机制（重要性衰减 + 过期清理 + Reflector forget）
 - 🏪 **SkillHub 改进** — 本地技能目录 (`/catalog`)；安装状态标注；安装后用法说明；兼容性校验
 - 🔗 **WebSocket 持久连接** — wsStore 全局管理，切换页面不断连
+### v3.9.0
+- 🧠 **记忆管理页面** — 独立一级页面 `/memory`，Tab 切换（人格 / 近期记忆 / 长期记忆）
+- 🎛️ **人格编辑迁移** — PersonalitySettings 从 Settings 迁入记忆页面，统一管理滑块参数 + Core Memory persona 块
+- 📋 **近期记忆管理** — 7 天内 episodic 记忆浏览、搜索、删除、手动晋升为长期记忆
+- 📦 **长期记忆管理** — 按实体分组、编辑、Pin 保护、多选合并压缩
+- 🗜️ **记忆压缩引擎** — 摘要合并 + 层级归档，支持手动触发 / 阈值触发 / 每日定时兜底
+- 🔧 **Memory REST API** — 12 个端点（CRUD + stats + compress + merge）
+- ⚡ **性能优化** — SQL 层分页、stats 查询合并、entity_refs 索引、混合格式兼容修复
+
+### v2.8.1
 - ⌨️ **输入优化** — Enter 键换行，仅鼠标点击提交
 
 ### v2.0.0

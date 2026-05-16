@@ -196,7 +196,7 @@ function formatDate(iso: string | null): string {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #9ca3af;
+  color: #78716c;
   text-align: center;
 }
 
@@ -222,7 +222,7 @@ function formatDate(iso: string | null): string {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: #e7e5e4;
   word-break: break-all;
 }
 
@@ -241,23 +241,23 @@ function formatDate(iso: string | null): string {
 }
 
 .status-badge.pending {
-  background: #fef3c7;
-  color: #92400e;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
 }
 
 .status-badge.processing {
-  background: #dbeafe;
-  color: #1e40af;
+  background: rgba(217, 119, 6, 0.12);
+  color: #f59e0b;
 }
 
 .status-badge.completed {
-  background: #d1fae5;
-  color: #065f46;
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
 }
 
 .status-badge.failed {
-  background: #fee2e2;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
 }
 
 .action-btn {
@@ -271,16 +271,16 @@ function formatDate(iso: string | null): string {
 }
 
 .action-btn.primary {
-  background: #3b82f6;
-  color: white;
+  background: #d97706;
+  color: #0c0b09;
 }
 
 .action-btn.primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: #f59e0b;
 }
 
 .action-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -290,7 +290,7 @@ function formatDate(iso: string | null): string {
   flex-wrap: wrap;
   margin-bottom: 16px;
   font-size: 12px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .section {
@@ -301,13 +301,13 @@ function formatDate(iso: string | null): string {
   margin: 0 0 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: #d6d3d1;
 }
 
 .section-body {
   font-size: 14px;
   line-height: 1.7;
-  color: #4b5563;
+  color: #a8a29e;
   white-space: pre-wrap;
 }
 
@@ -319,16 +319,16 @@ function formatDate(iso: string | null): string {
 .key-points li {
   font-size: 14px;
   line-height: 1.7;
-  color: #4b5563;
+  color: #a8a29e;
   margin-bottom: 4px;
 }
 
 .transcript-text {
   font-size: 14px;
   line-height: 1.8;
-  color: #374151;
+  color: #a8a29e;
   white-space: pre-wrap;
-  background: #f9fafb;
+  background: rgba(255,255,255,0.03);
   border-radius: 8px;
   padding: 16px;
   max-height: 400px;
@@ -337,10 +337,10 @@ function formatDate(iso: string | null): string {
 
 .error-box {
   padding: 12px 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 8px;
-  color: #dc2626;
+  color: #fca5a5;
   font-size: 13px;
   margin-bottom: 16px;
 }
@@ -351,14 +351,14 @@ function formatDate(iso: string | null): string {
   align-items: center;
   justify-content: center;
   padding: 48px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #3b82f6;
+  border: 3px solid rgba(245, 158, 11, 0.15);
+  border-top-color: #d97706;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 12px;
@@ -372,12 +372,12 @@ function formatDate(iso: string | null): string {
 
 .edit-btn { border: none; background: none; cursor: pointer; font-size: 13px; margin-left: 8px; }
 .edit-btn:hover { opacity: 0.7; }
-.approved-badge { font-size: 12px; margin-left: 8px; color: #059669; }
-.edit-textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit; }
+.approved-badge { font-size: 12px; margin-left: 8px; color: #34d399; }
+.edit-textarea { width: 100%; padding: 10px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px; font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit; background: rgba(255,255,255,0.04); color: #e7e5e4; }
 .edit-actions { display: flex; gap: 8px; margin-bottom: 16px; }
 .approve-section { margin-bottom: 16px; }
-.approve-done { padding: 10px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #059669; font-weight: 500; font-size: 14px; }
+.approve-done { padding: 10px 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; color: #34d399; font-weight: 500; font-size: 14px; }
 .action-btn.approve { background: #059669; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .action-btn.approve:hover:not(:disabled) { background: #047857; }
-.action-btn.approve:disabled { opacity: 0.6; cursor: not-allowed; }
+.action-btn.approve:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

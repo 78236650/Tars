@@ -44,6 +44,8 @@ from tars.api.invoke import router as invoke_router, init_invoke_api
 from tars.api.bi import router as bi_router, init_bi_api
 from tars.api.knowledge import router as knowledge_router, init_knowledge_api
 from tars.api.meeting import router as meeting_router, init_meeting_api
+from tars.api.memory import router as memory_router, init_memory_api
+from tars.memory.scheduler import MemoryScheduler
 from tars.tenant import TenantContextCache
 from tars.cron import CronRuntime
 
@@ -207,6 +209,8 @@ connection_manager = ConnectionManager()
 connection_manager.set_agent(agent)
 cron_runtime = CronRuntime(db=db, scheduler=get_scheduler(), connection_manager=connection_manager)
 cronjob_tool.set_runtime(cron_runtime)
+memory_scheduler = MemoryScheduler(memory_manager.compressor, get_scheduler())
+memory_scheduler.ensure_started()
 
 # 注入 LLM provider 到会议识别工具（用于摘要生成）
 meeting_tool.provider = agent.provider
@@ -223,11 +227,13 @@ app.include_router(invoke_router)
 app.include_router(bi_router)
 app.include_router(knowledge_router)
 app.include_router(meeting_router)
+app.include_router(memory_router)
 init_sessions_api(db)
 init_tasks_api(db, agent)
 init_bi_api(db)
 init_knowledge_api(db, vector_store, embedding_provider)
 init_meeting_api(db, meeting_tool)
+init_memory_api(db, memory_manager)
 
 init_invoke_api(
     agent=agent,

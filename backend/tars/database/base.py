@@ -52,6 +52,12 @@ class Memory:
     created_at: datetime = None
     updated_at: datetime = None
     last_accessed: Optional[datetime] = None
+    source: str = "conversation"
+    pinned: bool = False
+    compressed_from: Optional[List[str]] = None
+    memory_type: str = "episodic"
+    event_time: Optional[datetime] = None
+    entity_refs: Optional[List[str]] = None
 
 
 @dataclass
@@ -247,11 +253,43 @@ class Database:
         for col_name, col_type in [
             ("access_count", "INTEGER DEFAULT 0"),
             ("source", "TEXT DEFAULT 'conversation'"),
+            ("event_time", "TEXT DEFAULT NULL"),
+            ("entity_refs", "TEXT DEFAULT NULL"),
+            ("supersedes", "TEXT DEFAULT NULL"),
+            ("pinned", "INTEGER DEFAULT 0"),
+            ("compressed_from", "TEXT DEFAULT NULL"),
+            ("memory_type", "TEXT DEFAULT 'episodic'"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE memories ADD COLUMN {col_name} {col_type}")
             except sqlite3.OperationalError:
                 pass  # 列已存在
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_memories_tenant_updated
+            ON memories(tenant_id, updated_at DESC)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_memories_tenant_type_importance
+            ON memories(tenant_id, memory_type, importance DESC)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_memories_tenant_pinned
+            ON memories(tenant_id, pinned)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_memories_tenant_entity_refs
+            ON memories(tenant_id, entity_refs)
+            WHERE entity_refs IS NOT NULL
+            """
+        )
 
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
@@ -765,20 +803,51 @@ class Database:
         importance: float = 0.5,
         embedding: bytes = None,
         source: str = "conversation",
+        pinned: bool = False,
+        compressed_from: Optional[List[str]] = None,
+        memory_type: str = "episodic",
+        event_time: Optional[str] = None,
+        entity_refs: Optional[List[str]] = None,
         tenant_id: str = "default",
     ) -> Memory:
         memory_id = str(uuid.uuid4())
         now = get_local_now()
+        event_time_value = event_time or now.isoformat()
+        entity_refs_json = json.dumps(entity_refs, ensure_ascii=False) if entity_refs is not None else None
+        compressed_from_json = (
+            json.dumps(compressed_from, ensure_ascii=False) if compressed_from is not None else None
+        )
 
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO memories
-            (id, tenant_id, content, category, importance, created_at, updated_at, last_accessed, embedding, access_count, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, embedding, access_count, source, event_time, entity_refs,
+                pinned, compressed_from, memory_type
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (memory_id, tenant_id, content, category, importance, now, now, None, embedding, 0, source),
+            (
+                memory_id,
+                tenant_id,
+                content,
+                category,
+                importance,
+                now,
+                now,
+                None,
+                embedding,
+                0,
+                source,
+                event_time_value,
+                entity_refs_json,
+                1 if pinned else 0,
+                compressed_from_json,
+                memory_type,
+            ),
         )
 
         cursor.execute(
@@ -795,8 +864,51 @@ class Database:
             tenant_id=tenant_id,
             importance=importance,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            source=source,
+            pinned=bool(pinned),
+            compressed_from=compressed_from,
+            memory_type=memory_type,
+            event_time=_parse_db_datetime(event_time_value),
+            entity_refs=entity_refs,
         )
+
+    def _memory_from_row(self, row) -> Memory:
+        if row is None:
+            return None
+        compressed_from = json.loads(row[10]) if row[10] else None
+        entity_refs = json.loads(row[12]) if row[12] else None
+        return Memory(
+            id=row[0],
+            tenant_id=row[1],
+            content=row[2],
+            category=row[3],
+            importance=row[4],
+            created_at=_parse_db_datetime(row[5]),
+            updated_at=_parse_db_datetime(row[6]),
+            last_accessed=_parse_db_datetime(row[7]) if row[7] else None,
+            source=row[8] or "conversation",
+            pinned=bool(row[9]),
+            compressed_from=compressed_from,
+            memory_type=row[11] or "episodic",
+            event_time=_parse_db_datetime(row[13]) if row[13] else None,
+            entity_refs=entity_refs,
+        )
+
+    def get_memory(self, memory_id: str, tenant_id: str = "default") -> Optional[Memory]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time
+            FROM memories
+            WHERE id = ? AND tenant_id = ?
+            """,
+            (memory_id, tenant_id),
+        )
+        return self._memory_from_row(cursor.fetchone())
 
     @staticmethod
     def _has_cjk(text: str) -> bool:
@@ -932,32 +1044,64 @@ class Database:
 
         return memories
 
-    def update_memory(self, memory_id: str, content: str, importance: float = None, tenant_id: str = "default"):
+    def update_memory(
+        self,
+        memory_id: str,
+        content: str,
+        importance: float = None,
+        category: Optional[str] = None,
+        pinned: Optional[bool] = None,
+        compressed_from: Optional[List[str]] = None,
+        memory_type: Optional[str] = None,
+        event_time: Optional[str] = None,
+        entity_refs: Optional[List[str]] = None,
+        tenant_id: str = "default",
+    ):
         now = get_local_now()
 
         conn = self._get_conn()
         cursor = conn.cursor()
-
+        sets = ["content = ?", "updated_at = ?"]
+        values: List[Any] = [content, now]
         if importance is not None:
-            cursor.execute("""
-                UPDATE memories
-                SET content = ?, importance = ?, updated_at = ?
-                WHERE id = ? AND tenant_id = ?
-            """, (content, importance, now, memory_id, tenant_id))
-        else:
-            cursor.execute("""
-                UPDATE memories
-                SET content = ?, updated_at = ?
-                WHERE id = ? AND tenant_id = ?
-            """, (content, now, memory_id, tenant_id))
+            sets.append("importance = ?")
+            values.append(importance)
+        if category is not None:
+            sets.append("category = ?")
+            values.append(category)
+        if pinned is not None:
+            sets.append("pinned = ?")
+            values.append(1 if pinned else 0)
+        if compressed_from is not None:
+            sets.append("compressed_from = ?")
+            values.append(json.dumps(compressed_from, ensure_ascii=False))
+        if memory_type is not None:
+            sets.append("memory_type = ?")
+            values.append(memory_type)
+        if event_time is not None:
+            sets.append("event_time = ?")
+            values.append(event_time)
+        if entity_refs is not None:
+            sets.append("entity_refs = ?")
+            values.append(json.dumps(entity_refs, ensure_ascii=False))
+        values.extend([memory_id, tenant_id])
+        cursor.execute(
+            f"""
+            UPDATE memories
+            SET {", ".join(sets)}
+            WHERE id = ? AND tenant_id = ?
+            """,
+            values,
+        )
 
         cursor.execute("""
             UPDATE memories_fts
-            SET content = ?
+            SET content = ?, category = COALESCE(?, category)
             WHERE rowid = (SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?)
-        """, (content, memory_id, tenant_id))
+        """, (content, category, memory_id, tenant_id))
 
         conn.commit()
+        return cursor.rowcount > 0
 
     def reinforce_memory(self, memory_id: str, importance_delta: float = 0.02, tenant_id: str = "default"):
         """命中召回：access_count+1, last_accessed=now, importance 微增"""
@@ -997,11 +1141,182 @@ class Database:
             results.append((mem, row[7], last_accessed_str, row[4] or 0.5, row[9] or "conversation"))
         return results
 
+    def set_memory_pin(self, memory_id: str, pinned: bool, tenant_id: str = "default") -> bool:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE memories SET pinned = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
+            (1 if pinned else 0, get_local_now(), memory_id, tenant_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def promote_memory(self, memory_id: str, tenant_id: str = "default") -> Optional[Memory]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE memories
+            SET memory_type = 'longterm',
+                importance = MAX(COALESCE(importance, 0.5), 0.6),
+                updated_at = ?
+            WHERE id = ? AND tenant_id = ?
+            """,
+            (get_local_now(), memory_id, tenant_id),
+        )
+        conn.commit()
+        return self.get_memory(memory_id, tenant_id=tenant_id)
+
     def delete_memory(self, memory_id: str, tenant_id: str = "default"):
         conn = self._get_conn()
         cursor = conn.cursor()
+        cursor.execute("SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?", (memory_id, tenant_id))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute("DELETE FROM memories_fts WHERE rowid = ?", (row[0],))
         cursor.execute("DELETE FROM memories WHERE id = ? AND tenant_id = ?", (memory_id, tenant_id))
         conn.commit()
+        return cursor.rowcount > 0
+
+    def get_memory_stats(self, tenant_id: str = "default") -> Dict[str, Any]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        time_expr = "julianday(replace(substr(created_at, 1, 19), 'T', ' '))"
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*),
+                SUM(CASE WHEN memory_type = 'episodic' AND {time_expr} >= julianday('now', '-7 day') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN importance >= 0.6 OR pinned = 1 OR memory_type = 'longterm' THEN 1 ELSE 0 END)
+            FROM memories WHERE tenant_id = ?
+            """,
+            (tenant_id,),
+        )
+        row = cursor.fetchone()
+        total, recent, longterm = row[0], row[1] or 0, row[2] or 0
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT entity_refs
+                FROM memories
+                WHERE tenant_id = ? AND entity_refs IS NOT NULL AND pinned = 0
+                GROUP BY entity_refs
+                HAVING COUNT(*) > 10
+            )
+            """,
+            (tenant_id,),
+        )
+        pending = cursor.fetchone()[0]
+        return {
+            "total": total,
+            "recent": recent,
+            "longterm": longterm,
+            "pending_compression": pending,
+        }
+
+    def list_recent_memories(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        query: str = "",
+        category: str = "",
+        tenant_id: str = "default",
+    ) -> Tuple[List[Memory], int]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        time_expr = "julianday(replace(substr(created_at, 1, 19), 'T', ' '))"
+        clauses = [
+            "tenant_id = ?",
+            "memory_type = 'episodic'",
+            f"{time_expr} >= julianday('now', '-7 day')",
+        ]
+        params: List[Any] = [tenant_id]
+        if category:
+            clauses.append("category = ?")
+            params.append(category)
+        if query:
+            clauses.append("content LIKE ?")
+            params.append(f"%{query}%")
+        where = " AND ".join(clauses)
+        cursor.execute(f"SELECT COUNT(*) FROM memories WHERE {where}", params)
+        total = cursor.fetchone()[0]
+        offset = max(page - 1, 0) * page_size
+        cursor.execute(
+            f"""
+            SELECT
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time
+            FROM memories
+            WHERE {where}
+            ORDER BY julianday(replace(substr(created_at, 1, 19), 'T', ' ')) DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*params, page_size, offset],
+        )
+        items = [self._memory_from_row(row) for row in cursor.fetchall()]
+        return items, total
+
+    def list_longterm_memories(self, tenant_id: str = "default", page: int = 1, page_size: int = 20) -> Tuple[List[Memory], int]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        where = "tenant_id = ? AND (importance >= 0.6 OR pinned = 1 OR memory_type = 'longterm')"
+        cursor.execute(f"SELECT COUNT(*) FROM memories WHERE {where}", (tenant_id,))
+        total = cursor.fetchone()[0]
+        offset = max(page - 1, 0) * page_size
+        cursor.execute(
+            f"""
+            SELECT
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time
+            FROM memories
+            WHERE {where}
+            ORDER BY pinned DESC, importance DESC, updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (tenant_id, page_size, offset),
+        )
+        return [self._memory_from_row(row) for row in cursor.fetchall()], total
+
+    def list_all_memories(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        query: str = "",
+        category: str = "",
+        memory_type: str = "",
+        tenant_id: str = "default",
+    ) -> Tuple[List[Memory], int]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        clauses = ["tenant_id = ?"]
+        params: List[Any] = [tenant_id]
+        if category:
+            clauses.append("category = ?")
+            params.append(category)
+        if memory_type:
+            clauses.append("memory_type = ?")
+            params.append(memory_type)
+        if query:
+            clauses.append("content LIKE ?")
+            params.append(f"%{query}%")
+        where = " AND ".join(clauses)
+        cursor.execute(f"SELECT COUNT(*) FROM memories WHERE {where}", params)
+        total = cursor.fetchone()[0]
+        offset = max(page - 1, 0) * page_size
+        cursor.execute(
+            f"""
+            SELECT
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time
+            FROM memories
+            WHERE {where}
+            ORDER BY julianday(replace(substr(created_at, 1, 19), 'T', ' ')) DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*params, page_size, offset],
+        )
+        items = [self._memory_from_row(row) for row in cursor.fetchall()]
+        return items, total
 
     def decay_importance(self):
         """重要性自然衰减：未被访问的记忆重要性随时间微降"""

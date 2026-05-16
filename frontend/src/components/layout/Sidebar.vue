@@ -98,6 +98,7 @@ const isCurrentEndpointModel = (endpointId: string, modelName: string) => {
 
 const navItems = [
   { name: 'nav.chat', icon: 'message-circle', path: '/' },
+  { name: 'nav.memory', icon: 'database', path: '/memory' },
   { name: 'nav.models', icon: 'cpu', path: '/models' },
   { name: 'nav.tools', icon: 'tools', path: '/tools' },
   { name: 'nav.bi', icon: 'bar-chart', path: '/bi' },
@@ -111,6 +112,7 @@ const getIconPath = (iconName: string) => {
     'message-circle': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
     'settings': 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
     'cpu': 'M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z',
+    'database': 'M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3zm0 5c0 1.657 3.582 3 8 3s8-1.343 8-3m-16 0v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5',
     'tools': 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
     'bar-chart': 'M18 20V10M12 20V4M6 20v-6',
     'book': 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
@@ -119,7 +121,10 @@ const getIconPath = (iconName: string) => {
   return icons[iconName] || icons['message-circle']
 }
 
-const isActive = (path: string) => route.path === path
+const isActive = (path: string) => {
+  if (path === '/') return route.path === '/'
+  return route.path === path || route.path.startsWith(`${path}/`)
+}
 
 const newChat = async () => {
   await chatStore.createSession()
@@ -174,16 +179,16 @@ const groupedSessions = computed(() => {
 
 <template>
   <aside
-    class="h-screen bg-slate-800 border-r border-slate-700 flex flex-col transition-all duration-300"
+    class="h-screen bg-[#13100d] border-r border-amber-100/10 flex flex-col transition-all duration-300"
     :class="collapsed ? 'w-16' : 'w-64'"
   >
-    <div class="p-4 border-b border-slate-700">
-      <div class="flex items-center gap-3">
-        <img src="/logo.png" alt="TARS" class="w-10 h-10 rounded-xl object-cover shrink-0" />
-        <div v-if="!collapsed" class="overflow-hidden">
-          <h1 class="text-lg font-semibold text-white truncate">TARS Agent</h1>
-          <p class="text-sm text-slate-400">AI Assistant</p>
-        </div>
+    <div class="p-4 border-b border-amber-100/10">
+      <div v-if="!collapsed" class="overflow-hidden">
+        <h1 class="text-xl font-bold tracking-wide text-amber-400">TARS</h1>
+        <p class="text-xs text-stone-500 mt-0.5">AI Assistant</p>
+      </div>
+      <div v-else class="flex justify-center">
+        <span class="text-lg font-bold text-amber-400">T</span>
       </div>
     </div>
 
@@ -194,11 +199,11 @@ const groupedSessions = computed(() => {
             @click="router.push(item.path)"
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors"
             :class="isActive(item.path)
-              ? 'bg-blue-600 text-white'
-              : 'text-slate-400 hover:bg-slate-700 hover:text-white'"
+              ? 'bg-amber-600 text-stone-950 shadow-[0_10px_30px_rgba(217,119,6,0.25)]'
+              : 'text-stone-400 hover:bg-white/[0.04] hover:text-stone-100'"
             :title="collapsed ? t(item.name) : undefined"
           >
-            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIconPath(item.icon)" />
             </svg>
             <span v-if="!collapsed" class="truncate">{{ t(item.name) }}</span>
@@ -208,11 +213,11 @@ const groupedSessions = computed(() => {
     </nav>
 
     <!-- Session list - expanded mode -->
-    <div v-if="!collapsed" class="border-t border-slate-700 flex flex-col flex-1 min-h-0" >
-      <div class="p-2 space-y-2">
+    <div v-if="!collapsed" class="border-t border-amber-100/10 flex flex-col flex-1 min-h-0" >
+      <div class="p-3 space-y-2">
         <button
           @click="newChat"
-          class="w-full px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm flex items-center justify-center gap-2 transition-colors"
+          class="w-full px-3 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -220,39 +225,45 @@ const groupedSessions = computed(() => {
           {{ t('chat.newChat') }}
         </button>
         <div class="relative">
-          <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
           <input
             v-model="searchQuery"
             type="text"
             placeholder="搜索会话..."
-            class="w-full pl-8 pr-3 py-1.5 bg-slate-700/50 border border-slate-600 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+            class="w-full pl-9 pr-3 py-2 bg-white/[0.04] border border-amber-100/10 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-400 focus:bg-white/[0.06] transition-colors"
           />
         </div>
       </div>
 
-      <div class="overflow-y-auto px-2 pb-2 flex-1">
-        <p v-if="chatStore.sessions.length === 0" class="text-xs text-slate-500 text-center py-4">
+      <div class="overflow-y-auto px-3 pb-3 flex-1">
+        <p v-if="chatStore.sessions.length === 0" class="text-sm text-stone-500 text-center py-8">
           {{ t('chat.noSessions') }}
         </p>
         <template v-for="group in groupedSessions" :key="group.label">
-          <p class="text-[10px] text-slate-500 font-medium px-2 py-1.5 uppercase tracking-wider">{{ group.label }}</p>
+          <div class="flex items-center gap-3 py-2 mt-2 first:mt-0">
+            <span class="text-xs font-semibold text-stone-400 uppercase tracking-wide">{{ group.label }}</span>
+            <div class="flex-1 h-px bg-amber-100/10"></div>
+            <span class="text-xs text-stone-600">{{ group.items.length }}</span>
+          </div>
           <button
             v-for="session in group.items"
             :key="session.id"
             @click="switchSession(session.id)"
-            class="group w-full px-3 py-2 mb-0.5 rounded-lg text-left text-sm flex items-center justify-between transition-colors"
+            class="group w-full px-3 py-2.5 mb-1 rounded-lg text-left text-sm flex items-center justify-between transition-all duration-150"
             :class="chatStore.currentSessionId === session.id
-              ? 'bg-blue-600 text-white'
-              : 'text-slate-300 hover:bg-slate-700'"
+              ? 'bg-amber-500/15 border-l-4 border-amber-500 text-stone-100 font-medium shadow-sm'
+              : 'text-stone-300 hover:bg-white/[0.04] border-l-4 border-transparent'"
           >
-            <span class="truncate flex-1">{{ truncateTitle(session.title) }}</span>
+            <span class="truncate flex-1 mr-2">{{ truncateTitle(session.title) }}</span>
             <span
               @click="deleteSession(session.id, $event)"
-              class="opacity-0 group-hover:opacity-100 ml-2 text-slate-400 hover:text-red-400 transition-opacity cursor-pointer"
+              class="opacity-0 group-hover:opacity-100 flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-red-300 hover:bg-white/[0.06] transition-all cursor-pointer"
             >
-              &times;
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
             </span>
           </button>
         </template>
@@ -260,42 +271,61 @@ const groupedSessions = computed(() => {
     </div>
 
     <!-- Session list - collapsed mode -->
-    <div v-else class="border-t border-slate-700 p-2 flex-1">
+    <div v-else class="border-t border-amber-100/10 p-1.5 flex-1 flex flex-col gap-1">
       <button
         @click="newChat"
-        class="w-full p-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center"
+        class="w-full p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 flex items-center justify-center"
         :title="t('chat.newChat')"
       >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
       </button>
-    </div>
-
-    <div class="p-2 border-t border-slate-700 flex flex-col gap-1">
       <button
-        @click="toggleLocale"
-        class="w-full flex items-center justify-center p-2 text-slate-400 hover:bg-slate-700 hover:text-white rounded-lg transition-colors"
-        :title="locale === 'zh' ? 'Switch to English' : '切换到中文'"
+        @click="router.push('/settings')"
+        class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
+        :title="t('nav.settings')"
       >
-        <span class="text-sm">{{ locale === 'zh' ? 'EN' : '中' }}</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
       </button>
       <button
+        @click="router.push('/models')"
+        class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
+        :title="t('nav.models')"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z" />
+        </svg>
+      </button>
+      <button
+        @click="toggleLocale"
+        class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
+        :title="locale === 'zh' ? 'EN' : '中文'"
+      >
+        <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : '中' }}</span>
+      </button>
+    </div>
+
+    <div class="p-1.5 border-t border-amber-100/10 flex flex-col gap-1">
+      <button
         @click="toggleCollapse"
-        class="w-full flex items-center justify-center p-2 text-slate-400 hover:bg-slate-700 hover:text-white rounded-lg transition-colors"
+        class="w-full flex items-center justify-center p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
         :title="collapsed ? t('sidebar.expand') : t('sidebar.collapse')"
       >
-        <svg class="w-5 h-5 transition-transform" :class="collapsed ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4 transition-transform" :class="collapsed ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
         </svg>
       </button>
     </div>
 
     <!-- 模型选择 Popover（瘦身版） -->
-    <div v-if="!collapsed" class="border-t border-slate-700 p-3 relative">
+    <div v-if="!collapsed" class="border-t border-amber-100/10 p-3 relative">
       <button
         @click="showModelPopover = !showModelPopover"
-        class="w-full flex items-center justify-between px-3 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg transition-colors"
+        class="w-full flex items-center justify-between px-3 py-2 bg-white/[0.04] hover:bg-white/[0.06] rounded-lg transition-colors"
       >
         <div class="flex items-center gap-2 min-w-0">
           <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -304,17 +334,17 @@ const groupedSessions = computed(() => {
               'bg-blue-400': settingsStore.currentProvider === 'ollama',
             }"
           ></span>
-          <span class="text-xs text-slate-300 truncate">{{ settingsStore.currentModel || t('common.loading') }}</span>
+          <span class="text-xs text-stone-300 truncate">{{ settingsStore.currentModel || t('common.loading') }}</span>
         </div>
-        <svg class="w-4 h-4 text-slate-500 flex-shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4 text-stone-500 flex-shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
         </svg>
       </button>
 
       <!-- Popover -->
-      <div v-if="showModelPopover" class="absolute bottom-full left-3 right-3 mb-1 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 overflow-hidden max-h-72 flex flex-col">
+      <div v-if="showModelPopover" class="absolute bottom-full left-3 right-3 mb-1 bg-[#1a1511] border border-amber-100/10 rounded-xl shadow-2xl z-50 overflow-hidden max-h-72 flex flex-col">
         <div class="max-h-56 overflow-y-auto">
-          <p class="px-3 py-2 text-[10px] font-medium text-slate-500 uppercase tracking-wider border-b border-slate-700/80">
+          <p class="px-3 py-2 text-[10px] font-medium text-stone-500 uppercase tracking-wider border-b border-amber-100/10">
             {{ t('sidebar.localModels') }}
           </p>
           <button
@@ -324,15 +354,15 @@ const groupedSessions = computed(() => {
             @click="selectOllamaModel(model); showModelPopover = false"
             :disabled="switching"
             class="w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors"
-            :class="isCurrentOllamaModel(model) ? 'bg-slate-600 border-l-4 border-blue-400 text-white' : 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent'"
+            :class="isCurrentOllamaModel(model) ? 'bg-amber-500/15 border-l-4 border-amber-400 text-stone-100' : 'hover:bg-white/[0.04] text-stone-300 border-l-4 border-transparent'"
           >
             <span class="truncate">{{ model }}</span>
             <span v-if="isCurrentOllamaModel(model)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
           </button>
 
           <template v-for="ep in settingsStore.endpoints" :key="ep.id">
-            <div class="border-t border-slate-700 mt-1 pt-1">
-              <p class="px-3 py-1.5 text-[10px] font-medium text-slate-400 truncate" :title="ep.base_url">{{ ep.name }}</p>
+            <div class="border-t border-amber-100/10 mt-1 pt-1">
+              <p class="px-3 py-1.5 text-[10px] font-medium text-stone-400 truncate" :title="ep.base_url">{{ ep.name }}</p>
               <template v-if="ep.models?.length">
                 <button
                   v-for="mod in ep.models"
@@ -341,20 +371,20 @@ const groupedSessions = computed(() => {
                   :disabled="switching || !ep.enabled"
                   @click="selectEndpointModel(ep.id, mod); showModelPopover = false"
                   class="w-full px-3 py-1.5 text-sm text-left flex items-center justify-between transition-colors"
-                  :class="isCurrentEndpointModel(ep.id, mod) ? 'bg-slate-600 border-l-4 border-emerald-400 text-white' : ep.enabled ? 'hover:bg-slate-600/50 text-slate-300 border-l-4 border-transparent' : 'text-slate-600 cursor-not-allowed border-l-4 border-transparent'"
+                  :class="isCurrentEndpointModel(ep.id, mod) ? 'bg-amber-500/15 border-l-4 border-emerald-400 text-stone-100' : ep.enabled ? 'hover:bg-white/[0.04] text-stone-300 border-l-4 border-transparent' : 'text-stone-600 cursor-not-allowed border-l-4 border-transparent'"
                 >
                   <span class="truncate">{{ mod }}</span>
                   <span v-if="isCurrentEndpointModel(ep.id, mod)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
                 </button>
               </template>
-              <p v-else class="px-3 py-2 text-xs text-slate-500">{{ t('sidebar.noEndpointModels') }}</p>
+              <p v-else class="px-3 py-2 text-xs text-stone-500">{{ t('sidebar.noEndpointModels') }}</p>
             </div>
           </template>
         </div>
         <button
           type="button"
           @click="router.push('/models'); showModelPopover = false"
-          class="w-full px-3 py-2.5 text-sm text-left text-slate-300 border-t border-slate-700 hover:bg-slate-700/60 flex items-center gap-2 transition-colors shrink-0"
+          class="w-full px-3 py-2.5 text-sm text-left text-stone-300 border-t border-amber-100/10 hover:bg-white/[0.04] flex items-center gap-2 transition-colors shrink-0"
         >
           <span class="text-base">⚙</span>
           <span>{{ t('sidebar.modelConfigLink') }}</span>
@@ -362,7 +392,7 @@ const groupedSessions = computed(() => {
       </div>
     </div>
 
-    <div v-else class="p-2 border-t border-slate-700">
+    <div v-else class="p-2 border-t border-amber-100/10">
       <div class="text-center">
         <span class="w-1.5 h-1.5 rounded-full inline-block"
           :class="{

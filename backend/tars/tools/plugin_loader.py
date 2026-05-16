@@ -26,7 +26,8 @@ def load_plugin_tool(entry_point: Path) -> Optional[BaseTool]:
         del sys.modules[module_name]
         raise RuntimeError(f"加载插件失败 {entry_point}: {e}")
 
-    # 查找 BaseTool 子类
+    # 查找所有 BaseTool 子类
+    tools = []
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
         if (
@@ -35,8 +36,14 @@ def load_plugin_tool(entry_point: Path) -> Optional[BaseTool]:
             and attr is not BaseTool
         ):
             try:
-                return attr()
+                tools.append(attr())
             except Exception as e:
                 raise RuntimeError(f"实例化插件 {attr_name} 失败: {e}")
+
+    if len(tools) == 1:
+        return tools[0]
+    elif len(tools) > 1:
+        # 返回工具列表（调用者需要处理）
+        return tools
 
     return None

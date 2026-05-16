@@ -108,13 +108,13 @@ function formatDate(iso: string | null): string {
   margin: 0 0 12px;
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: #d6d3d1;
 }
 
 .empty-state {
   text-align: center;
   padding: 32px 16px;
-  color: #9ca3af;
+  color: #78716c;
 }
 
 .empty-state .hint {
@@ -131,21 +131,20 @@ function formatDate(iso: string | null): string {
   position: relative;
   padding: 12px;
   border-radius: 8px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(245, 158, 11, 0.1);
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .list-item:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
 .list-item.active {
-  border-color: #3b82f6;
-  background: #eff6ff;
+  border-color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .item-header {
@@ -159,7 +158,7 @@ function formatDate(iso: string | null): string {
 .file-name {
   font-size: 13px;
   font-weight: 500;
-  color: #1f2937;
+  color: #e7e5e4;
   word-break: break-all;
 }
 
@@ -172,23 +171,23 @@ function formatDate(iso: string | null): string {
 }
 
 .status-badge.pending {
-  background: #fef3c7;
-  color: #92400e;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
 }
 
 .status-badge.processing {
-  background: #dbeafe;
-  color: #1e40af;
+  background: rgba(217, 119, 6, 0.12);
+  color: #f59e0b;
 }
 
 .status-badge.completed {
-  background: #d1fae5;
-  color: #065f46;
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
 }
 
 .status-badge.failed {
-  background: #fee2e2;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
 }
 
 .item-meta {
@@ -199,7 +198,7 @@ function formatDate(iso: string | null): string {
 
 .meta-item {
   font-size: 11px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .delete-btn {
@@ -208,7 +207,7 @@ function formatDate(iso: string | null): string {
   right: 8px;
   padding: 4px;
   border-radius: 4px;
-  color: #9ca3af;
+  color: #78716c;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -221,7 +220,7 @@ function formatDate(iso: string | null): string {
 }
 
 .delete-btn:hover {
-  color: #dc2626;
-  background: #fee2e2;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
 }
 </style>

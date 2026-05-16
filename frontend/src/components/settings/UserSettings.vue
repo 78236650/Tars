@@ -1,65 +1,90 @@
-<script setup lang="ts">import { ref, computed } from 'vue';
-import { useAuthStore } from '@/stores/auth';
-import { authApi } from '@/api';
-import type { User } from '@/types';
-const authStore = useAuthStore();
-const users = ref<User[]>([]);
-const showCreateModal = ref(false);
-const showDeleteConfirm = ref(false);
-const deletingUserId = ref('');
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { authApi } from '@/api'
+import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
+import { useAuthStore } from '@/stores/auth'
+import type { User } from '@/types'
+
+const authStore = useAuthStore()
+const users = ref<User[]>([])
+const showCreateModal = ref(false)
+const showDeleteConfirm = ref(false)
+const deletingUserId = ref('')
 const newUser = ref({
- username: '',
- email: '',
- role: 'user'
-});
+  username: '',
+  email: '',
+  role: 'user',
+})
+
+const deletingUser = computed(() => users.value.find((user) => user.id === deletingUserId.value) ?? null)
+
 const loadUsers = async () => {
- try {
- const response = await authApi.getUsers();
- users.value = response.users;
- }
- catch {
- users.value = [];
- }
-};
+  try {
+    const response = await authApi.getUsers()
+    users.value = response.users
+  } catch {
+    users.value = []
+  }
+}
+
+const resetCreateForm = () => {
+  newUser.value = {
+    username: '',
+    email: '',
+    role: 'user',
+  }
+}
+
+const closeCreateModal = () => {
+  showCreateModal.value = false
+  resetCreateForm()
+}
+
+const closeDeleteConfirm = () => {
+  showDeleteConfirm.value = false
+  deletingUserId.value = ''
+}
+
 const createUser = async () => {
- if (!newUser.value.username || !newUser.value.email)
- return;
- try {
- await authApi.createUser(newUser.value.username, newUser.value.email, newUser.value.role);
- await loadUsers();
- showCreateModal.value = false;
- newUser.value = { username: '', email: '', role: 'user' };
- }
- catch (error: any) {
- alert(error.response?.data?.message || 'Failed to create user');
- }
-};
+  if (!newUser.value.username || !newUser.value.email) {
+    return
+  }
+
+  try {
+    await authApi.createUser(newUser.value.username, newUser.value.email, newUser.value.role)
+    await loadUsers()
+    closeCreateModal()
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Failed to create user')
+  }
+}
+
 const deleteUser = async () => {
- try {
- await authApi.deleteUser(deletingUserId.value);
- await loadUsers();
- showDeleteConfirm.value = false;
- deletingUserId.value = '';
- }
- catch (error: any) {
- alert(error.response?.data?.message || 'Failed to delete user');
- }
-};
+  try {
+    await authApi.deleteUser(deletingUserId.value)
+    await loadUsers()
+    closeDeleteConfirm()
+  } catch (error: any) {
+    alert(error.response?.data?.message || 'Failed to delete user')
+  }
+}
+
 const requestDelete = (userId: string) => {
- deletingUserId.value = userId;
- showDeleteConfirm.value = true;
-};
+  deletingUserId.value = userId
+  showDeleteConfirm.value = true
+}
+
 const formatDate = (dateString: string) => {
- const date = new Date(dateString);
- return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-const currentUserIsAdmin = computed(() => authStore.user?.role === 'admin');
-loadUsers();
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+onMounted(loadUsers)
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto">
-    <div class="bg-slate-800 rounded-xl p-6">
+  <div class="mx-auto max-w-4xl">
+    <div class="rounded-xl bg-slate-800 p-6">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-xl font-semibold text-white">User Management</h2>
         <button
@@ -137,16 +162,15 @@ loadUsers();
         </div>
       </div>
     </div>
-    
-    <div
-      v-if="showCreateModal"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      @click.self="showCreateModal = false"
+
+    <AppSurfaceDialog
+      :open="showCreateModal"
+      title="Create New User"
+      description="Create a workspace user and assign an initial role."
+      size="md"
+      @close="closeCreateModal"
     >
-      <div class="bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
-        <h3 class="text-lg font-semibold text-white mb-4">Create New User</h3>
-        
-        <div class="space-y-4">
+      <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-2">Username</label>
             <input
@@ -177,11 +201,12 @@ loadUsers();
               <option value="guest">Guest</option>
             </select>
           </div>
-        </div>
-        
-        <div class="flex gap-3 mt-6">
+      </div>
+
+      <template #footer>
+        <div class="flex gap-3">
           <button
-            @click="showCreateModal = false"
+            @click="closeCreateModal"
             class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors"
           >
             Cancel
@@ -193,16 +218,17 @@ loadUsers();
             Create
           </button>
         </div>
-      </div>
-    </div>
-    
-    <div
-      v-if="showDeleteConfirm"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      @click.self="showDeleteConfirm = false"
+      </template>
+    </AppSurfaceDialog>
+
+    <AppSurfaceDialog
+      :open="showDeleteConfirm"
+      title="Confirm Deletion"
+      :description="deletingUser ? `Delete ${deletingUser.username} from the workspace.` : 'Delete this user from the workspace.'"
+      size="sm"
+      @close="closeDeleteConfirm"
     >
-      <div class="bg-slate-800 rounded-xl p-6 w-full max-w-sm mx-4">
-        <div class="flex items-center gap-3 mb-4">
+      <div class="flex items-center gap-3">
           <div class="w-12 h-12 bg-red-900/50 rounded-full flex items-center justify-center">
             <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -213,10 +239,11 @@ loadUsers();
             <p class="text-sm text-slate-400">Are you sure you want to delete this user?</p>
           </div>
         </div>
-        
+
+      <template #footer>
         <div class="flex gap-3">
           <button
-            @click="showDeleteConfirm = false"
+            @click="closeDeleteConfirm"
             class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors"
           >
             Cancel
@@ -228,7 +255,7 @@ loadUsers();
             Delete
           </button>
         </div>
-      </div>
-    </div>
+      </template>
+    </AppSurfaceDialog>
   </div>
 </template>

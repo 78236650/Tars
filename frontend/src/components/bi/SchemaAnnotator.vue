@@ -164,6 +164,7 @@ watch(() => props.datasource, () => {
 .annotator-header h3 {
   font-size: 18px;
   margin: 0;
+  color: #e7e5e4;
 }
 
 .tables-list {
@@ -173,7 +174,7 @@ watch(() => props.datasource, () => {
 }
 
 .table-section {
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(245, 158, 11, 0.12);
   border-radius: 6px;
   margin-bottom: 8px;
   overflow: hidden;
@@ -184,33 +185,33 @@ watch(() => props.datasource, () => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #f9fafb;
+  background: rgba(255,255,255,0.03);
   cursor: pointer;
   user-select: none;
 }
 
 .table-header:hover {
-  background: #f3f4f6;
+  background: rgba(255,255,255,0.06);
 }
 
 .toggle-icon {
   font-size: 12px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .table-name {
   font-weight: 500;
-  color: #1f2937;
+  color: #e7e5e4;
 }
 
 .has-annotation {
-  color: #10b981;
+  color: #34d399;
   font-size: 14px;
 }
 
 .table-content {
   padding: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid rgba(245, 158, 11, 0.1);
 }
 
 .annotation-row {
@@ -221,17 +222,24 @@ watch(() => props.datasource, () => {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: #d6d3d1;
   margin-bottom: 4px;
 }
 
 .annotation-row input {
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 4px;
   font-size: 13px;
   box-sizing: border-box;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
+}
+
+.annotation-row input:focus {
+  outline: none;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .columns-section {
@@ -241,7 +249,7 @@ watch(() => props.datasource, () => {
 .columns-header {
   font-size: 13px;
   font-weight: 500;
-  color: #6b7280;
+  color: #78716c;
   margin-bottom: 8px;
 }
 
@@ -255,20 +263,27 @@ watch(() => props.datasource, () => {
 
 .col-name {
   font-size: 13px;
-  color: #1f2937;
+  color: #e7e5e4;
   font-weight: 500;
 }
 
 .col-type {
   font-size: 12px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .column-row input {
   padding: 4px 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 4px;
   font-size: 13px;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
+}
+
+.column-row input:focus {
+  outline: none;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .annotator-actions {
@@ -277,32 +292,33 @@ watch(() => props.datasource, () => {
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid rgba(245, 158, 11, 0.1);
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: #d97706;
+  color: #0c0b09;
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: #f59e0b;
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #374151;
-  border: none;
+  background: rgba(255,255,255,0.06);
+  color: #d6d3d1;
+  border: 1px solid rgba(255,255,255,0.08);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -310,7 +326,7 @@ watch(() => props.datasource, () => {
 }
 
 .btn-secondary:hover {
-  background: #d1d5db;
+  background: rgba(255,255,255,0.1);
 }
 
 .btn-icon {
@@ -319,16 +335,16 @@ watch(() => props.datasource, () => {
   cursor: pointer;
   padding: 4px;
   font-size: 16px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .btn-icon:hover {
-  color: #1f2937;
+  color: #e7e5e4;
 }
 
 .empty {
   text-align: center;
   padding: 40px;
-  color: #6b7280;
+  color: #78716c;
 }
 </style>
