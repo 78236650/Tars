@@ -28,8 +28,8 @@
   - [ ] 基础 FastAPI app
 - [ ] 前端项目初始化
   - [ ] 创建 `frontend/` 目录结构
-  - [ ] 使用 Vite 初始化 React + TypeScript 项目
-  - [ ] 配置 TailwindCSS、Zustand、React Router
+  - [ ] 使用 Vite 初始化 Vue 3 + TypeScript 项目
+  - [ ] 配置 TailwindCSS、Pinia、Vue Router
 
 ### Day 2 - WebSocket 连接
 
