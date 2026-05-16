@@ -32,7 +32,7 @@
         <p v-for="(text, i) in transcripts" :key="i">{{ text }}</p>
       </div>
       <div class="completed-actions">
-        <button class="action-btn primary" @click="$emit('done')">返回列表</button>
+        <button class="action-btn primary" @click="resetAndDone">返回列表</button>
       </div>
     </div>
 
@@ -143,6 +143,13 @@ function cancelRecording() {
   state.value = 'idle'
   transcripts.value = []
   seconds.value = 0
+}
+
+function resetAndDone() {
+  state.value = 'idle'
+  transcripts.value = []
+  seconds.value = 0
+  emit('done')
 }
 
 onBeforeUnmount(() => {
