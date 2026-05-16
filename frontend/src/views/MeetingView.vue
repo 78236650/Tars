@@ -1,8 +1,9 @@
 <template>
   <div class="meeting-view">
     <div class="meeting-layout">
-      <!-- 左侧：上传 + 录音 + 历史列表 -->
+      <!-- 左侧：设置 + 上传 + 录音 + 历史列表 -->
       <div class="left-panel">
+        <MeetingSettings />
         <AudioUploader @uploaded="onUploaded" />
         <RecordingPanel @done="loadHistory" @saved="onRecordingSaved" />
         <TranscriptionList
@@ -29,6 +30,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { Transcription } from '@/types'
 import { meetingApi } from '@/api'
 import AudioUploader from '@/components/meeting/AudioUploader.vue'
+import MeetingSettings from '@/components/meeting/MeetingSettings.vue'
 import RecordingPanel from '@/components/meeting/RecordingPanel.vue'
 import TranscriptionList from '@/components/meeting/TranscriptionList.vue'
 import TranscriptionDetail from '@/components/meeting/TranscriptionDetail.vue'
