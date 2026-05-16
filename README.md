@@ -1,4 +1,4 @@
-# TARS AI Agent v3.9.0
+# TARS AI Agent v2.9.1
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理与自动压缩。
 
@@ -492,6 +492,19 @@ cd backend
 - 🗜️ **记忆压缩引擎** — 摘要合并 + 层级归档，支持手动触发 / 阈值触发 / 每日定时兜底
 - 🔧 **Memory REST API** — 12 个端点（CRUD + stats + compress + merge）
 - ⚡ **性能优化** — SQL 层分页、stats 查询合并、entity_refs 索引、混合格式兼容修复
+
+### v2.9.1
+- 🎨 **Graphite Amber 视觉统一收口** — 全站深色暖系改造，琥珀（amber）替换蓝色（blue）主色调
+- 🖥️ **DesktopShell 桌面态可折叠窄栏** — 右栏支持展开/折叠态，localStorage 持久化，48px 窄栏 + 展开恢复把手
+- 📦 **通用弹层壳 AppSurfaceDialog / AppSurfaceDrawer** — 统一视觉边界，居中弹窗 + 侧边抽屉，覆盖 Tools/Memory/Knowledge/BI/Settings 核心弹层
+- 🎙️ **会议助手视觉统一** — MeetingSettings / RecordingPanel / TranscriptionList / TranscriptionDetail / SchemaAnnotator 全链路深色化
+- 🧠 **记忆助手视觉统一** — MemoryCard / RecentMemoryTab / LongtermMemoryTab / AllMemoryTab 全链路深色化
+- 📈 **BI 工作台视觉统一** — DataSourceSettings / BiAnalyticsView 深色化
+- 💬 **Chat 聊天气泡统一** — 工具调用卡片/步骤面板/代码块/表格/内联代码全部改琥珀色系，ChartRenderer 按需加载
+- ⚡ **ESC 键盘关闭** — AppSurfaceDialog / AppSurfaceDrawer 支持 ESC 键关闭
+- 🧭 **侧栏快捷图标** — 折叠态新增设置 / 模型 / 语言切换快捷入口
+- 🔍 **记忆助手滚动修复** — MemoryView / MeetingView 滚动溢出问题修复
+- ✅ **19 个前端单元测试全通过**
 
 ### v2.8.1
 - ⌨️ **输入优化** — Enter 键换行，仅鼠标点击提交

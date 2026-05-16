@@ -1,6 +1,32 @@
 # Changelog
 
-## v2.8.1 (2026-05-16)
+## v2.9.1 (2026-05-16)
+
+### 视觉统一收口（Graphite Amber）
+
+- ✅ **Graphite Amber 视觉体系** — 全站深色暖系改造，琥珀（amber）替换蓝色（blue）主色调，背景 #0c0b09 / #14110f，琥珀主色 amber-500
+- ✅ **DesktopShell 桌面态可折叠窄栏** — 右栏支持展开/折叠态，localStorage 持久化，48px 窄栏 + 展开恢复把手，CSS 变量 `--inspector-width` 控制宽度
+- ✅ **通用弹层壳 AppSurfaceDialog / AppSurfaceDrawer** — 统一视觉边界，居中弹窗 + 侧边抽屉，覆盖 Tools/Memory/Knowledge/BI/Settings 核心弹层
+- ✅ **会议助手视觉统一** — MeetingSettings / RecordingPanel / TranscriptionList / TranscriptionDetail / SchemaAnnotator 全链路深色化
+- ✅ **知识库视觉统一** — KnowledgeManager / DocumentUploader 深色化改造
+- ✅ **记忆助手视觉统一** — MemoryCard / RecentMemoryTab / LongtermMemoryTab / AllMemoryTab 全链路深色化
+- ✅ **BI 工作台视觉统一** — DataSourceSettings / BiAnalyticsView 深色化改造
+- ✅ **Chat 聊天气泡统一** — 工具调用卡片 / 步骤面板 / 代码块 / 表格 / 内联代码全部改琥珀色系
+- ✅ **ChartRenderer 按需加载** — defineAsyncComponent 动态导入，不影响首屏体积
+- ✅ **ESC 键盘关闭** — AppSurfaceDialog / AppSurfaceDrawer 支持 ESC 键关闭
+- ✅ **侧栏快捷图标** — 折叠态新增设置 / 模型 / 语言切换快捷入口
+- ✅ **Models 页面清理** — 删除多余的语言切换按钮和返回聊天按钮
+- ✅ **滚动修复** — MemoryView / MeetingView left-panel overflow-y: auto 修复滚动条不可见问题
+- ✅ **19 个前端单元测试全通过**
+
+### 设计文档新增
+
+- ✅ `docs/superpowers/plans/2026-05-16-workspace-shell-dialog-unification.md` — 桌面折叠 + 弹层统一实施计划
+- ✅ `docs/superpowers/specs/2026-05-16-workspace-shell-dialog-unification-design.md` — 视觉规范文档
+
+---
+
+
 
 ### 会议助手
 
