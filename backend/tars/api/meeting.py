@@ -365,7 +365,7 @@ async def delete_transcription(transcription_id: str):
 
 @router.websocket("/ws/record")
 async def ws_record(websocket: WebSocket):
-    """实时录音转写：前端每5秒发送音频chunk，后端转写后实时返回文本"""
+    """实时录音转写：前端每5秒发送音频chunk，后端累积转写"""
     await websocket.accept()
 
     if _db is None or _meeting_tool is None:
@@ -379,6 +379,11 @@ async def ws_record(websocket: WebSocket):
     total_duration = 0.0
     language = None
     start_time = datetime.now(timezone(timedelta(hours=8)))
+    prev_text = ""
+
+    # 累积音频文件（WebM chunks 只有第一个有文件头，必须拼接为完整文件）
+    audio_file = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
+    audio_path = audio_file.name
 
     try:
         while True:
@@ -392,51 +397,54 @@ async def ws_record(websocket: WebSocket):
                 if not audio_b64:
                     continue
 
-                # 解码音频写入临时文件
+                # 追加音频数据到累积文件
                 audio_bytes = base64.b64decode(audio_b64)
-                tmp = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
-                tmp.write(audio_bytes)
-                tmp.close()
+                audio_file.write(audio_bytes)
+                audio_file.flush()
 
+                # 转写整个累积文件
                 try:
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(
                         _get_whisper_pool(),
                         _sync_transcribe,
-                        tmp.name,
+                        audio_path,
                         language,
                         _meeting_tool.model_size,
                     )
 
                     if result.get("success") and result.get("text", "").strip():
-                        text = result["text"].strip()
-                        segments_text.append(text)
-                        if not language and result.get("language"):
-                            language = result["language"]
-                        total_duration += result.get("duration", 0)
+                        full_text = result["text"].strip()
+                        # 只返回新增部分
+                        new_text = full_text[len(prev_text):].strip() if len(full_text) > len(prev_text) else full_text
+                        if new_text and new_text != prev_text:
+                            segments_text.append(new_text)
+                            prev_text = full_text
+                            if not language and result.get("language"):
+                                language = result["language"]
+                            total_duration = result.get("duration", 0)
 
-                        await websocket.send_json({
-                            "type": "transcript",
-                            "text": text,
-                            "index": chunk_index,
-                        })
-                    elif not result.get("success"):
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": result.get("error", "转写失败"),
-                        })
-                finally:
-                    os.unlink(tmp.name)
+                            await websocket.send_json({
+                                "type": "transcript",
+                                "text": new_text,
+                                "index": chunk_index,
+                            })
+                except Exception as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"转写失败: {e}",
+                    })
 
             elif msg_type == "stop":
+                audio_file.close()
                 full_text = "\n".join(segments_text).strip()
 
                 # 保存到数据库
                 transcription = _db.create_transcription(
                     user_id="default",
-                    file_path="",
+                    file_path=audio_path,
                     file_name=f"实时录音_{start_time.strftime('%Y%m%d_%H%M%S')}",
-                    file_size=0,
+                    file_size=os.path.getsize(audio_path),
                     language=language or "zh",
                     model_used=_meeting_tool.model_size,
                 )
@@ -455,6 +463,32 @@ async def ws_record(websocket: WebSocket):
                     "duration": total_duration,
                 })
                 break
+
+    except WebSocketDisconnect:
+        audio_file.close()
+        if segments_text:
+            full_text = "\n".join(segments_text).strip()
+            transcription = _db.create_transcription(
+                user_id="default",
+                file_path=audio_path,
+                file_name=f"实时录音_{start_time.strftime('%Y%m%d_%H%M%S')}(中断)",
+                file_size=os.path.getsize(audio_path) if os.path.exists(audio_path) else 0,
+                language=language or "zh",
+                model_used=_meeting_tool.model_size,
+            )
+            _db.update_transcription(
+                transcription.id,
+                status="completed",
+                transcript=full_text,
+                duration=total_duration,
+                segments=json.dumps([{"text": t} for t in segments_text], ensure_ascii=False),
+            )
+    except Exception as e:
+        audio_file.close()
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
 
     except WebSocketDisconnect:
         if segments_text:
