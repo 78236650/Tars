@@ -4,6 +4,7 @@ export const messages: Record<string, Record<string, string>> = {
   zh: {
     // 导航
     'nav.chat': '聊天',
+    'nav.memory': '记忆管理',
     'nav.models': '模型',
     'nav.tools': '工具',
     'nav.bi': 'BI 分析',
@@ -177,6 +178,7 @@ export const messages: Record<string, Record<string, string>> = {
   en: {
     // Navigation
     'nav.chat': 'Chat',
+    'nav.memory': 'Memory',
     'nav.models': 'Models',
     'nav.tools': 'Tools',
     'nav.bi': 'BI Analytics',

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
@@ -9,30 +7,15 @@ import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
-import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
-import ReminderNotificationsDrawer from '@/components/chat/ReminderNotificationsDrawer.vue'
-import Sidebar from '@/components/layout/Sidebar.vue'
 
-const router = useRouter()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const reminderNotificationsStore = useReminderNotificationsStore()
 const wsStore = useWsStore()
 const { t } = useI18n()
-const { unreadCount, isDrawerOpen } = storeToRefs(reminderNotificationsStore)
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[], thinking?: any }[]>([])
 const inputMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
-
-const openReminderNotifications = async () => {
-  try {
-    await reminderNotificationsStore.openDrawer()
-  } catch {}
-}
-
-const closeReminderNotifications = () => {
-  reminderNotificationsStore.closeDrawer()
-}
 
 const autoResize = () => {
   const el = inputRef.value
@@ -414,47 +397,55 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-slate-900">
-    <Sidebar />
-    <main class="flex-1 flex flex-col">
-      <header class="flex items-center justify-between px-6 py-4 border-b border-slate-700">
-        <div class="flex items-center gap-3">
-          <img src="/logo.png" alt="TARS" class="w-10 h-10 rounded-lg object-cover" />
-          <div>
-            <h1 class="text-lg font-semibold text-white">TARS Agent</h1>
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full" :class="wsStore.isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
-              <span class="text-sm text-slate-400">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</span>
-            </div>
+  <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] bg-[#14110f]/55">
+      <header class="flex items-center justify-between gap-4 border-b border-amber-100/10 px-6 py-4">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-stone-500">
+            <span>Conversation</span>
+            <span class="h-1 w-1 rounded-full bg-slate-600"></span>
+            <span>{{ chatStore.currentSessionId ? 'Live Session' : 'Idle' }}</span>
+          </div>
+          <div class="mt-2 flex items-center gap-3">
+            <span class="h-2.5 w-2.5 rounded-full" :class="wsStore.isConnected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
+            <p class="text-sm text-stone-300">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</p>
+            <span class="rounded-full border border-amber-100/10 bg-white/[0.04] px-3 py-1 text-xs text-stone-300">
+              {{ settingsStore.currentModel || '未选择模型' }}
+            </span>
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-500">{{ settingsStore.currentModel || '' }}</span>
-          <ReminderBellButton :unread-count="unreadCount" @open="openReminderNotifications" />
 
-          <button @click="router.push('/settings')" class="p-2 rounded-lg hover:bg-slate-700 transition-colors" title="设置">
-            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
+            @click="quickStart('/plan ')"
+          >
+            规划模式
+          </button>
+          <button
+            type="button"
+            class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
+            @click="quickStart('/brainstorm ')"
+          >
+            头脑风暴
           </button>
         </div>
       </header>
-      
+
       <ChatPanel :messages="messages" :is-generating="wsStore.isGenerating" @quick-start="quickStart" />
 
-      <footer class="px-6 py-4 border-t border-slate-700">
+      <footer class="border-t border-amber-100/10 px-6 py-4">
         <!-- 附件预览区 -->
         <div v-if="attachments.length > 0" class="mb-3 flex flex-wrap gap-2">
           <div
             v-for="(att, idx) in attachments"
             :key="att.file_id"
-            class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-600 rounded-lg text-sm"
+            class="flex items-center gap-2 rounded-xl border border-amber-100/10 bg-white/[0.04] px-3 py-1.5 text-sm"
           >
             <span v-if="att.type === 'image'">📷</span>
             <span v-else>📄</span>
-            <span class="text-slate-300 max-w-[120px] truncate">{{ att.name }}</span>
-            <button @click="removeAttachment(idx)" class="text-slate-400 hover:text-red-400">✕</button>
+            <span class="max-w-[120px] truncate text-stone-300">{{ att.name }}</span>
+            <button @click="removeAttachment(idx)" class="text-stone-500 transition hover:text-red-400">✕</button>
           </div>
         </div>
 
@@ -463,10 +454,10 @@ onUnmounted(() => {
           <button
             @click="handleFileSelect"
             :disabled="uploading || attachments.length >= MAX_FILES"
-            class="p-3 rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors"
+            class="rounded-xl p-3 transition hover:bg-amber-500/10 disabled:opacity-50"
             :title="t('chat.uploadTooltip')"
           >
-            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="h-5 w-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
             </svg>
           </button>
@@ -475,24 +466,24 @@ onUnmounted(() => {
           <div class="relative">
             <button
               @click="toggleCommands"
-              class="p-3 rounded-xl hover:bg-slate-700 transition-colors"
+              class="rounded-xl p-3 transition hover:bg-amber-500/10"
               title="命令"
             >
-              <span class="text-lg font-bold text-purple-400">/</span>
+              <span class="text-lg font-bold text-amber-300">/</span>
             </button>
             <div
               v-if="showCommands"
-              class="absolute bottom-full left-0 mb-2 w-64 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden z-50"
+              class="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-[20px] border border-amber-100/10 bg-[#171411] shadow-[0_24px_80px_rgba(8,7,5,0.55)]"
             >
-              <div class="px-3 py-2 border-b border-slate-700 text-xs text-slate-400 font-medium">斜杠命令</div>
+              <div class="border-b border-amber-100/10 px-3 py-2 text-xs font-medium text-stone-400">斜杠命令</div>
               <button
                 v-for="cmd in commands"
                 :key="cmd.name"
                 @click="selectCommand(cmd)"
-                class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-700 text-left transition-colors"
+                class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-amber-500/10"
               >
-                <span class="text-sm font-mono text-purple-400 flex-shrink-0">{{ cmd.name }}</span>
-                <span class="text-xs text-slate-400 truncate">{{ cmd.desc }}</span>
+                <span class="flex-shrink-0 text-sm font-mono text-amber-300">{{ cmd.name }}</span>
+                <span class="truncate text-xs text-stone-400">{{ cmd.desc }}</span>
               </button>
             </div>
           </div>
@@ -511,20 +502,18 @@ onUnmounted(() => {
               v-model="inputMessage"
               @input="autoResize"
               :placeholder="t('chat.placeholder')"
-              class="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none overflow-hidden"
+              class="w-full resize-none overflow-hidden rounded-xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 text-white placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               rows="1"
             ></textarea>
           </div>
           <button
             @click="sendMessage"
             :disabled="(!inputMessage.trim() && attachments.length === 0) || !wsStore.isConnected"
-            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-xl text-white font-medium transition-colors"
+            class="rounded-xl bg-amber-500 px-6 py-3 font-medium text-stone-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-stone-700 disabled:text-stone-300"
           >
             Send
           </button>
         </div>
       </footer>
-    </main>
-    <ReminderNotificationsDrawer :open="isDrawerOpen" @close="closeReminderNotifications" />
   </div>
 </template>

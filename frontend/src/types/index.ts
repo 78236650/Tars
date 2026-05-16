@@ -51,6 +51,79 @@ export interface PersonalityResponse {
   data?: Personality
 }
 
+export interface MemoryItem {
+  id: string
+  content: string
+  summary: string
+  category: string
+  importance: number
+  created_at: string | null
+  updated_at: string | null
+  last_accessed: string | null
+  source: string
+  pinned: boolean
+  compressed_from: string[]
+  memory_type: 'episodic' | 'longterm' | 'compressed' | string
+  event_time: string | null
+  entity_refs: string[]
+}
+
+export interface MemoryStats {
+  total: number
+  recent: number
+  longterm: number
+  pending_compression: number
+  last_compressed_at: string | null
+}
+
+export interface CoreMemoryBlocksResponse {
+  blocks: Record<string, string>
+}
+
+export interface RecentMemoryResponse {
+  items: MemoryItem[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface LongtermMemoryGroup {
+  group_name: string
+  items: MemoryItem[]
+}
+
+export interface LongtermMemoryResponse {
+  page: number
+  page_size: number
+  total: number
+  groups: LongtermMemoryGroup[]
+}
+
+export interface MemoryCompressionStatus {
+  status: string
+  running: boolean
+  last_started_at: string | null
+  last_finished_at: string | null
+  progress: Record<string, unknown>
+  last_report?: {
+    status: string
+    compressed_count: number
+    cleaned_count?: number
+    entities?: string[]
+    error?: string
+  } | null
+}
+
+export interface MemoryMergeResponse {
+  preview_only: boolean
+  merged_content: string
+  source_memory_ids: string[]
+  importance: number
+  memory_type: string
+  entity_refs: string[]
+  memory?: MemoryItem
+}
+
 export interface SubAgent {
   type: string
   name: string

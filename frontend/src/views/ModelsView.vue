@@ -2,7 +2,6 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import Sidebar from '@/components/layout/Sidebar.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
@@ -11,7 +10,7 @@ import type { Endpoint } from '@/types'
 const router = useRouter()
 const settingsStore = useSettingsStore()
 const toast = useToast()
-const { locale, toggleLocale, t } = useI18n()
+const { locale, t } = useI18n()
 
 const showAddEndpoint = ref(false)
 const editingEndpoint = ref<Endpoint | null>(null)
@@ -191,92 +190,65 @@ const openManual = (ep: Endpoint) => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-slate-900">
-    <Sidebar />
-
-    <main class="flex-1 flex flex-col min-w-0">
-      <header class="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
-        <div class="flex items-center gap-3 min-w-0">
+  <div class="flex h-full min-h-0 flex-col overflow-hidden">
+      <header class="flex shrink-0 items-center justify-between border-b border-amber-100/10 px-6 py-4">
+        <div class="flex min-w-0 items-center gap-3">
           <div
-            class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shrink-0"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-amber-700 shadow-[0_10px_30px_rgba(217,119,6,0.35)]"
           >
-            <span class="text-white font-bold text-lg">T</span>
+            <span class="text-lg font-bold text-stone-950">T</span>
           </div>
           <div class="min-w-0">
-            <h1 class="text-lg font-semibold text-white truncate">{{ t('models.title') }}</h1>
-            <p class="text-sm text-slate-400 truncate">{{ t('models.subtitle') }}</p>
+            <h1 class="truncate text-lg font-semibold text-stone-100">{{ t('models.title') }}</h1>
+            <p class="truncate text-sm text-stone-400">{{ t('models.subtitle') }}</p>
           </div>
-        </div>
-        <div class="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            @click="toggleLocale"
-            class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-white transition-colors"
-          >
-            {{ locale === 'zh' ? 'EN' : '中文' }}
-          </button>
-          <button
-            type="button"
-            @click="router.push('/')"
-            class="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors text-sm"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            <span>{{ t('models.backToChat') }}</span>
-          </button>
         </div>
       </header>
 
       <div class="flex-1 overflow-y-auto">
-        <div class="max-w-4xl mx-auto p-8 space-y-10">
+        <div class="mx-auto max-w-5xl space-y-8 p-6 lg:p-8">
           <!-- Ollama -->
-          <section class="rounded-xl border border-slate-700 bg-slate-800/40 p-6">
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h2 class="text-base font-semibold text-white">{{ t('modelsPage.ollamaBlock') }}</h2>
-              <div class="flex items-center gap-2 text-sm text-slate-300">
+          <section class="rounded-[28px] border border-amber-100/10 bg-[#171411]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.28)]">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 class="text-base font-semibold text-stone-100">{{ t('modelsPage.ollamaBlock') }}</h2>
+              <div class="flex items-center gap-2 text-sm text-stone-300">
                 <span
-                  class="w-2 h-2 rounded-full shrink-0"
+                  class="h-2 w-2 shrink-0 rounded-full"
                   :class="ollamaConnected ? 'bg-emerald-400' : 'bg-red-500'"
                 />
-                <code class="text-xs bg-slate-900/80 px-2 py-1 rounded text-slate-400 break-all">{{
+                <code class="break-all rounded-xl border border-amber-100/10 bg-black/25 px-2.5 py-1.5 text-xs text-stone-400">{{
                   settingsStore.ollamaBaseUrl
                 }}</code>
               </div>
             </div>
-            <p class="text-xs text-slate-500 mb-4">{{ t('modelsPage.ollamaEnvHint') }}</p>
+            <p class="mb-4 text-xs text-stone-500">{{ t('modelsPage.ollamaEnvHint') }}</p>
             <div v-if="settingsStore.ollamaModels.length" class="flex flex-wrap gap-2">
               <button
                 v-for="m in settingsStore.ollamaModels"
                 :key="m"
                 type="button"
                 @click="selectOllama(m)"
-                class="px-3 py-1.5 rounded-full text-sm border transition-colors"
+                class="rounded-full border px-3 py-1.5 text-sm transition"
                 :class="
                   isCurrentOllama(m)
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-slate-700/80 border-slate-600 text-slate-200 hover:border-slate-500'
+                    ? 'border-amber-300/60 bg-amber-500 text-stone-950 shadow-[0_12px_30px_rgba(217,119,6,0.25)]'
+                    : 'border-amber-100/10 bg-white/[0.04] text-stone-200 hover:border-amber-300/25 hover:bg-amber-500/10'
                 "
               >
                 {{ m }}
               </button>
             </div>
-            <p v-else class="text-sm text-slate-500">{{ t('modelsPage.ollamaEmpty') }}</p>
+            <p v-else class="text-sm text-stone-500">{{ t('modelsPage.ollamaEmpty') }}</p>
           </section>
 
           <!-- OpenAI-compatible -->
-          <section class="rounded-xl border border-slate-700 bg-slate-800/40 p-6">
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-              <h2 class="text-base font-semibold text-white">{{ t('modelsPage.remoteBlock') }}</h2>
+          <section class="rounded-[28px] border border-amber-100/10 bg-[#171411]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.28)]">
+            <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <h2 class="text-base font-semibold text-stone-100">{{ t('modelsPage.remoteBlock') }}</h2>
               <button
                 type="button"
                 @click="showAddEndpoint = !showAddEndpoint"
-                class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm transition-colors"
+                class="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-amber-400"
               >
                 + {{ t('modelsPage.addEndpoint') }}
               </button>
@@ -284,46 +256,46 @@ const openManual = (ep: Endpoint) => {
 
             <div
               v-if="showAddEndpoint"
-              class="mb-6 p-4 rounded-lg border border-slate-600 bg-slate-900/50 space-y-3"
+              class="mb-6 space-y-3 rounded-[24px] border border-amber-100/10 bg-black/20 p-4"
             >
               <input
                 v-model="addForm.name"
                 type="text"
                 :placeholder="t('modelsPage.namePh')"
-                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white text-sm"
+                class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
               <input
                 v-model="addForm.base_url"
                 type="url"
                 :placeholder="t('modelsPage.baseUrlPh')"
-                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white text-sm"
+                class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
               <input
                 v-model="addForm.api_key"
                 type="password"
                 autocomplete="off"
                 :placeholder="t('modelsPage.apiKeyPh')"
-                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white text-sm"
+                class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
-              <div class="flex gap-2 justify-end">
+              <div class="flex justify-end gap-2">
                 <button
                   type="button"
                   @click="showAddEndpoint = false"
-                  class="px-3 py-2 text-sm text-slate-400 hover:text-white"
+                  class="px-3 py-2 text-sm text-stone-400 transition hover:text-stone-100"
                 >
                   {{ t('common.cancel') }}
                 </button>
                 <button
                   type="button"
                   @click="createEndpoint"
-                  class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm"
+                  class="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-amber-400"
                 >
                   {{ t('common.create') }}
                 </button>
               </div>
             </div>
 
-            <div v-if="!settingsStore.endpoints.length" class="text-center py-8 text-slate-500 text-sm">
+            <div v-if="!settingsStore.endpoints.length" class="py-8 text-center text-sm text-stone-500">
               {{ t('modelsPage.noEndpoints') }}
             </div>
 
@@ -331,19 +303,19 @@ const openManual = (ep: Endpoint) => {
               <div
                 v-for="ep in settingsStore.endpoints"
                 :key="ep.id"
-                class="rounded-lg border border-slate-600 bg-slate-900/30 p-4"
+                class="rounded-[24px] border border-amber-100/10 bg-white/[0.03] p-4"
               >
-                <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
                   <div class="min-w-0">
-                    <h3 class="text-white font-medium truncate">{{ ep.name }}</h3>
-                    <p class="text-xs text-slate-500 truncate mt-0.5" :title="ep.base_url">{{ ep.base_url }}</p>
+                    <h3 class="truncate font-medium text-stone-100">{{ ep.name }}</h3>
+                    <p class="mt-0.5 truncate text-xs text-stone-500" :title="ep.base_url">{{ ep.base_url }}</p>
                   </div>
-                  <div class="flex flex-wrap gap-2 shrink-0">
+                  <div class="flex shrink-0 flex-wrap gap-2">
                     <button
                       type="button"
                       :disabled="busyEndpointId === ep.id"
                       @click="fetchModels(ep.id)"
-                      class="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:opacity-50"
+                      class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10 disabled:opacity-50"
                     >
                       {{ t('modelsPage.fetchModels') }}
                     </button>
@@ -351,14 +323,14 @@ const openManual = (ep: Endpoint) => {
                       type="button"
                       :disabled="busyEndpointId === ep.id"
                       @click="testConn(ep.id)"
-                      class="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:opacity-50"
+                      class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10 disabled:opacity-50"
                     >
                       {{ t('common.test') }}
                     </button>
                     <button
                       type="button"
                       @click="openEdit(ep)"
-                      class="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200"
+                      class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
                     >
                       {{ t('common.edit') }}
                     </button>
@@ -379,22 +351,22 @@ const openManual = (ep: Endpoint) => {
                     type="button"
                     :disabled="!ep.enabled"
                     @click="selectRemote(ep, mod)"
-                    class="px-3 py-1.5 rounded-full text-sm border transition-colors disabled:opacity-40"
+                    class="rounded-full border px-3 py-1.5 text-sm transition disabled:opacity-40"
                     :class="
                       isCurrentRemote(ep, mod)
-                        ? 'bg-emerald-700 border-emerald-500 text-white'
-                        : 'bg-slate-700/80 border-slate-600 text-slate-200 hover:border-slate-500'
+                        ? 'border-amber-300/60 bg-amber-500 text-stone-950 shadow-[0_12px_30px_rgba(217,119,6,0.25)]'
+                        : 'border-amber-100/10 bg-white/[0.04] text-stone-200 hover:border-amber-300/25 hover:bg-amber-500/10'
                     "
                   >
                     {{ mod }}
                   </button>
                 </div>
                 <div v-else class="space-y-2">
-                  <p class="text-xs text-slate-500">{{ t('modelsPage.noModelsHint') }}</p>
+                  <p class="text-xs text-stone-500">{{ t('modelsPage.noModelsHint') }}</p>
                   <button
                     type="button"
                     @click="openManual(ep)"
-                    class="text-xs text-blue-400 hover:underline"
+                    class="text-xs text-amber-300 transition hover:text-amber-200"
                   >
                     {{ t('modelsPage.manualModels') }}
                   </button>
@@ -403,12 +375,12 @@ const openManual = (ep: Endpoint) => {
                       v-model="manualModelsText"
                       rows="3"
                       :placeholder="t('modelsPage.manualPlaceholder')"
-                      class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white text-xs font-mono"
+                      class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 font-mono text-xs text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
                     />
                     <button
                       type="button"
                       @click="applyManualModels(ep)"
-                      class="self-end px-3 py-1.5 text-xs rounded bg-blue-600 text-white"
+                      class="self-end rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-medium text-stone-950 transition hover:bg-amber-400"
                     >
                       {{ t('common.save') }}
                     </button>
@@ -419,7 +391,6 @@ const openManual = (ep: Endpoint) => {
           </section>
         </div>
       </div>
-    </main>
 
     <!-- Edit modal -->
     <div
@@ -427,41 +398,41 @@ const openManual = (ep: Endpoint) => {
       class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
       @click.self="closeEdit"
     >
-      <div class="w-full max-w-md rounded-xl border border-slate-600 bg-slate-800 p-5 shadow-2xl">
-        <h3 class="text-lg font-semibold text-white mb-4">{{ t('modelsPage.editEndpoint') }}</h3>
+      <div class="w-full max-w-md rounded-[28px] border border-amber-100/10 bg-[#171411] p-5 shadow-[0_30px_100px_rgba(8,7,5,0.65)]">
+        <h3 class="mb-4 text-lg font-semibold text-stone-100">{{ t('modelsPage.editEndpoint') }}</h3>
         <div class="space-y-3">
           <input
             v-model="editForm.name"
             type="text"
-            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-white text-sm"
+            class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 focus:border-amber-300/30 focus:outline-none"
           />
           <input
             v-model="editForm.base_url"
             type="url"
-            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-white text-sm"
+            class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 focus:border-amber-300/30 focus:outline-none"
           />
           <input
             v-model="editForm.api_key"
             type="password"
             autocomplete="off"
             :placeholder="t('modelsPage.apiKeyLeaveBlank')"
-            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-white text-sm"
+            class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
           />
-          <label class="block text-xs text-slate-400">{{ t('modelsPage.modelsOnePerLine') }}</label>
+          <label class="block text-xs text-stone-400">{{ t('modelsPage.modelsOnePerLine') }}</label>
           <textarea
             v-model="editForm.modelsText"
             rows="5"
-            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-white text-xs font-mono"
+            class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 font-mono text-xs text-stone-100 focus:border-amber-300/30 focus:outline-none"
           />
         </div>
-        <div class="flex justify-end gap-2 mt-5">
-          <button type="button" @click="closeEdit" class="px-3 py-2 text-sm text-slate-400 hover:text-white">
+        <div class="mt-5 flex justify-end gap-2">
+          <button type="button" @click="closeEdit" class="px-3 py-2 text-sm text-stone-400 transition hover:text-stone-100">
             {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             @click="saveEdit"
-            class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm"
+            class="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-amber-400"
           >
             {{ t('common.save') }}
           </button>

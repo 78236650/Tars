@@ -35,10 +35,14 @@
       </div>
     </div>
 
-    <!-- 创建知识库弹窗 -->
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
-      <div class="modal">
-        <h3>新建知识库</h3>
+    <AppSurfaceDialog
+      :open="showCreateModal"
+      title="新建知识库"
+      description="创建新的知识集合并补充基础描述"
+      size="md"
+      @close="showCreateModal = false"
+    >
+      <div class="space-y-4">
         <div class="form-group">
           <label>名称</label>
           <input v-model="createForm.name" type="text" placeholder="如：产品文档" />
@@ -47,19 +51,26 @@
           <label>描述</label>
           <input v-model="createForm.description" type="text" placeholder="知识库用途描述" />
         </div>
-        <div class="modal-actions">
+      </div>
+
+      <template #footer>
+        <div class="surface-actions">
           <button class="btn-secondary" @click="showCreateModal = false">取消</button>
           <button class="btn-primary" :disabled="creating" @click="createCollection">
             {{ creating ? '创建中...' : '创建' }}
           </button>
         </div>
-      </div>
-    </div>
+      </template>
+    </AppSurfaceDialog>
 
-    <!-- 搜索测试弹窗 -->
-    <div v-if="showSearchModal" class="modal-overlay" @click.self="showSearchModal = false">
-      <div class="modal modal-large">
-        <h3>搜索测试 - {{ activeCollection?.name }}</h3>
+    <AppSurfaceDrawer
+      :open="showSearchModal"
+      :title="`搜索测试 - ${activeCollection?.name ?? ''}`"
+      description="验证知识库检索效果并快速查看命中片段"
+      side="right"
+      @close="showSearchModal = false"
+    >
+      <div class="space-y-4">
         <div class="search-box">
           <input v-model="searchQuery" type="text" placeholder="输入搜索内容..." @keyup.enter="performSearch" />
           <button class="btn-primary" :disabled="searching" @click="performSearch">
@@ -75,7 +86,7 @@
         </div>
         <div v-else-if="searched" class="search-empty">未找到相关内容</div>
       </div>
-    </div>
+    </AppSurfaceDrawer>
   </div>
 </template>
 
@@ -83,6 +94,8 @@
 import { ref, onMounted, reactive } from 'vue'
 import { knowledgeApi } from '@/api'
 import type { KnowledgeCollection, KnowledgeDocument } from '@/types'
+import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
+import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import DocumentUploader from './DocumentUploader.vue'
 
 const collections = ref<KnowledgeCollection[]>([])
@@ -210,32 +223,33 @@ onMounted(loadCollections)
 .title {
   font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
+  color: #f5f0e8;
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: #d97706;
+  color: #0c0b09;
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: #f59e0b;
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background: #e5e7eb;
-  color: #374151;
-  border: none;
+  background: rgba(255,255,255,0.06);
+  color: #d6d3d1;
+  border: 1px solid rgba(255,255,255,0.08);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -249,10 +263,10 @@ onMounted(loadCollections)
 }
 
 .collection-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.12);
+  border-radius: 12px;
   padding: 16px;
-  background: white;
+  background: rgba(255,255,255,0.03);
 }
 
 .card-header {
@@ -271,12 +285,12 @@ onMounted(loadCollections)
 .coll-name {
   font-weight: 600;
   font-size: 16px;
-  color: #1f2937;
+  color: #e7e5e4;
 }
 
 .coll-desc {
   font-size: 13px;
-  color: #6b7280;
+  color: #78716c;
 }
 
 .coll-actions {
@@ -294,11 +308,11 @@ onMounted(loadCollections)
 }
 
 .btn-icon:hover {
-  background: #f3f4f6;
+  background: rgba(255,255,255,0.06);
 }
 
 .btn-danger:hover {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .documents-list {
@@ -310,7 +324,7 @@ onMounted(loadCollections)
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  background: #f9fafb;
+  background: rgba(255,255,255,0.03);
   border-radius: 4px;
   margin-bottom: 4px;
   font-size: 13px;
@@ -318,11 +332,11 @@ onMounted(loadCollections)
 
 .doc-name {
   flex: 1;
-  color: #374151;
+  color: #a8a29e;
 }
 
 .doc-meta {
-  color: #6b7280;
+  color: #78716c;
   font-size: 12px;
 }
 
@@ -330,7 +344,7 @@ onMounted(loadCollections)
   background: none;
   border: none;
   cursor: pointer;
-  color: #9ca3af;
+  color: #78716c;
   font-size: 12px;
 }
 
@@ -342,39 +356,7 @@ onMounted(loadCollections)
 .empty {
   text-align: center;
   padding: 40px;
-  color: #6b7280;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  width: 480px;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.modal-large {
-  width: 640px;
-}
-
-.modal h3 {
-  margin-bottom: 16px;
-  font-size: 18px;
+  color: #78716c;
 }
 
 .form-group {
@@ -386,23 +368,29 @@ onMounted(loadCollections)
   margin-bottom: 6px;
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: #d6d3d1;
 }
 
 .form-group input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
 }
 
-.modal-actions {
+.form-group input:focus {
+  outline: none;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.surface-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 20px;
 }
 
 .search-box {
@@ -414,9 +402,11 @@ onMounted(loadCollections)
 .search-box input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(245, 158, 11, 0.15);
   border-radius: 6px;
   font-size: 14px;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
 }
 
 .search-results {
@@ -426,32 +416,32 @@ onMounted(loadCollections)
 
 .result-item {
   padding: 12px;
-  background: #f9fafb;
+  background: rgba(255,255,255,0.03);
   border-radius: 6px;
   margin-bottom: 8px;
 }
 
 .result-source {
   font-size: 12px;
-  color: #6b7280;
+  color: #fbbf24;
   margin-bottom: 4px;
 }
 
 .result-text {
   font-size: 14px;
-  color: #1f2937;
+  color: #a8a29e;
   line-height: 1.5;
 }
 
 .result-score {
   font-size: 12px;
-  color: #10b981;
+  color: #d97706;
   margin-top: 4px;
 }
 
 .search-empty {
   text-align: center;
   padding: 40px;
-  color: #6b7280;
+  color: #78716c;
 }
 </style>

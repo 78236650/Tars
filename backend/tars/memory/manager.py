@@ -6,6 +6,7 @@ from .archival import ArchivalManager
 from .reflector import Reflector
 from .search import HybridSearch
 from .embeddings import EmbeddingProvider
+from .compressor import MemoryCompressor
 
 
 class MemoryManager:
@@ -29,11 +30,13 @@ class MemoryManager:
         self.archival = ArchivalManager(db, embedding_provider, tenant_id=tenant_id, vector_store=vector_store)
         self.search = HybridSearch(db, embedding_provider, tenant_id=tenant_id, vector_store=vector_store)
         self.reflector = Reflector(provider, self.core, self.archival, db=db)
+        self.compressor = MemoryCompressor(db, provider=provider, tenant_id=tenant_id)
         self.reflector.tenant_id = tenant_id
 
     def set_provider(self, provider):
         self.provider = provider
         self.reflector.provider = provider
+        self.compressor.provider = provider
 
     def set_tenant(self, tenant_id: str):
         self.tenant_id = tenant_id
@@ -41,6 +44,7 @@ class MemoryManager:
         self.archival.tenant_id = tenant_id
         self.search.tenant_id = tenant_id
         self.reflector.tenant_id = tenant_id
+        self.compressor.tenant_id = tenant_id
         return self
 
     def for_tenant(self, tenant_id: str):

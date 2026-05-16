@@ -102,9 +102,9 @@ onUnmounted(() => {
 
 <style scoped>
 .meeting-view {
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
-  background: #f3f4f6;
+  background: transparent;
 }
 
 .meeting-layout {
@@ -121,18 +121,21 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #fff;
+  background: rgba(20, 17, 15, 0.92);
   border-radius: 12px;
   padding: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(245, 158, 11, 0.1);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .right-panel {
   flex: 1;
-  background: #fff;
+  background: rgba(20, 17, 15, 0.92);
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(245, 158, 11, 0.1);
   overflow: hidden;
 }
 

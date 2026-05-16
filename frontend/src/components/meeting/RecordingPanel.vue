@@ -169,47 +169,48 @@ onBeforeUnmount(() => {
 .idle-state { text-align: center; padding: 20px; }
 .start-btn {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 12px 24px; border: 2px solid #ef4444; border-radius: 12px;
-  background: white; color: #dc2626; font-size: 16px; font-weight: 500;
+  padding: 12px 24px; border: 2px solid #d97706; border-radius: 12px;
+  background: rgba(217, 119, 6, 0.08); color: #fbbf24; font-size: 16px; font-weight: 500;
   cursor: pointer; transition: all 0.2s;
 }
-.start-btn:hover { background: #fef2f2; }
+.start-btn:hover { background: rgba(217, 119, 6, 0.16); }
 .btn-icon { font-size: 20px; }
 
-.recording-state { padding: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; }
+.recording-state { padding: 16px; background: rgba(20,17,15,0.92); border: 1px solid rgba(245, 158, 11, 0.12); border-radius: 12px; }
 .recording-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.recording-indicator { color: #dc2626; font-weight: 500; animation: pulse 1.5s infinite; }
-.recording-time { font-variant-numeric: tabular-nums; color: #dc2626; font-size: 14px; }
+.recording-indicator { color: #fbbf24; font-weight: 500; animation: pulse 1.5s infinite; }
+.recording-time { font-variant-numeric: tabular-nums; color: #a8a29e; font-size: 14px; }
 .stop-btn {
-  margin-left: auto; padding: 6px 14px; border: 1px solid #dc2626; border-radius: 6px;
-  background: #dc2626; color: white; font-size: 13px; cursor: pointer;
+  margin-left: auto; padding: 6px 14px; border: 1px solid #d97706; border-radius: 6px;
+  background: #d97706; color: #0c0b09; font-size: 13px; font-weight: 500; cursor: pointer;
 }
-.stop-btn:hover { background: #b91c1c; }
+.stop-btn:hover { background: #f59e0b; }
 
 .transcript-area {
-  background: white; border: 1px solid #e5e7eb; border-radius: 8px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(245, 158, 11, 0.1); border-radius: 8px;
   padding: 12px; max-height: 240px; overflow-y: auto; min-height: 80px;
 }
-.transcript-area p { margin: 4px 0; font-size: 14px; color: #374151; line-height: 1.6; }
-.placeholder { color: #9ca3af; font-style: italic; }
+.transcript-area p { margin: 4px 0; font-size: 14px; color: #a8a29e; line-height: 1.6; }
+.placeholder { color: #78716c; font-style: italic; }
 
 .cancel-btn {
   margin-top: 8px; padding: 4px 12px; border: none; background: none;
-  color: #6b7280; font-size: 12px; cursor: pointer; text-decoration: underline;
+  color: #78716c; font-size: 12px; cursor: pointer; text-decoration: underline;
 }
 
-.completed-state { padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; }
-.completed-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: 500; }
-.duration { font-size: 13px; color: #6b7280; font-weight: normal; }
+.completed-state { padding: 16px; background: rgba(20,17,15,0.92); border: 1px solid rgba(245, 158, 11, 0.1); border-radius: 12px; }
+.completed-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: 500; color: #d6d3d1; }
+.duration { font-size: 13px; color: #78716c; font-weight: normal; }
 .completed-actions { margin-top: 12px; display: flex; gap: 8px; }
 .action-btn {
-  padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid #d1d5db;
-  background: white;
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.06); color: #d6d3d1;
 }
-.action-btn.primary { background: #3b82f6; color: white; border-color: #3b82f6; }
-.action-btn.primary:hover { background: #2563eb; }
+.action-btn.primary { background: #d97706; color: #0c0b09; border-color: #d97706; font-weight: 500; }
+.action-btn.primary:hover { background: #f59e0b; }
 
-.error-message { margin-top: 8px; padding: 8px 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #dc2626; font-size: 13px; }
+.error-message { margin-top: 8px; padding: 8px 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 6px; color: #fca5a5; font-size: 13px; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 </style>

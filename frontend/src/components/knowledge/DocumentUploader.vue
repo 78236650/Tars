@@ -97,18 +97,19 @@ async function uploadFiles(files: File[]) {
 }
 
 .drop-zone {
-  border: 2px dashed #d1d5db;
+  border: 2px dashed rgba(245, 158, 11, 0.25);
   border-radius: 8px;
   padding: 20px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
+  background: rgba(255,255,255,0.02);
 }
 
 .drop-zone:hover,
 .drop-zone.dragging {
-  border-color: #3b82f6;
-  background: #eff6ff;
+  border-color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .drop-text .icon {
@@ -119,12 +120,12 @@ async function uploadFiles(files: File[]) {
 
 .drop-text p {
   margin: 0;
-  color: #374151;
+  color: #a8a29e;
   font-size: 14px;
 }
 
 .drop-text .hint {
-  color: #9ca3af;
+  color: #78716c;
   font-size: 12px;
   margin-top: 4px;
 }
@@ -138,18 +139,18 @@ async function uploadFiles(files: File[]) {
   justify-content: space-between;
   align-items: center;
   padding: 6px 10px;
-  background: #f3f4f6;
+  background: rgba(255,255,255,0.03);
   border-radius: 4px;
   margin-bottom: 4px;
   font-size: 13px;
 }
 
 .file-name {
-  color: #374151;
+  color: #a8a29e;
 }
 
 .status {
-  color: #6b7280;
+  color: #78716c;
   font-size: 12px;
 }
 </style>

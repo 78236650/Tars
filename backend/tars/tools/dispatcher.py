@@ -83,7 +83,7 @@ class ToolDispatcher:
         stream: bool = True,
         on_tool_call: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
-        max_rounds: int = 5,
+        max_rounds: int = 20,
         tools: Optional[List[Dict]] = None,
         response_format: Optional[Dict[str, Any]] = None,
         tool_context: Optional[Dict[str, Any]] = None,

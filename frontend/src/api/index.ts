@@ -4,6 +4,13 @@ import type {
   UserListResponse,
   Personality,
   PersonalityResponse,
+  MemoryItem,
+  MemoryStats,
+  CoreMemoryBlocksResponse,
+  RecentMemoryResponse,
+  LongtermMemoryResponse,
+  MemoryCompressionStatus,
+  MemoryMergeResponse,
   SubAgent,
   SubAgentListResponse,
   SubAgentConfig,
@@ -82,6 +89,81 @@ export const personalityApi = {
     const response = await api.put<PersonalityResponse>('/personality', data)
     return response.data
   }
+}
+
+export const memoryApi = {
+  getStats: async (): Promise<MemoryStats> => {
+    const response = await api.get<MemoryStats>('/memory/stats')
+    return response.data
+  },
+
+  getCoreBlocks: async (): Promise<CoreMemoryBlocksResponse> => {
+    const response = await api.get<CoreMemoryBlocksResponse>('/memory/core')
+    return response.data
+  },
+
+  updateCoreBlock: async (block: string, content: string): Promise<{ success: boolean; block: string; content: string }> => {
+    const response = await api.put<{ success: boolean; block: string; content: string }>(`/memory/core/${block}`, { content })
+    return response.data
+  },
+
+  getRecent: async (params?: { page?: number; q?: string; cat?: string }): Promise<RecentMemoryResponse> => {
+    const response = await api.get<RecentMemoryResponse>('/memory/recent', { params })
+    return response.data
+  },
+
+  getAll: async (params?: { page?: number; q?: string; cat?: string; memory_type?: string }): Promise<RecentMemoryResponse> => {
+    const response = await api.get<RecentMemoryResponse>('/memory/all', { params })
+    return response.data
+  },
+
+  getLongterm: async (params?: { page?: number; group_by?: string }): Promise<LongtermMemoryResponse> => {
+    const response = await api.get<LongtermMemoryResponse>('/memory/longterm', { params })
+    return response.data
+  },
+
+  getMemory: async (id: string): Promise<MemoryItem> => {
+    const response = await api.get<MemoryItem>(`/memory/${id}`)
+    return response.data
+  },
+
+  updateMemory: async (id: string, content: string): Promise<MemoryItem> => {
+    const response = await api.put<MemoryItem>(`/memory/${id}`, { content })
+    return response.data
+  },
+
+  deleteMemory: async (id: string): Promise<{ success: boolean }> => {
+    const response = await api.delete<{ success: boolean }>(`/memory/${id}`)
+    return response.data
+  },
+
+  pinMemory: async (id: string, pinned: boolean): Promise<{ success: boolean; pinned: boolean }> => {
+    const response = await api.post<{ success: boolean; pinned: boolean }>(`/memory/${id}/pin`, { pinned })
+    return response.data
+  },
+
+  promoteMemory: async (id: string): Promise<MemoryItem> => {
+    const response = await api.post<MemoryItem>(`/memory/${id}/promote`)
+    return response.data
+  },
+
+  compressAll: async (): Promise<{ status: string; compressed_count: number; cleaned_count?: number }> => {
+    const response = await api.post<{ status: string; compressed_count: number; cleaned_count?: number }>('/memory/compress')
+    return response.data
+  },
+
+  getCompressStatus: async (): Promise<MemoryCompressionStatus> => {
+    const response = await api.get<MemoryCompressionStatus>('/memory/compress/status')
+    return response.data
+  },
+
+  mergeMemories: async (memoryIds: string[], previewOnly: boolean): Promise<MemoryMergeResponse> => {
+    const response = await api.post<MemoryMergeResponse>('/memory/merge', {
+      memory_ids: memoryIds,
+      preview_only: previewOnly,
+    })
+    return response.data
+  },
 }
 
 export const subagentApi = {
