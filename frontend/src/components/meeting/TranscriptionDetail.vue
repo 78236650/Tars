@@ -61,9 +61,12 @@
         <button class="action-btn" @click="cancelEdit">取消</button>
       </div>
 
-      <!-- 确认入库按钮 -->
-      <div v-if="transcription.summary && !editing && !transcription.approved_at" class="approve-section">
-        <button class="action-btn approve" @click="approveToKnowledge" :disabled="approving">
+      <!-- 确认入库按钮 / 成功状态 -->
+      <div v-if="transcription.summary && !editing" class="approve-section">
+        <div v-if="transcription.approved_at || approveSuccess" class="approve-done">
+          ✅ 已入库知识库
+        </div>
+        <button v-else class="action-btn approve" @click="approveToKnowledge" :disabled="approving">
           {{ approving ? '入库中...' : '📥 确认入库知识库' }}
         </button>
       </div>
@@ -102,6 +105,7 @@ const editing = ref(false)
 const editSummary = ref('')
 const editKeyPoints = ref('')
 const approving = ref(false)
+const approveSuccess = ref(false)
 
 async function generateSummary() {
   if (!props.transcription) return
@@ -147,6 +151,7 @@ async function approveToKnowledge() {
     const summary = props.transcription.summary || ''
     const kp = Array.isArray(props.transcription.key_points) ? props.transcription.key_points : []
     await meetingApi.approveToKnowledge(props.transcription.id, summary, kp)
+    approveSuccess.value = true
     emit('refresh')
   } catch (e: any) {
     alert(e.response?.data?.detail || '入库失败')
@@ -371,6 +376,7 @@ function formatDate(iso: string | null): string {
 .edit-textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit; }
 .edit-actions { display: flex; gap: 8px; margin-bottom: 16px; }
 .approve-section { margin-bottom: 16px; }
+.approve-done { padding: 10px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #059669; font-weight: 500; font-size: 14px; }
 .action-btn.approve { background: #059669; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .action-btn.approve:hover:not(:disabled) { background: #047857; }
 .action-btn.approve:disabled { opacity: 0.6; cursor: not-allowed; }
