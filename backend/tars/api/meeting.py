@@ -627,32 +627,38 @@ async def approve_to_knowledge(transcription_id: str, request: ApproveToKnowledg
     indexer = KnowledgeIndexer(vector_store, embedding_provider)
     doc_id = str(uuid.uuid4())
 
+    # 生成有意义的文档名：摘要前20字 + 日期
+    doc_title = request.summary[:20].replace('\n', ' ').strip() + f"({date_str})"
+
     # 摘要 chunk（用于语义匹配）
-    indexer.index_document(
+    result1 = indexer.index_document(
         text=summary_doc,
         doc_id=f"{doc_id}_summary",
         collection_id=collection_id,
-        file_name=transcription.file_name or "会议纪要",
+        file_name=doc_title,
         file_type="meeting_summary",
         tenant_id="default",
     )
 
     # 原文 chunks（用于追溯证据）
+    result2 = {"chunk_count": 0}
     if transcription.transcript:
-        indexer.index_document(
+        result2 = indexer.index_document(
             text=transcription.transcript,
             doc_id=f"{doc_id}_transcript",
             collection_id=collection_id,
-            file_name=transcription.file_name or "会议原文",
+            file_name=doc_title + "_原文",
             file_type="meeting_transcript",
             tenant_id="default",
         )
+
+    total_chunks = result1.get("chunk_count", 0) + result2.get("chunk_count", 0)
 
     # 记录文档
     now = _now()
     cursor.execute(
         "INSERT INTO document_files (id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (doc_id, collection_id, transcription.file_name or "会议纪要", "", "meeting", 0, "indexed", now),
+        (doc_id, collection_id, doc_title, "", "meeting", total_chunks, "indexed", now),
     )
     conn.commit()
 
