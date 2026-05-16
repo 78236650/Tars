@@ -120,6 +120,12 @@ async function startRecording() {
 }
 
 function stopRecording() {
+  if (seconds.value < 5) {
+    errorMsg.value = '录音时间太短（至少 5 秒），已取消'
+    cancelRecording()
+    setTimeout(() => { errorMsg.value = '' }, 3000)
+    return
+  }
   if (timer) { clearInterval(timer); timer = null }
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop()
