@@ -474,6 +474,12 @@ class SaveCustomPromptRequest(BaseModel):
     prompt: str
 
 
+class MeetingModelRequest(BaseModel):
+    provider: str  # "ollama" | "openai_compatible"
+    model: str
+    endpoint_id: Optional[str] = None
+
+
 @router.put("/settings/prompt")
 async def save_custom_prompt(request: SaveCustomPromptRequest):
     """保存用户自定义摘要提示词"""
@@ -486,6 +492,57 @@ async def reset_prompt():
     """恢复默认提示词（删除自定义）"""
     _custom_prompts.pop("default", None)
     return {"success": True, "message": "已恢复默认提示词", "active_template": DEFAULT_TEMPLATE_ID}
+
+
+@router.get("/settings/model")
+async def get_meeting_model():
+    """获取会议助手当前使用的模型"""
+    if _meeting_tool is None:
+        raise HTTPException(status_code=500, detail="会议 API 未初始化")
+    provider = _meeting_tool.provider
+    model_name = getattr(provider, "model", None) or getattr(provider, "current_model", "未配置")
+    provider_type = "ollama"
+    if hasattr(provider, "base_url") and "localhost:11434" not in str(getattr(provider, "base_url", "")):
+        provider_type = "openai_compatible"
+    return {
+        "provider": provider_type,
+        "model": model_name,
+        "source": "independent",
+    }
+
+
+@router.put("/settings/model")
+async def set_meeting_model(request: MeetingModelRequest):
+    """为会议助手设置独立模型（不影响主 Agent）"""
+    if _meeting_tool is None:
+        raise HTTPException(status_code=500, detail="会议 API 未初始化")
+
+    try:
+        if request.provider == "ollama":
+            from ..models.ollama import OllamaProvider
+            new_provider = OllamaProvider(model=request.model)
+        elif request.provider == "openai_compatible" and request.endpoint_id:
+            from ..database import EndpointStore
+            from ..models.custom import CustomProvider
+            from tars.main import db as _main_db
+            endpoint_store = EndpointStore(_main_db)
+            endpoint = endpoint_store.get(request.endpoint_id)
+            if not endpoint:
+                raise HTTPException(status_code=404, detail="端点不存在")
+            new_provider = CustomProvider(
+                base_url=endpoint.base_url,
+                model=request.model,
+                api_key=endpoint.api_key,
+            )
+        else:
+            raise HTTPException(status_code=400, detail="无效的 provider 配置")
+
+        _meeting_tool.provider = new_provider
+        return {"success": True, "message": f"会议助手模型已切换为 {request.provider}: {request.model}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"模型切换失败: {e}")
 
 
 @router.delete("/{transcription_id}")
