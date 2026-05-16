@@ -194,6 +194,8 @@ def _transcription_to_dict(t) -> dict:
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
         "error_message": t.error_message,
+        "approved_at": t.approved_at,
+        "knowledge_doc_id": t.knowledge_doc_id,
     }
 
 
@@ -363,6 +365,28 @@ async def transcribe_audio(request: TranscribeRequest):
         "success": True,
         "transcription": _transcription_to_dict(updated),
     }
+
+
+class UpdateSummaryRequest(BaseModel):
+    summary: str
+    key_points: List[str] = []
+
+
+@router.put("/{transcription_id}/summary")
+async def update_summary(transcription_id: str, request: UpdateSummaryRequest):
+    """手动编辑保存摘要和要点"""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="会议 API 未初始化")
+    transcription = _db.get_transcription(transcription_id)
+    if not transcription:
+        raise HTTPException(status_code=404, detail="转录记录不存在")
+    _db.update_transcription(
+        transcription_id,
+        summary=request.summary,
+        key_points=json.dumps(request.key_points, ensure_ascii=False),
+    )
+    updated = _db.get_transcription(transcription_id)
+    return {"success": True, "transcription": _transcription_to_dict(updated)}
 
 
 @router.post("/summarize")
@@ -543,6 +567,108 @@ async def set_meeting_model(request: MeetingModelRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"模型切换失败: {e}")
+
+
+# ========== 入库知识库 ==========
+
+MEETING_KB_COLLECTION = "meeting_notes_kb"
+
+
+class ApproveToKnowledgeRequest(BaseModel):
+    summary: str
+    key_points: List[str] = []
+
+
+@router.post("/{transcription_id}/approve-to-knowledge")
+async def approve_to_knowledge(transcription_id: str, request: ApproveToKnowledgeRequest):
+    """确认会议纪要并入库知识库"""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="会议 API 未初始化")
+
+    transcription = _db.get_transcription(transcription_id)
+    if not transcription:
+        raise HTTPException(status_code=404, detail="转录记录不存在")
+    if transcription.approved_at:
+        raise HTTPException(status_code=400, detail="该记录已入库")
+
+    # 更新摘要和要点
+    _db.update_transcription(
+        transcription_id,
+        summary=request.summary,
+        key_points=json.dumps(request.key_points, ensure_ascii=False),
+    )
+
+    # 获取知识库组件
+    from tars.main import vector_store, embedding_provider, db as main_db
+    from ..knowledge.indexer import KnowledgeIndexer
+
+    # 确保 collection 存在
+    conn = main_db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM document_collections WHERE name = ? AND tenant_id = 'default'", (MEETING_KB_COLLECTION,))
+    row = cursor.fetchone()
+    if row:
+        collection_id = row[0]
+    else:
+        collection_id = str(uuid.uuid4())
+        now = _now()
+        cursor.execute(
+            "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (collection_id, "default", MEETING_KB_COLLECTION, "会议纪要自动归档", now, now),
+        )
+        conn.commit()
+
+    # 构造索引文本
+    date_str = transcription.created_at.strftime("%Y-%m-%d") if transcription.created_at else ""
+    key_points_text = "\n".join(f"- {p}" for p in request.key_points) if request.key_points else ""
+    summary_doc = f"[会议] {transcription.file_name or ''} {date_str}\n\n{request.summary}\n\n要点:\n{key_points_text}"
+
+    # 索引
+    indexer = KnowledgeIndexer(vector_store, embedding_provider)
+    doc_id = str(uuid.uuid4())
+
+    # 摘要 chunk（用于语义匹配）
+    indexer.index_document(
+        text=summary_doc,
+        doc_id=f"{doc_id}_summary",
+        collection_id=collection_id,
+        file_name=transcription.file_name or "会议纪要",
+        file_type="meeting_summary",
+        tenant_id="default",
+    )
+
+    # 原文 chunks（用于追溯证据）
+    if transcription.transcript:
+        indexer.index_document(
+            text=transcription.transcript,
+            doc_id=f"{doc_id}_transcript",
+            collection_id=collection_id,
+            file_name=transcription.file_name or "会议原文",
+            file_type="meeting_transcript",
+            tenant_id="default",
+        )
+
+    # 记录文档
+    now = _now()
+    cursor.execute(
+        "INSERT INTO document_files (id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (doc_id, collection_id, transcription.file_name or "会议纪要", "", "meeting", 0, "indexed", now),
+    )
+    conn.commit()
+
+    # 标记已入库
+    cursor.execute(
+        "UPDATE transcriptions SET approved_at = ?, knowledge_doc_id = ? WHERE id = ?",
+        (now, doc_id, transcription_id),
+    )
+    conn.commit()
+
+    return {
+        "success": True,
+        "message": "会议纪要已入库知识库",
+        "knowledge_doc_id": doc_id,
+        "collection_id": collection_id,
+    }
 
 
 @router.delete("/{transcription_id}")
