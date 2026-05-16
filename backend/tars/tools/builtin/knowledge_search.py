@@ -48,7 +48,18 @@ class KnowledgeSearchTool(BaseTool):
             return ToolResult(success=False, output="", error="知识库检索器未初始化")
 
         try:
-            collection_ids = [collection_id] if collection_id else []
+            if collection_id:
+                collection_ids = [collection_id]
+            else:
+                # 未指定时搜索所有 collection
+                from tars.main import db as _db
+                conn = _db._get_conn()
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM document_collections WHERE tenant_id = 'default'")
+                collection_ids = [r[0] for r in cursor.fetchall()]
+                if not collection_ids:
+                    return ToolResult(success=True, output="知识库为空，暂无文档。", metadata={"results": []})
+
             results = self._retriever.retrieve(
                 query=query,
                 collection_ids=collection_ids,
