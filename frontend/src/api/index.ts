@@ -22,6 +22,8 @@ import type {
   KnowledgeCollection,
   KnowledgeDocument,
   KnowledgeSearchResult,
+  Transcription,
+  TranscriptionListData,
 } from '@/types'
 
 const api = axios.create({
@@ -337,6 +339,47 @@ export const knowledgeApi = {
 
   queryCollection: async (collectionId: string, query: string, top_k?: number): Promise<{ query: string; collection_id: string; results: KnowledgeSearchResult[]; total: number }> => {
     const response = await api.post(`/knowledge/collections/${collectionId}/query`, { query, top_k })
+    return response.data
+  },
+}
+
+// ========= Meeting Voice Recognition API =========
+
+export const meetingApi = {
+  upload: async (file: File, language?: string): Promise<{ success: boolean; transcription: Transcription }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (language) {
+      formData.append('language', language)
+    }
+    const response = await api.post('/meeting/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
+  transcribe: async (filePath: string, language?: string): Promise<{ success: boolean; transcription: Transcription }> => {
+    const response = await api.post('/meeting/transcribe', { file_path: filePath, language })
+    return response.data
+  },
+
+  summarize: async (transcriptionId: string): Promise<{ success: boolean; transcription: Transcription }> => {
+    const response = await api.post('/meeting/summarize', { transcription_id: transcriptionId })
+    return response.data
+  },
+
+  getStatus: async (id: string): Promise<{ success: boolean; transcription: Transcription }> => {
+    const response = await api.get(`/meeting/status/${id}`)
+    return response.data
+  },
+
+  listHistory: async (limit?: number, offset?: number): Promise<TranscriptionListData> => {
+    const response = await api.get('/meeting/history', { params: { limit, offset } })
+    return response.data
+  },
+
+  delete: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/meeting/${id}`)
     return response.data
   },
 }
