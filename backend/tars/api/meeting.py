@@ -48,6 +48,95 @@ def _validate_audio_file(filename: str) -> Optional[str]:
     return None
 
 
+# ========== 提示词模板 ==========
+
+MEETING_PROMPT_TEMPLATES = {
+    "general": {
+        "name": "通用商务型",
+        "description": "适合大多数会议场景，输出完整会议纪要",
+        "prompt": """你是一位资深会议秘书。请将以下会议录音转录整理为专业会议纪要。
+
+输出格式：
+
+## 会议信息
+- 主题：（从内容推断）
+- 时长：{duration}
+- 语言：{language}
+
+## 核心摘要
+（3-5句话概括会议全貌，突出结论而非过程）
+
+## 议题与讨论
+
+### 议题 1：[标题]
+- 背景：
+- 讨论要点：
+- 结论：
+
+### 议题 2：[标题]
+...
+
+## 决策记录
+1. [决策内容] — 提出人：xxx
+
+## 行动项
+- [ ] [任务描述] @负责人 截止：[日期]
+
+## 遗留问题
+- [未解决的问题或需要后续跟进的事项]
+
+要求：
+- 忠实原文，不编造内容
+- 专业术语保留原文表述
+- 时间、数字、人名务必准确
+- 无法确定的信息用[?]标注""",
+    },
+    "executive": {
+        "name": "执行摘要型",
+        "description": "适合管理层，聚焦决策和行动项",
+        "prompt": """你是一位专业的会议记录分析师。请基于以下会议转录，生成一份执行摘要。
+
+输出要求：
+1. 【会议概要】一段话概括会议目的、参与方和核心结论（不超过100字）
+2. 【关键决策】列出本次会议做出的所有决策，每条包含：决策内容、决策人、影响范围
+3. 【行动项】列出所有待办事项，每条包含：任务描述、负责人、截止时间、优先级(高/中/低)
+4. 【风险与阻塞】识别讨论中提到的风险、依赖或阻塞项
+5. 【下次会议】下次会议时间、议题预告（如有提及）
+
+格式规范：
+- 使用 Markdown 格式
+- 行动项用表格呈现
+- 未明确提及的信息标注"未提及"
+- 保持客观，不添加推测内容""",
+    },
+    "project": {
+        "name": "项目进度型",
+        "description": "适合研发/项目团队，跟踪进度和技术决策",
+        "prompt": """你是一位项目管理助手。请分析以下会议转录，提取项目相关信息。
+
+输出结构：
+1. 【进度更新】各模块/负责人汇报的进度摘要
+2. 【问题与讨论】会议中提出的问题、争议点及讨论结论
+3. 【技术决策】涉及技术方案的选择和理由
+4. 【待办清单】
+   | 序号 | 任务 | 负责人 | 截止日期 | 状态 |
+   |------|------|--------|----------|------|
+5. 【依赖关系】跨团队或外部依赖项
+6. 【会议效率评估】会议时长 vs 有效决策数量
+
+注意：
+- 区分"已完成"和"进行中"的工作
+- 对模糊表述标注[需确认]
+- 保留关键数据和指标原文""",
+    },
+}
+
+DEFAULT_TEMPLATE_ID = "general"
+
+# 用户自定义提示词存储（内存 + DB 持久化）
+_custom_prompts: Dict[str, str] = {}
+
+
 # ========== Pydantic 模型 ==========
 
 class TranscribeRequest(BaseModel):
@@ -60,6 +149,7 @@ class SummarizeRequest(BaseModel):
     transcription_id: str
     summary_type: str = "structured"
     max_length: int = 500
+    template_id: Optional[str] = None
 
 
 class TranscriptionResponse(BaseModel):
@@ -288,9 +378,19 @@ async def summarize_transcription(request: SummarizeRequest):
     if not transcription.transcript:
         raise HTTPException(status_code=400, detail="转录文本为空，请先完成转写")
 
+    # 确定使用的提示词
+    template_id = request.template_id or DEFAULT_TEMPLATE_ID
+    if template_id == "custom" and "default" in _custom_prompts:
+        prompt_template = _custom_prompts["default"]
+    elif template_id in MEETING_PROMPT_TEMPLATES:
+        prompt_template = MEETING_PROMPT_TEMPLATES[template_id]["prompt"]
+    else:
+        prompt_template = MEETING_PROMPT_TEMPLATES[DEFAULT_TEMPLATE_ID]["prompt"]
+
     summary_data = await _meeting_tool._generate_summary(
         transcription.transcript,
         transcription.language or "zh",
+        prompt_override=prompt_template,
     )
 
     _db.update_transcription(
@@ -346,6 +446,46 @@ async def list_history(
         "limit": limit,
         "offset": offset,
     }
+
+
+# ========== 提示词设置 API ==========
+
+@router.get("/settings/templates")
+async def get_prompt_templates():
+    """获取所有可用的摘要提示词模板"""
+    templates = []
+    for tid, tpl in MEETING_PROMPT_TEMPLATES.items():
+        templates.append({
+            "id": tid,
+            "name": tpl["name"],
+            "description": tpl["description"],
+            "prompt": tpl["prompt"],
+            "is_default": tid == DEFAULT_TEMPLATE_ID,
+        })
+    custom = _custom_prompts.get("default")
+    return {
+        "templates": templates,
+        "custom_prompt": custom,
+        "active_template": "custom" if custom else DEFAULT_TEMPLATE_ID,
+    }
+
+
+class SaveCustomPromptRequest(BaseModel):
+    prompt: str
+
+
+@router.put("/settings/prompt")
+async def save_custom_prompt(request: SaveCustomPromptRequest):
+    """保存用户自定义摘要提示词"""
+    _custom_prompts["default"] = request.prompt
+    return {"success": True, "message": "自定义提示词已保存"}
+
+
+@router.delete("/settings/prompt")
+async def reset_prompt():
+    """恢复默认提示词（删除自定义）"""
+    _custom_prompts.pop("default", None)
+    return {"success": True, "message": "已恢复默认提示词", "active_template": DEFAULT_TEMPLATE_ID}
 
 
 @router.delete("/{transcription_id}")
