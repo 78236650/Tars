@@ -8,6 +8,7 @@ export const messages: Record<string, Record<string, string>> = {
     'nav.tools': '工具',
     'nav.bi': 'BI 分析',
     'nav.knowledge': '知识库',
+    'nav.meeting': '会议助手',
     'nav.settings': '设置',
 
     // 通用
@@ -180,6 +181,7 @@ export const messages: Record<string, Record<string, string>> = {
     'nav.tools': 'Tools',
     'nav.bi': 'BI Analytics',
     'nav.knowledge': 'Knowledge',
+    'nav.meeting': 'Meeting',
     'nav.settings': 'Settings',
 
     // Common

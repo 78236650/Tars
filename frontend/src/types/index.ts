@@ -310,3 +310,30 @@ export interface BIChartResult {
   data_summary: string
   raw_data: Record<string, any>[]
 }
+
+// ========= Meeting Voice Recognition =========
+
+export interface Transcription {
+  id: string
+  user_id: string
+  file_name: string | null
+  file_size: number | null
+  duration: number | null
+  language: string | null
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  transcript: string | null
+  summary: string | null
+  key_points: string[]
+  model_used: string | null
+  created_at: string | null
+  completed_at: string | null
+  error_message: string | null
+}
+
+export interface TranscriptionListData {
+  success: boolean
+  transcriptions: Transcription[]
+  total: number
+  limit: number
+  offset: number
+}
