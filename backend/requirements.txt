@@ -31,6 +31,9 @@ sentence-transformers>=3.0.0
 pymupdf>=1.24.0
 python-docx>=1.1.0
 
+# Meeting Voice Recognition
+faster-whisper>=1.0.0
+
 # Database drivers (optional, install as needed)
 pymysql>=1.1.0
 psycopg2-binary>=2.9.9

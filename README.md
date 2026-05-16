@@ -1,4 +1,4 @@
-# TARS AI Agent v2.7.0
+# TARS AI Agent v2.8.1
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解。
 

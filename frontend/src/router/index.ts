@@ -41,10 +41,15 @@ const router = createRouter({
       component: () => import('@/views/ToolsView.vue')
     },
     {
-      path: '/bi',
-      name: 'bi',
-      component: () => import('@/views/BiAnalyticsView.vue')
-    },
+    path: '/bi',
+    name: 'bi',
+    component: () => import('@/views/BiAnalyticsView.vue')
+  },
+  {
+    path: '/meeting',
+    name: 'meeting',
+    component: () => import('@/views/MeetingView.vue')
+  },
     {
       path: '/knowledge',
       name: 'knowledge',
