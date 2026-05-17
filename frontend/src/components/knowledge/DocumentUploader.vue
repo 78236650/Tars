@@ -18,15 +18,15 @@
       />
       <div class="drop-text">
         <span class="icon">📁</span>
-        <p>点击或拖拽文件到此处上传</p>
-        <p class="hint">支持 TXT, MD, PDF, DOCX, XLSX, CSV</p>
+        <p>{{ t('knowledge.uploadPrompt') }}</p>
+        <p class="hint">{{ t('knowledge.uploadHint') }}</p>
       </div>
     </div>
 
     <div v-if="uploading.length > 0" class="upload-progress">
       <div v-for="item in uploading" :key="item.id" class="progress-item">
         <span class="file-name">{{ item.name }}</span>
-        <span class="status">{{ item.status }}</span>
+        <span class="status">{{ statusText(item) }}</span>
       </div>
     </div>
   </div>
@@ -35,6 +35,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { knowledgeApi } from '@/api'
+import { useI18n } from '@/i18n'
 
 interface Props {
   collectionId: string
@@ -47,7 +48,8 @@ const emit = defineEmits<{
 
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
-const uploading = ref<{ id: string; name: string; status: string }[]>([])
+const uploading = ref<{ id: string; name: string; status: 'uploading' | 'completed' | 'failed'; error?: string }[]>([])
+const { t } = useI18n()
 
 function triggerFileInput() {
   fileInput.value?.click()
@@ -71,23 +73,33 @@ function handleFileSelect(e: Event) {
 async function uploadFiles(files: File[]) {
   for (const file of files) {
     const id = Math.random().toString(36).substring(7)
-    uploading.value.push({ id, name: file.name, status: '上传中...' })
+    uploading.value.push({ id, name: file.name, status: 'uploading' })
 
     try {
       await knowledgeApi.uploadDocument(props.collectionId, file)
       const item = uploading.value.find(u => u.id === id)
-      if (item) item.status = '完成'
+      if (item) item.status = 'completed'
       emit('uploaded', props.collectionId)
     } catch (e: any) {
       const item = uploading.value.find(u => u.id === id)
-      if (item) item.status = '失败: ' + (e.response?.data?.detail || e.message)
+      if (item) {
+        item.status = 'failed'
+        item.error = e.response?.data?.detail || e.message
+      }
     }
   }
 
   // 3 秒后清除完成的项
   setTimeout(() => {
-    uploading.value = uploading.value.filter(u => !u.status.includes('完成') && !u.status.includes('失败'))
+    uploading.value = uploading.value.filter(u => u.status === 'uploading')
   }, 3000)
+}
+
+function statusText(item: { status: 'uploading' | 'completed' | 'failed'; error?: string }) {
+  if (item.status === 'failed') {
+    return t('knowledge.uploadStatus.failed', { message: item.error || '' })
+  }
+  return t(`knowledge.uploadStatus.${item.status}`)
 }
 </script>
 

@@ -1,7 +1,7 @@
 <template>
   <div class="bi-analytics-view">
     <div class="bi-header">
-      <h1>BI 数据分析</h1>
+      <h1>{{ t('bi.title') }}</h1>
       <div class="tabs">
         <button
           v-for="tab in tabs"
@@ -9,7 +9,7 @@
           :class="['tab-btn', { active: currentTab === tab.key }]"
           @click="currentTab = tab.key"
         >
-          {{ tab.label }}
+          {{ t(tab.labelKey) }}
         </button>
       </div>
     </div>
@@ -20,16 +20,16 @@
       <div v-if="currentTab === 'query'" class="query-panel">
         <div class="query-toolbar">
           <select v-model="selectedDataSourceId" class="ds-select">
-            <option value="">选择数据源</option>
+            <option value="">{{ t('bi.selectDataSource') }}</option>
             <option v-for="ds in datasources" :key="ds.id" :value="ds.id">
               {{ ds.name }} ({{ ds.db_type }})
             </option>
           </select>
           <button class="btn-primary" :disabled="!canExecute" @click="executeQuery">
-            {{ executing ? '执行中...' : '执行 SQL' }}
+            {{ executing ? t('bi.executing') : t('bi.executeSql') }}
           </button>
           <button class="btn-secondary" :disabled="!canExecute" @click="generateChart">
-            {{ charting ? '生成中...' : '生成图表' }}
+            {{ charting ? t('bi.charting') : t('bi.generateChart') }}
           </button>
         </div>
 
@@ -37,7 +37,7 @@
           <textarea
             v-model="sqlInput"
             class="sql-textarea"
-            placeholder="输入 SQL 查询语句（仅支持 SELECT）..."
+            :placeholder="t('bi.sqlPlaceholder')"
             rows="6"
           />
         </div>
@@ -48,7 +48,7 @@
 
         <div v-if="queryResult" class="result-panel">
           <div class="result-summary">
-            返回 {{ queryResult.row_count }} 行数据
+            {{ t('bi.rowsReturned', { count: queryResult.row_count }) }}
           </div>
           <ChartRenderer
             chart-type="table"
@@ -73,12 +73,14 @@
 import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
 import { biApi } from '@/api'
 import type { DataSource, BIQueryResult, BIChartResult } from '@/types'
+import { useI18n } from '@/i18n'
 import DataSourceSettings from '@/components/bi/DataSourceSettings.vue'
 const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRenderer.vue'))
+const { t } = useI18n()
 
 const tabs = [
-  { key: 'datasources', label: '数据源管理' },
-  { key: 'query', label: 'SQL 查询' },
+  { key: 'datasources', labelKey: 'bi.tabDatasources' },
+  { key: 'query', labelKey: 'bi.tabQuery' },
 ]
 
 const currentTab = ref('datasources')
@@ -113,10 +115,10 @@ async function executeQuery() {
     if (res.success) {
       queryResult.value = res
     } else {
-      queryError.value = res.error || '查询失败'
+      queryError.value = res.error || t('common.error')
     }
   } catch (e: any) {
-    queryError.value = e.response?.data?.detail || '执行失败'
+    queryError.value = e.response?.data?.detail || t('common.error')
   } finally {
     executing.value = false
   }
@@ -136,7 +138,7 @@ async function generateChart() {
     )
     chartResult.value = res
   } catch (e: any) {
-    queryError.value = e.response?.data?.detail || '图表生成失败'
+    queryError.value = e.response?.data?.detail || t('common.error')
   } finally {
     charting.value = false
   }

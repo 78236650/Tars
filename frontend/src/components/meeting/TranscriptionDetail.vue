@@ -2,12 +2,12 @@
   <div class="transcription-detail">
     <div v-if="!transcription" class="empty-state">
       <span class="icon">🎙️</span>
-      <p>选择一条转录记录查看详情</p>
+      <p>{{ t('meeting.selectToView') }}</p>
     </div>
 
     <div v-else class="detail-content">
       <div class="detail-header">
-        <h2 class="file-name">{{ transcription.file_name || '未知文件' }}</h2>
+        <h2 class="file-name">{{ transcription.file_name || t('meeting.unknownFile') }}</h2>
         <div class="header-actions">
           <span class="status-badge" :class="transcription.status">
             {{ statusText(transcription.status) }}
@@ -18,29 +18,29 @@
             @click="generateSummary"
             :disabled="summarizing"
           >
-            {{ summarizing ? '生成中...' : '生成摘要' }}
+            {{ summarizing ? t('meeting.generating') : t('meeting.generateSummary') }}
           </button>
         </div>
       </div>
 
       <div class="detail-meta">
-        <span v-if="transcription.duration">时长: {{ formatDuration(transcription.duration) }}</span>
-        <span v-if="transcription.language">语言: {{ transcription.language }}</span>
-        <span v-if="transcription.model_used">模型: {{ transcription.model_used }}</span>
-        <span>创建: {{ formatDate(transcription.created_at) }}</span>
+        <span v-if="transcription.duration">{{ t('meeting.durationLabel') }}: {{ formatDuration(transcription.duration) }}</span>
+        <span v-if="transcription.language">{{ t('meeting.languageLabel') }}: {{ transcription.language }}</span>
+        <span v-if="transcription.model_used">{{ t('meeting.modelLabel') }}: {{ transcription.model_used }}</span>
+        <span>{{ t('meeting.createdLabel') }}: {{ formatDate(transcription.created_at) }}</span>
       </div>
 
       <!-- 错误信息 -->
       <div v-if="transcription.error_message" class="error-box">
-        <strong>错误:</strong> {{ transcription.error_message }}
+        <strong>{{ t('meeting.errorLabel') }}:</strong> {{ transcription.error_message }}
       </div>
 
       <!-- 摘要区域 -->
       <div v-if="transcription.summary || editing" class="section summary-section">
         <h3 class="section-title">
-          📋 会议摘要
-          <button v-if="!editing && transcription.summary && !transcription.approved_at" class="edit-btn" @click="startEdit">✏️ 编辑</button>
-          <span v-if="transcription.approved_at" class="approved-badge">✅ 已入库</span>
+          📋 {{ t('meeting.summaryTitle') }}
+          <button v-if="!editing && transcription.summary && !transcription.approved_at" class="edit-btn" @click="startEdit">✏️ {{ t('meeting.editSummary') }}</button>
+          <span v-if="transcription.approved_at" class="approved-badge">✅ {{ t('meeting.approved') }}</span>
         </h3>
         <textarea v-if="editing" v-model="editSummary" class="edit-textarea" rows="5"></textarea>
         <div v-else class="section-body">{{ transcription.summary }}</div>
@@ -48,8 +48,8 @@
 
       <!-- 关键要点 -->
       <div v-if="(transcription.key_points && transcription.key_points.length > 0) || editing" class="section">
-        <h3 class="section-title">🎯 关键要点</h3>
-        <textarea v-if="editing" v-model="editKeyPoints" class="edit-textarea" rows="4" placeholder="每行一个要点"></textarea>
+        <h3 class="section-title">🎯 {{ t('meeting.keyPointsTitle') }}</h3>
+        <textarea v-if="editing" v-model="editKeyPoints" class="edit-textarea" rows="4" :placeholder="t('meeting.keyPointsPlaceholder')"></textarea>
         <ul v-else class="key-points">
           <li v-for="(point, i) in transcription.key_points" :key="i">{{ point }}</li>
         </ul>
@@ -57,30 +57,30 @@
 
       <!-- 编辑操作栏 -->
       <div v-if="editing" class="edit-actions">
-        <button class="action-btn primary" @click="saveEdit">保存修改</button>
-        <button class="action-btn" @click="cancelEdit">取消</button>
+        <button class="action-btn primary" @click="saveEdit">{{ t('meeting.saveChanges') }}</button>
+        <button class="action-btn" @click="cancelEdit">{{ t('common.cancel') }}</button>
       </div>
 
       <!-- 确认入库按钮 / 成功状态 -->
       <div v-if="transcription.summary && !editing" class="approve-section">
         <div v-if="transcription.approved_at || approveSuccess" class="approve-done">
-          ✅ 已入库知识库
+          ✅ {{ t('meeting.approveDone') }}
         </div>
         <button v-else class="action-btn approve" @click="approveToKnowledge" :disabled="approving">
-          {{ approving ? '入库中...' : '📥 确认入库知识库' }}
+          {{ approving ? t('meeting.approving') : `📥 ${t('meeting.approveToKnowledge')}` }}
         </button>
       </div>
 
       <!-- 转写文本 -->
       <div v-if="transcription.transcript" class="section">
-        <h3 class="section-title">📝 转写文本</h3>
+        <h3 class="section-title">📝 {{ t('meeting.transcriptTitle') }}</h3>
         <div class="transcript-text">{{ transcription.transcript }}</div>
       </div>
 
       <!-- 待处理提示 -->
       <div v-if="transcription.status === 'pending' || transcription.status === 'processing'" class="pending-box">
         <div class="spinner"></div>
-        <p>正在转写中，请稍候...</p>
+        <p>{{ t('meeting.pendingMessage') }}</p>
       </div>
     </div>
   </div>
@@ -90,6 +90,7 @@
 import { ref } from 'vue'
 import type { Transcription } from '@/types'
 import { meetingApi } from '@/api'
+import { useI18n } from '@/i18n'
 
 interface Props {
   transcription: Transcription | null
@@ -106,6 +107,7 @@ const editSummary = ref('')
 const editKeyPoints = ref('')
 const approving = ref(false)
 const approveSuccess = ref(false)
+const { t, locale } = useI18n()
 
 async function generateSummary() {
   if (!props.transcription) return
@@ -114,7 +116,7 @@ async function generateSummary() {
     await meetingApi.summarize(props.transcription.id)
     emit('refresh')
   } catch (e: any) {
-    alert(e.response?.data?.detail || '摘要生成失败')
+    alert(e.response?.data?.detail || t('meeting.summaryGenerateFailed'))
   } finally {
     summarizing.value = false
   }
@@ -140,7 +142,7 @@ async function saveEdit() {
     editing.value = false
     emit('refresh')
   } catch (e: any) {
-    alert(e.response?.data?.detail || '保存失败')
+    alert(e.response?.data?.detail || t('meeting.saveSummaryFailed'))
   }
 }
 
@@ -154,33 +156,27 @@ async function approveToKnowledge() {
     approveSuccess.value = true
     emit('refresh')
   } catch (e: any) {
-    alert(e.response?.data?.detail || '入库失败')
+    alert(e.response?.data?.detail || t('meeting.approveFailed'))
   } finally {
     approving.value = false
   }
 }
 
 function statusText(status: string): string {
-  const map: Record<string, string> = {
-    pending: '待处理',
-    processing: '处理中',
-    completed: '已完成',
-    failed: '失败',
-  }
-  return map[status] || status
+  return t(`meeting.status.${status}`)
 }
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return ''
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
-  return `${m}分${s}秒`
+  return locale.value === 'zh' ? `${m}分${s}秒` : `${m}m ${s}s`
 }
 
 function formatDate(iso: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return d.toLocaleString('zh-CN')
+  return d.toLocaleString(locale.value === 'zh' ? 'zh-CN' : 'en-US')
 }
 </script>
 

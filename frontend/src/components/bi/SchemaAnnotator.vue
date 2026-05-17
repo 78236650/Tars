@@ -1,11 +1,11 @@
 <template>
   <div class="schema-annotator">
     <div class="annotator-header">
-      <h3>Schema 标注 - {{ datasource?.name }}</h3>
+      <h3>{{ datasource?.name ? t('schemaAnnotator.title', { name: datasource.name }) : t('schemaAnnotator.titleFallback') }}</h3>
       <button class="btn-icon" @click="$emit('close')">✕</button>
     </div>
 
-    <div v-if="!tables.length" class="empty">暂无表结构信息</div>
+    <div v-if="!tables.length" class="empty">{{ t('schemaAnnotator.empty') }}</div>
 
     <div v-else class="tables-list">
       <div v-for="tableName in tables" :key="tableName" class="table-section">
@@ -17,35 +17,35 @@
 
         <div v-show="expandedTables[tableName]" class="table-content">
           <div class="annotation-row">
-            <label>表描述</label>
+            <label>{{ t('schemaAnnotator.tableDescription') }}</label>
             <input
               v-model="editableAnnotations[tableName].description"
               type="text"
-              placeholder="如：订单主表"
+              :placeholder="t('schemaAnnotator.tableDescriptionPlaceholder')"
               @input="markDirty"
             />
           </div>
 
           <div class="columns-section">
-            <div class="columns-header">字段标注</div>
+            <div class="columns-header">{{ t('schemaAnnotator.columnAnnotations') }}</div>
             <div v-for="col in getColumns(tableName)" :key="col.name" class="column-row">
               <span class="col-name">{{ col.name }}</span>
               <span class="col-type">{{ col.type }}</span>
               <input
                 v-model="editableAnnotations[tableName].columns[col.name]"
                 type="text"
-                placeholder="字段业务含义"
+                :placeholder="t('schemaAnnotator.columnPlaceholder')"
                 @input="markDirty"
               />
             </div>
           </div>
 
           <div class="annotation-row">
-            <label>关系说明</label>
+            <label>{{ t('schemaAnnotator.relationships') }}</label>
             <input
               v-model="editableAnnotations[tableName].relationships"
               type="text"
-              placeholder="如：orders.user_id -> users.id"
+              :placeholder="t('schemaAnnotator.relationshipsPlaceholder')"
               @input="markDirty"
             />
           </div>
@@ -54,9 +54,9 @@
     </div>
 
     <div class="annotator-actions">
-      <button class="btn-secondary" @click="$emit('close')">取消</button>
+      <button class="btn-secondary" @click="$emit('close')">{{ t('common.cancel') }}</button>
       <button class="btn-primary" :disabled="!dirty || saving" @click="saveAnnotations">
-        {{ saving ? '保存中...' : '保存' }}
+        {{ saving ? t('schemaAnnotator.saving') : t('common.save') }}
       </button>
     </div>
   </div>
@@ -66,6 +66,7 @@
 import { ref, computed, watch } from 'vue'
 import { biApi } from '@/api'
 import type { DataSource } from '@/types'
+import { useI18n } from '@/i18n'
 
 interface Props {
   datasource: DataSource | null
@@ -81,6 +82,7 @@ const expandedTables = ref<Record<string, boolean>>({})
 const editableAnnotations = ref<Record<string, any>>({})
 const dirty = ref(false)
 const saving = ref(false)
+const { t } = useI18n()
 
 const tables = computed(() => {
   if (!props.datasource?.schema_snapshot?.tables) return []
@@ -133,7 +135,7 @@ async function saveAnnotations() {
     dirty.value = false
     emit('save')
   } catch (e) {
-    alert('保存失败')
+    alert(t('schemaAnnotator.saveFailed'))
   } finally {
     saving.value = false
   }

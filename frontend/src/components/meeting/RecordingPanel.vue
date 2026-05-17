@@ -4,35 +4,35 @@
     <div v-if="state === 'idle'" class="idle-state">
       <button class="start-btn" @click="startRecording">
         <span class="btn-icon">🎤</span>
-        开始录音
+        {{ t('meeting.startRecording') }}
       </button>
     </div>
 
     <!-- recording 状态：录音中 + 实时转写 -->
     <div v-else-if="state === 'recording'" class="recording-state">
       <div class="recording-header">
-        <span class="recording-indicator">🔴 正在录音</span>
+        <span class="recording-indicator">🔴 {{ t('meeting.recordingNow') }}</span>
         <span class="recording-time">{{ formatTime(seconds) }}</span>
-        <button class="stop-btn" @click="stopRecording">停止并保存</button>
+        <button class="stop-btn" @click="stopRecording">{{ t('meeting.stopAndSave') }}</button>
       </div>
       <div class="transcript-area">
-        <p v-if="transcripts.length === 0" class="placeholder">等待转写中...</p>
+        <p v-if="transcripts.length === 0" class="placeholder">{{ t('meeting.waitingTranscript') }}</p>
         <p v-for="(text, i) in transcripts" :key="i">{{ text }}</p>
       </div>
-      <button class="cancel-btn" @click="cancelRecording">取消录音</button>
+      <button class="cancel-btn" @click="cancelRecording">{{ t('meeting.cancelRecording') }}</button>
     </div>
 
     <!-- completed 状态：录音完成 -->
     <div v-else-if="state === 'completed'" class="completed-state">
       <div class="completed-header">
-        <span>✅ 录音完成</span>
-        <span class="duration">时长: {{ formatTime(seconds) }}</span>
+        <span>✅ {{ t('meeting.recordingCompleted') }}</span>
+        <span class="duration">{{ t('meeting.durationLabel') }}: {{ formatTime(seconds) }}</span>
       </div>
       <div class="transcript-area">
         <p v-for="(text, i) in transcripts" :key="i">{{ text }}</p>
       </div>
       <div class="completed-actions">
-        <button class="action-btn primary" @click="resetAndDone">返回列表</button>
+        <button class="action-btn primary" @click="resetAndDone">{{ t('meeting.backToList') }}</button>
       </div>
     </div>
 
@@ -42,6 +42,7 @@
 
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue'
+import { useI18n } from '@/i18n'
 
 const emit = defineEmits<{
   done: []
@@ -54,6 +55,7 @@ const state = ref<State>('idle')
 const seconds = ref(0)
 const transcripts = ref<string[]>([])
 const errorMsg = ref('')
+const { t, locale } = useI18n()
 
 let mediaRecorder: MediaRecorder | null = null
 let timer: ReturnType<typeof setInterval> | null = null
@@ -63,6 +65,9 @@ let chunkIndex = 0
 function formatTime(s: number): string {
   const m = Math.floor(s / 60)
   const sec = s % 60
+  if (locale.value === 'zh') {
+    return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+  }
   return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
 }
 
@@ -94,7 +99,7 @@ async function startRecording() {
 
     await new Promise<void>((resolve, reject) => {
       ws!.onopen = () => resolve()
-      ws!.onerror = () => reject(new Error('WebSocket 连接失败'))
+      ws!.onerror = () => reject(new Error(t('meeting.websocketFailed')))
     })
 
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
@@ -115,13 +120,13 @@ async function startRecording() {
     timer = setInterval(() => { seconds.value++ }, 1000)
 
   } catch (e: any) {
-    errorMsg.value = e.message || '无法访问麦克风'
+    errorMsg.value = e.message || t('meeting.microphoneDenied')
   }
 }
 
 function stopRecording() {
   if (seconds.value < 5) {
-    errorMsg.value = '录音时间太短（至少 5 秒），已取消'
+    errorMsg.value = t('meeting.recordingTooShort')
     cancelRecording()
     setTimeout(() => { errorMsg.value = '' }, 3000)
     return
