@@ -1,16 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const { locale, toggleLocale, t } = useI18n()
+const authStore = useAuthStore()
 
-const tabs = [
-  { labelKey: 'settings.tabs.subagents', path: '/settings/subagents' },
-  { labelKey: 'settings.tabs.users', path: '/settings/users' },
-  { labelKey: 'settings.tabs.personality', path: '/settings/personality' },
-]
+const tabs = computed(() => {
+  const base = [
+    { labelKey: 'settings.tabs.subagents', path: '/settings/subagents' },
+    { labelKey: 'settings.tabs.users', path: '/settings/users' },
+    { labelKey: 'settings.tabs.personality', path: '/settings/personality' },
+  ]
+  if (authStore.user?.role === 'admin') {
+    base.push({ labelKey: 'settings.tabs.roles', path: '/settings/roles' })
+  }
+  base.push({ labelKey: 'settings.tabs.changelog', path: '/settings/changelog' })
+  return base
+})
 </script>
 
 <template>
@@ -27,7 +37,7 @@ const tabs = [
               class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
               :title="locale === 'zh' ? t('common.switchToEnglish') : t('common.switchToChinese')"
             >
-              {{ locale === 'zh' ? 'EN' : '中文' }}
+              {{ locale === 'zh' ? 'EN' : 'ZH' }}
             </button>
             <button
               @click="router.push('/')"

@@ -1,0 +1,127 @@
+"""Admin memory management REST API — v4.0.0 Phase 1 Task 9."""
+from typing import Optional
+
+from fastapi import APIRouter, Header, HTTPException, Query
+from pydantic import BaseModel
+
+from ..database import Database
+
+router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+_db: Optional[Database] = None
+
+
+def init_admin_api(db: Database):
+    global _db
+    _db = db
+
+
+def _require_admin(role: str):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可访问")
+
+
+def _require_db() -> Database:
+    if _db is None:
+        raise HTTPException(status_code=500, detail="DB not initialized")
+    return _db
+
+
+@router.get("/memory/users")
+def list_user_memory_stats(x_user_role: Optional[str] = Header(default="user")):
+    """列出所有用户的记忆统计"""
+    _require_admin(x_user_role)
+    db = _require_db()
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        "SELECT tenant_id, COUNT(*) as count, "
+        "SUM(CASE WHEN scope='shared' THEN 1 ELSE 0 END) as shared_count "
+        "FROM memories GROUP BY tenant_id"
+    ).fetchall()
+    return [
+        {"tenant_id": r[0], "memory_count": r[1], "shared_count": r[2]}
+        for r in rows
+    ]
+
+
+@router.get("/memory/users/{user_id}")
+def get_user_memory_detail(
+    user_id: str,
+    limit: int = Query(50, le=200),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    """查看指定用户的记忆详情"""
+    _require_admin(x_user_role)
+    db = _require_db()
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        "SELECT id, content, category, importance, scope, created_at "
+        "FROM memories WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit),
+    ).fetchall()
+    return [
+        {"id": r[0], "content": r[1][:200], "category": r[2],
+         "importance": r[3], "scope": r[4], "created_at": r[5]}
+        for r in rows
+    ]
+
+
+@router.delete("/memory/users/{user_id}/purge")
+def purge_user_memory(
+    user_id: str,
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    """清空指定用户全部私有记忆"""
+    _require_admin(x_user_role)
+    db = _require_db()
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM memories WHERE tenant_id = ? AND scope = 'private'", (user_id,))
+    conn.commit()
+    return {"success": True, "tenant_id": user_id}
+
+
+class SharedMemoryRequest(BaseModel):
+    content: str
+    category: str = "knowledge"
+
+
+@router.post("/memory/shared")
+def create_shared_memory(
+    body: SharedMemoryRequest,
+    x_user_role: Optional[str] = Header(default="user"),
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    """创建共享记忆"""
+    _require_admin(x_user_role)
+    db = _require_db()
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone(timedelta(hours=8))).isoformat()
+    mid = str(uuid.uuid4())[:8]
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO memories (id, tenant_id, content, category, importance, scope, created_at, updated_at, access_count, source) "
+        "VALUES (?, ?, ?, ?, 0.8, 'shared', ?, ?, 0, 'admin')",
+        (mid, x_tenant_id or "default", body.content, body.category, now, now),
+    )
+    conn.commit()
+    return {"success": True, "id": mid, "scope": "shared"}
+
+
+@router.delete("/memory/shared/{memory_id}")
+def delete_shared_memory(
+    memory_id: str,
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    """删除共享记忆"""
+    _require_admin(x_user_role)
+    db = _require_db()
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM memories WHERE id = ? AND scope = 'shared'", (memory_id,))
+    conn.commit()
+    return {"success": True}

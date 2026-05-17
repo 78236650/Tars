@@ -39,13 +39,15 @@ class PythonExecTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         code = kwargs.get("code", "").strip()
         timeout = kwargs.get("timeout", 30)
+        _workspace_dir = kwargs.get("_workspace_dir", self.workspace_dir)
+        _tmp_dir = kwargs.get("_tmp_dir", _workspace_dir)
 
         if not code:
             return ToolResult(success=False, output="", error="请提供 Python 代码")
 
         # 写临时文件避免 shell 转义
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, dir=self.workspace_dir, encoding="utf-8"
+            mode="w", suffix=".py", delete=False, dir=_tmp_dir, encoding="utf-8"
         ) as f:
             f.write(code)
             tmp_path = f.name
@@ -55,7 +57,7 @@ class PythonExecTool(BaseTool):
                 sys.executable, tmp_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=self.workspace_dir,
+                cwd=_workspace_dir,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
 

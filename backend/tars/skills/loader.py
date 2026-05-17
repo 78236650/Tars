@@ -1,4 +1,6 @@
 """TARS Skills v2 - 从目录加载 Skill"""
+import json
+import time
 import yaml
 from pathlib import Path
 from typing import List, Optional
@@ -7,6 +9,9 @@ from .base import Skill, SkillType, SkillParameter
 from .registry import SkillRegistry
 from ..tools.registry import ToolRegistry
 from ..tools.plugin_loader import load_plugin_tool
+
+CACHE_DIR = Path.home() / ".tars" / "cache"
+MANIFEST_FILE = CACHE_DIR / "skills_manifest.json"
 
 
 class SkillLoader:
@@ -23,6 +28,11 @@ class SkillLoader:
         if not self.skills_dir.exists():
             return loaded
 
+        # Check manifest cache validity
+        dir_snapshot = self._scan_mtimes()
+        if self._cache_valid(dir_snapshot):
+            return self._load_from_cache(dir_snapshot)
+
         for item in self.skills_dir.iterdir():
             if item.is_dir() and not item.name.startswith("."):
                 # SKILL.md 优先（v2.5），fallback skill.yaml
@@ -36,7 +46,87 @@ class SkillLoader:
                     continue
                 if skill:
                     loaded.append(skill)
+
+        self._save_cache(dir_snapshot, loaded)
         return loaded
+
+    def _scan_mtimes(self) -> dict:
+        """Scan skills directory and return {relative_path: mtime}."""
+        snapshot = {}
+        if not self.skills_dir.exists():
+            return snapshot
+        for p in self.skills_dir.rglob("*"):
+            if p.is_file() and not p.name.startswith("."):
+                snapshot[str(p.relative_to(self.skills_dir))] = p.stat().st_mtime
+        return snapshot
+
+    def _cache_valid(self, current_snapshot: dict) -> bool:
+        """Return True if manifest cache matches current file state."""
+        if not MANIFEST_FILE.exists():
+            return False
+        try:
+            with open(MANIFEST_FILE) as f:
+                cache = json.load(f)
+            return cache.get("snapshot") == current_snapshot
+        except Exception:
+            return False
+
+    def _load_from_cache(self, snapshot: dict) -> List[Skill]:
+        """Replay skill registrations from cached manifest."""
+        try:
+            with open(MANIFEST_FILE) as f:
+                cache = json.load(f)
+            loaded = []
+            for entry in cache.get("skills", []):
+                skill_dir = Path(entry["_dir_path"])
+                skill = Skill(
+                    id=entry["id"],
+                    name=entry["name"],
+                    description=entry.get("description", ""),
+                    type=SkillType(entry.get("type", "prompt")),
+                    prompt_template=entry.get("prompt_template"),
+                    entry_point=entry.get("entry_point"),
+                    permissions=entry.get("permissions", []),
+                    dependencies=entry.get("dependencies", []),
+                    source=entry.get("source", "local"),
+                    _dir_path=entry["_dir_path"],
+                )
+                if self.skill_registry:
+                    self.skill_registry.register(skill)
+                # Plugin tools still need loading (can't cache Python objects)
+                if skill.type == SkillType.PLUGIN and skill.entry_point and self.tool_registry:
+                    entry_path = skill_dir / skill.entry_point
+                    if entry_path.exists():
+                        tools = load_plugin_tool(entry_path)
+                        if tools:
+                            if isinstance(tools, list):
+                                for t in tools:
+                                    self.tool_registry.register(t)
+                            else:
+                                self.tool_registry.register(tools)
+                loaded.append(skill)
+            return loaded
+        except Exception:
+            MANIFEST_FILE.unlink(missing_ok=True)
+            return []
+
+    def _save_cache(self, snapshot: dict, skills: List[Skill]):
+        """Persist manifest to disk."""
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            entries = []
+            for s in skills:
+                entries.append({
+                    "id": s.id, "name": s.name, "description": s.description,
+                    "type": s.type.value, "prompt_template": s.prompt_template,
+                    "entry_point": s.entry_point, "permissions": s.permissions,
+                    "dependencies": s.dependencies, "source": s.source,
+                    "_dir_path": getattr(s, '_dir_path', ''),
+                })
+            with open(MANIFEST_FILE, "w") as f:
+                json.dump({"snapshot": snapshot, "skills": entries, "saved_at": time.time()}, f)
+        except Exception:
+            pass
 
     def _load_skill_md(self, md_path: Path, skill_dir: Path) -> Optional[Skill]:
         """解析 SKILL.md（v2.5 Agent Skills 规范）"""
@@ -105,16 +195,28 @@ class SkillLoader:
             return None
 
     def get_progressive_disclosure(self) -> str:
-        """返回渐进披露文本——所有已启用技能的 name + description 列表"""
+        """返回渐进披露文本——所有已启用技能的 name + description 列表。
+
+        v4.0.0: 缓存结果，仅在技能列表变更时重新构建。
+        """
         skills = self.skill_registry.list_enabled() if self.skill_registry else []
         if not skills:
             return ""
+
+        # Simple hash-based cache: recompute only when skill set changes
+        import hashlib
+        skill_ids = sorted(s.id for s in skills)
+        fingerprint = hashlib.sha256(",".join(skill_ids).encode()).hexdigest()[:12]
+        if hasattr(self, "_disclosure_cache") and self._disclosure_cache.get("fp") == fingerprint:
+            return self._disclosure_cache["text"]
 
         lines = ["## 可用技能 (Skills)", ""]
         for s in skills:
             desc = getattr(s, 'description', '') or ''
             lines.append(f"- **{s.name}**: {desc}")
-        return "\n".join(lines)
+        text = "\n".join(lines)
+        self._disclosure_cache = {"fp": fingerprint, "text": text}
+        return text
 
     def _load_skill(self, yaml_path: Path, skill_dir: Path) -> Optional[Skill]:
         """解析 skill.yaml 并加载"""

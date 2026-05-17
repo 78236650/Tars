@@ -2,12 +2,14 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
 
 const router = useRouter()
 const route = useRoute()
 const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
 const toast = useToast()
 const { locale, t, toggleLocale } = useI18n()
 
@@ -151,13 +153,28 @@ const isActive = (path: string) => {
 
     <div class="flex-1"></div>
 
+    <!-- v4.0.0: 用户登出区 -->
+    <div v-if="authStore.isAuthenticated" class="px-2 py-1.5 flex items-center gap-2">
+      <span class="w-5 h-5 bg-amber-500/20 rounded-full flex items-center justify-center text-[10px] text-amber-300 flex-shrink-0">
+        {{ (authStore.user?.username || 'U')[0].toUpperCase() }}
+      </span>
+      <span class="text-[10px] text-stone-400 truncate">{{ authStore.user?.username || '' }}</span>
+      <button
+        @click="authStore.logout(); router.push('/login')"
+        class="ml-auto text-stone-500 hover:text-red-400 transition-colors p-0.5 rounded hover:bg-red-500/10 flex-shrink-0"
+        :title="t('sidebar.logout')"
+      >
+        ⏻
+      </button>
+    </div>
+
     <div class="p-1.5 border-t border-amber-100/10 flex flex-col gap-0.5">
       <button
         @click="toggleLocale"
         class="w-full flex items-center justify-center p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
         :title="locale === 'zh' ? t('common.switchToEnglish') : t('common.switchToChinese')"
       >
-        <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : '中' }}</span>
+        <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : 'ZH' }}</span>
       </button>
       <button
         @click="router.push('/models')"

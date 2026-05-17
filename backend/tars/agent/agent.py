@@ -92,9 +92,19 @@ class AgentV2:
     def _create_default_provider(self) -> LLMProvider:
         return OllamaProvider(model=self.current_model)
 
-    def switch_model(self, model_name: str) -> bool:
+    def switch_model(self, model_name: str, provider_name: str = None) -> bool:
+        """Switch model. Optionally switch provider by name."""
         try:
-            self.provider = OllamaProvider(model=model_name)
+            if provider_name:
+                from ..models import providers
+                provider = providers.get(provider_name)
+                if provider:
+                    self.provider = provider
+                    self.current_model = model_name
+                    self.dispatcher.set_provider(self.provider)
+                    return True
+            # Fallback: switch model on current provider
+            self.provider.model = model_name
             self.current_model = model_name
             self.dispatcher.set_provider(self.provider)
             return True
@@ -121,6 +131,21 @@ class AgentV2:
         scoped_memory_manager = tenant_context.memory_manager if tenant_context else self.memory_manager
         scoped_wc_manager = type(self.wc_manager)(self.db, tenant_id=tenant_id) if hasattr(self, "wc_manager") else None
         scoped_memory_router = self.memory_router.for_tenant(tenant_id) if self.memory_router else None
+
+        # v4.0.0: 提示词注入检测
+        try:
+            from ..security.injection_guard import injection_guard
+            result = injection_guard.scan(user_content)
+            if result.is_injection and result.severity == "high":
+                await channel.send(session_id, {
+                    "type": "warning",
+                    "session_id": session_id,
+                    "message": f"检测到潜在提示词注入（{result.severity}），输入已被拒绝。",
+                    "timestamp": now_iso(),
+                })
+                return
+        except Exception:
+            pass  # 安全模块不可用时静默放行
 
         # 0. 拦截斜杠命令
         cmd_result = self.command_parser.execute(user_content)
@@ -281,43 +306,29 @@ class AgentV2:
             memory_context = scoped_memory_manager.get_context_for_query(user_content)
 
         # 5. 构建 system prompt（含人格 + 记忆 + 渐进披露技能 + 命令提示词）
-        system_prompt = self.workspace.build_context()
-        # v2.5: 渐进披露——只注入 name + description（替代旧版全量注入）
-        if hasattr(self, 'skill_loader') and hasattr(self.skill_loader, 'get_progressive_disclosure'):
-            disclosure = self.skill_loader.get_progressive_disclosure()
-            if disclosure:
-                system_prompt += f"\n\n{disclosure}"
-            # v2.6 fix: 渐进披露展示了所有技能名称但缺失已激活技能的完整指令。
-            # 已激活技能（通过 /skill xxx 激活）需要将其 SKILL.md 正文注入 system prompt，
-            # 否则 LLM 只知道技能存在但不知道该技能要求它如何改变行为。
-            if hasattr(self, '_active_skill_id') and self._active_skill_id:
-                active_skill = self.skill_registry.get(self._active_skill_id)
-                if active_skill and active_skill.prompt_template:
-                    system_prompt += f"\n\n## 已激活技能: {active_skill.name}\n{active_skill.prompt_template}"
-        else:
-            # v2.3 legacy fallback: 旧版全量 prompt 注入（仅当渐进披露不可用时）
-            skill_injection = self.skill_executor.build_prompt_injection()
-            if skill_injection:
-                system_prompt += f"\n\n{skill_injection}"
-        if memory_context:
-            system_prompt += f"\n\n{memory_context}"
-
-        # 知识库使用规则注入 system prompt
-        system_prompt += "\n\n## 知识库使用规则\n回答用户问题前，如果问题涉及项目信息、历史决策、会议内容、技术方案或业务知识，请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。"
-        # v2.4: TaskDetector 自动检测任务意图（/plan 之外）
-        is_slash_plan = user_content.startswith("/plan")
+        # v4.0.0: cache static parts (persona + tools + skills), rebuild memory per query
         try:
-            from ..orchestration.detector import detect_task_intent, build_detector_prompt
-            mode = detect_task_intent(user_content, is_slash_plan=is_slash_plan, session_id=session_id)
-            if mode.value != "none":
-                detector_prompt = build_detector_prompt(user_content, mode)
-                if detector_prompt:
-                    system_prompt += f"\n\n{detector_prompt}"
-        except ImportError:
-            pass
-
-        if cmd_result and cmd_result.prompt_injection:
-            system_prompt += f"\n\n{cmd_result.prompt_injection}"
+            from ..cache.prompt_cache import prompt_cache, hash_key
+            if prompt_cache:
+                _static_key = hash_key("sys_static", tenant_id)
+                static_part = prompt_cache.get_or_compute(
+                    _static_key,
+                    lambda: self._build_static_prompt(
+                        user_content, session_id, cmd_result,
+                    ),
+                )
+                dynamic_part = self._build_memory_prompt(memory_context)
+                system_prompt = static_part + dynamic_part
+            else:
+                system_prompt = self._build_system_prompt(
+                    user_content, session_id, tenant_id,
+                    memory_context, scoped_memory_manager, cmd_result,
+                )
+        except Exception:
+            system_prompt = self._build_system_prompt(
+                user_content, session_id, tenant_id,
+                memory_context, scoped_memory_manager, cmd_result,
+            )
 
         # 6. 构建消息列表
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -430,6 +441,23 @@ class AgentV2:
             "timestamp": now_iso(),
         })
         full_response = ""
+        # v4.0.0: rate limiter
+        _limiter_acquired = False
+        try:
+            from ..concurrency.limiter import rate_limiter
+            if rate_limiter:
+                _limiter_acquired = await rate_limiter.acquire(tenant_id, "llm")
+                if not _limiter_acquired:
+                    await channel.send(session_id, {
+                        "type": "error",
+                        "session_id": session_id,
+                        "message": "系统繁忙，请稍后重试",
+                        "code": "rate_limited",
+                        "timestamp": now_iso(),
+                    })
+                    return
+        except Exception:
+            pass
         try:
             async for chunk in self.dispatcher.chat_with_tools(
                 messages=messages,
@@ -438,7 +466,12 @@ class AgentV2:
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 tools=self._get_allowed_tool_schemas(),
-                tool_context={"session_id": session_id},
+                tool_context={
+                    "session_id": session_id,
+                    "tenant_id": tenant_id,
+                    "user_role": (request_context or {}).get("user_role", "user"),
+                    "user_id": (request_context or {}).get("user_id", "default"),
+                },
             ):
                 full_response += chunk
                 await channel.send(session_id, {
@@ -457,6 +490,15 @@ class AgentV2:
                 "timestamp": now_iso(),
             })
             return
+        finally:
+            # v4.0.0: release limiter (exception + normal path both hit finally)
+            if _limiter_acquired:
+                try:
+                    from ..concurrency.limiter import rate_limiter
+                    if rate_limiter:
+                        rate_limiter.release(tenant_id, "llm")
+                except Exception:
+                    pass
 
         # 8.5 检查是否有待执行的计划（task_planner 被调用时）
         if self.task_executor:
@@ -603,6 +645,13 @@ class AgentV2:
                     })
 
         # 9. 保存助手响应
+        # v4.0.0: 保存前脱敏
+        try:
+            from ..security.sanitizer import sanitizer
+            full_response = sanitizer.sanitize(full_response)
+        except Exception:
+            pass
+
         self.db.add_message(session_id, "assistant", full_response)
 
         # 10. 反思记忆（V3 异步非阻塞，不延迟 done 事件）
@@ -650,6 +699,59 @@ class AgentV2:
         # 12. v2.2: 异步 Scene Analyzer（不阻塞对话）
         if scoped_wc_manager:
             asyncio.create_task(self._run_scene_analyzer(session_id, user_content, full_response, tenant_id))
+
+    # ========= v4.0.0: System Prompt 构建（可缓存） =========
+
+    def _build_system_prompt(self, user_content: str, session_id: str,
+                              tenant_id: str, memory_context: str,
+                              scoped_memory_manager, cmd_result) -> str:
+        """Build the full system prompt for a conversation turn (uncached fallback)."""
+        return self._build_static_prompt(user_content, session_id, cmd_result) + \
+               self._build_memory_prompt(memory_context)
+
+    def _build_static_prompt(self, user_content: str, session_id: str, cmd_result) -> str:
+        """Build cacheable static parts: persona + tools + skill list."""
+        sp = self.workspace.build_context()
+
+        # 渐进披露技能
+        if hasattr(self, 'skill_loader') and hasattr(self.skill_loader, 'get_progressive_disclosure'):
+            disclosure = self.skill_loader.get_progressive_disclosure()
+            if disclosure:
+                sp += f"\n\n{disclosure}"
+            if hasattr(self, '_active_skill_id') and self._active_skill_id:
+                active_skill = self.skill_registry.get(self._active_skill_id)
+                if active_skill and active_skill.prompt_template:
+                    sp += f"\n\n## 已激活技能: {active_skill.name}\n{active_skill.prompt_template}"
+        else:
+            skill_injection = self.skill_executor.build_prompt_injection()
+            if skill_injection:
+                sp += f"\n\n{skill_injection}"
+
+        # 知识库规则
+        sp += "\n\n## 知识库使用规则\n回答用户问题前，如果问题涉及项目信息、历史决策、会议内容、技术方案或业务知识，请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。"
+
+        # TaskDetector
+        is_slash_plan = user_content.startswith("/plan")
+        try:
+            from ..orchestration.detector import detect_task_intent, build_detector_prompt
+            mode = detect_task_intent(user_content, is_slash_plan=is_slash_plan, session_id=session_id)
+            if mode.value != "none":
+                detector_prompt = build_detector_prompt(user_content, mode)
+                if detector_prompt:
+                    sp += f"\n\n{detector_prompt}"
+        except ImportError:
+            pass
+
+        if cmd_result and cmd_result.prompt_injection:
+            sp += f"\n\n{cmd_result.prompt_injection}"
+
+        return sp
+
+    def _build_memory_prompt(self, memory_context: str) -> str:
+        """Build dynamic per-query part: memory search results."""
+        if memory_context:
+            return f"\n\n{memory_context}"
+        return ""
 
     # ========= 模式权限控制 =========
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { authApi } from '@/api'
+import { authApi, rolesApi, type RoleTemplate } from '@/api'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -12,9 +12,16 @@ const users = ref<User[]>([])
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
 const deletingUserId = ref('')
+
+// v4.0.2: 角色模板
+const roleTemplates = ref<RoleTemplate[]>([])
+const showRoleAssign = ref(false)
+const assignTargetUserId = ref('')
+const assigningRoleId = ref('')
 const newUser = ref({
   username: '',
   email: '',
+  password: '',
   role: 'user',
 })
 
@@ -29,10 +36,51 @@ const loadUsers = async () => {
   }
 }
 
+const loadRoleTemplates = async () => {
+  if (!isAdmin.value) return
+  try {
+    roleTemplates.value = await rolesApi.list()
+  } catch {
+    roleTemplates.value = []
+  }
+}
+
+const getRoleTemplateName = (user: User): string => {
+  if (!user.role_template_id) return roleLabel(user.role)
+  const tmpl = roleTemplates.value.find((t) => t.id === user.role_template_id)
+  return tmpl?.name || user.role_template_id
+}
+
+const openRoleAssign = (user: User) => {
+  assignTargetUserId.value = user.id
+  assigningRoleId.value = user.role_template_id || user.role || 'standard'
+  showRoleAssign.value = true
+}
+
+const closeRoleAssign = () => {
+  showRoleAssign.value = false
+  assignTargetUserId.value = ''
+  assigningRoleId.value = ''
+}
+
+const assignRole = async () => {
+  if (!assignTargetUserId.value || !assigningRoleId.value) return
+  try {
+    await rolesApi.assignRole(assignTargetUserId.value, assigningRoleId.value)
+    await loadUsers()
+    closeRoleAssign()
+  } catch (e) {
+    console.error('角色分配失败:', e)
+  }
+}
+
+const isAdmin = computed(() => authStore.user?.role === 'admin')
+
 const resetCreateForm = () => {
   newUser.value = {
     username: '',
     email: '',
+    password: '',
     role: 'user',
   }
 }
@@ -48,12 +96,17 @@ const closeDeleteConfirm = () => {
 }
 
 const createUser = async () => {
-  if (!newUser.value.username || !newUser.value.email) {
+  if (!newUser.value.username || !newUser.value.email || !newUser.value.password) {
     return
   }
 
   try {
-    await authApi.createUser(newUser.value.username, newUser.value.email, newUser.value.role)
+    await authApi.createUser(
+      newUser.value.username,
+      newUser.value.email,
+      newUser.value.password,
+      newUser.value.role
+    )
     await loadUsers()
     closeCreateModal()
   } catch (error: any) {
@@ -84,7 +137,10 @@ const formatDate = (dateString: string) => {
 
 const roleLabel = (role: string) => t(`userSettings.roles.${role}`)
 
-onMounted(loadUsers)
+onMounted(() => {
+  loadUsers()
+  loadRoleTemplates()
+})
 </script>
 
 <template>
@@ -107,6 +163,7 @@ onMounted(loadUsers)
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.user') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.email') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.role') }}</th>
+              <th v-if="isAdmin" class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.roleTemplate') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.created') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.lastLogin') }}</th>
               <th class="text-right py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.actions') }}</th>
@@ -142,18 +199,32 @@ onMounted(loadUsers)
                   {{ roleLabel(user.role) }}
                 </span>
               </td>
+              <td v-if="isAdmin" class="py-4 px-4">
+                <span class="px-2 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300">
+                  {{ getRoleTemplateName(user) }}
+                </span>
+              </td>
               <td class="py-4 px-4 text-slate-400 text-sm">{{ formatDate(user.created_at) }}</td>
               <td class="py-4 px-4 text-slate-400 text-sm">
                 {{ user.last_login ? formatDate(user.last_login) : t('userSettings.never') }}
               </td>
               <td class="py-4 px-4 text-right">
-                <button
-                  @click="requestDelete(user.id)"
-                  :disabled="user.id === authStore.user?.id"
-                  class="text-sm text-red-400 hover:text-red-300 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
-                >
-                  {{ t('common.delete') }}
-                </button>
+                <div class="flex items-center justify-end gap-2">
+                  <button
+                    v-if="isAdmin"
+                    @click="openRoleAssign(user)"
+                    class="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+                  >
+                    {{ t('userSettings.switchRole') }}
+                  </button>
+                  <button
+                    @click="requestDelete(user.id)"
+                    :disabled="user.id === authStore.user?.id"
+                    class="text-sm text-red-400 hover:text-red-300 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {{ t('common.delete') }}
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -194,6 +265,16 @@ onMounted(loadUsers)
               :placeholder="t('userSettings.emailPlaceholder')"
             />
           </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('userSettings.initialPassword') }}</label>
+            <input
+              v-model="newUser.password"
+              type="password"
+              class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              :placeholder="t('userSettings.initialPasswordPlaceholder')"
+            />
+          </div>
           
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('userSettings.role') }}</label>
@@ -221,6 +302,58 @@ onMounted(loadUsers)
             class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
           >
             {{ t('common.create') }}
+          </button>
+        </div>
+      </template>
+    </AppSurfaceDialog>
+
+    <!-- v4.0.2: 角色分配弹窗 -->
+    <AppSurfaceDialog
+      :open="showRoleAssign"
+      :title="t('userSettings.assignRoleTitle')"
+      :description="t('userSettings.assignRoleDesc')"
+      size="md"
+      @close="closeRoleAssign"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-slate-400">{{ t('userSettings.selectRoleTemplate') }}</p>
+        <div class="space-y-2 max-h-60 overflow-y-auto">
+          <button
+            v-for="tmpl in roleTemplates"
+            :key="tmpl.id"
+            @click="assigningRoleId = tmpl.id"
+            class="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition border"
+            :class="assigningRoleId === tmpl.id
+              ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
+              : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600'"
+          >
+            <span class="text-lg">{{ tmpl.id === 'admin' ? '🔒' : tmpl.id === 'developer' ? '💻' : tmpl.id === 'analyst' ? '📊' : tmpl.id === 'operator' ? '🔧' : tmpl.id === 'standard' ? '👤' : tmpl.id === 'readonly' ? '👁️' : '📝' }}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium">{{ tmpl.name }}</p>
+              <p class="text-xs text-slate-400 truncate">{{ tmpl.description }}</p>
+            </div>
+            <span
+              v-if="assigningRoleId === tmpl.id"
+              class="text-amber-400 text-sm"
+            >✓</span>
+          </button>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex gap-3">
+          <button
+            @click="closeRoleAssign"
+            class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            @click="assignRole"
+            :disabled="!assigningRoleId"
+            class="flex-1 py-2 bg-amber-500 hover:bg-amber-400 rounded-lg text-stone-950 font-medium transition-colors disabled:opacity-50"
+          >
+            {{ t('common.save') }}
           </button>
         </div>
       </template>

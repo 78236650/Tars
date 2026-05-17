@@ -24,6 +24,13 @@ class SkillRouter:
         for skill in self.registry.list_enabled():
             if skill.id in self._forced_off:
                 continue
+            # v4.0.0: skip archived skills
+            try:
+                from .curator import skill_curator
+                if skill_curator and skill_curator.is_archived(skill.id):
+                    continue
+            except ImportError:
+                pass
             if skill.id in self._forced_sticky:
                 candidates.append((skill, 1.0))
                 continue

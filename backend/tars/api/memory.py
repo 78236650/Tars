@@ -63,6 +63,8 @@ def _memory_to_dict(memory) -> Dict[str, Any]:
         "memory_type": memory.memory_type,
         "event_time": memory.event_time.isoformat() if memory.event_time else None,
         "entity_refs": entity_refs,
+        "tenant_id": getattr(memory, "tenant_id", "default"),
+        "scope": getattr(memory, "scope", "private"),
     }
 
 
@@ -244,3 +246,24 @@ def promote_memory(memory_id: str, x_tenant_id: Optional[str] = Header(default="
     if memory is None:
         raise HTTPException(status_code=404, detail="memory not found")
     return _memory_to_dict(memory)
+
+
+class ScopeUpdateRequest(BaseModel):
+    scope: str = Field(pattern=r"^(private|shared)$")
+
+
+@router.put("/{memory_id}/scope")
+def update_memory_scope(
+    memory_id: str,
+    payload: ScopeUpdateRequest,
+    x_tenant_id: Optional[str] = Header(default="default"),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    """Update memory scope (admin only)."""
+    if x_user_role != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可修改记忆 scope")
+    db = _require_db()
+    ok = db.set_memory_scope(memory_id, payload.scope, tenant_id=x_tenant_id or "default")
+    if not ok:
+        raise HTTPException(status_code=404, detail="memory not found")
+    return {"success": True, "memory_id": memory_id, "scope": payload.scope}

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
 import { useChatStore } from '@/stores/chat'
@@ -9,6 +10,7 @@ import { useChatStore } from '@/stores/chat'
 const router = useRouter()
 const route = useRoute()
 const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
 const toast = useToast()
 /** 模板中嵌套 ref 需显式列表，避免 v-for 源为 undefined / Ref 导致整页渲染失败 */
 const toastItems = computed(() => toast.toasts.value)
@@ -104,8 +106,36 @@ const navItems = [
   { name: 'nav.bi', icon: 'bar-chart', path: '/bi' },
   { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
   { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
+  { name: 'nav.audit', icon: 'shield', path: '/audit', adminOnly: true },
   { name: 'nav.settings', icon: 'settings', path: '/settings' }
 ]
+
+// v4.0.0: 根据模块启用状态过滤导航项
+const moduleRouteMap: Record<string, string> = {
+  bi: '/bi',
+  knowledge: '/knowledge',
+  meeting: '/meeting',
+}
+
+const visibleNavItems = computed(() =>
+  navItems.filter(item => {
+    // Admin only 路由
+    if ('adminOnly' in item && (item as any).adminOnly) {
+      return authStore.user?.role === 'admin'
+    }
+    // 模块路由过滤
+    const mod = Object.entries(moduleRouteMap).find(([, path]) => item.path === path)
+    if (!mod) return true // 核心路由始终显示
+    // v4.0.0: 检查全局模块开关
+    const globallyEnabled = settingsStore.enabledModules.length === 0 || settingsStore.enabledModules.includes(mod[0])
+    if (!globallyEnabled) return false
+    // v4.0.2: 检查角色模板模块权限（roleAllowedModules 为 null 时不限制）
+    if (settingsStore.roleAllowedModules !== null) {
+      return settingsStore.roleAllowedModules.includes(mod[0])
+    }
+    return true
+  })
+)
 
 const getIconPath = (iconName: string) => {
   const icons: Record<string, string> = {
@@ -115,6 +145,7 @@ const getIconPath = (iconName: string) => {
     'database': 'M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3zm0 5c0 1.657 3.582 3 8 3s8-1.343 8-3m-16 0v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5',
     'tools': 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
     'bar-chart': 'M18 20V10M12 20V4M6 20v-6',
+    'shield': 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
     'book': 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
     'mic': 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z'
   }
@@ -194,7 +225,7 @@ const groupedSessions = computed(() => {
 
     <nav class="p-2">
       <ul class="space-y-1">
-        <li v-for="item in navItems" :key="item.path">
+        <li v-for="item in visibleNavItems" :key="item.path">
           <button
             @click="router.push(item.path)"
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors"
@@ -211,6 +242,25 @@ const groupedSessions = computed(() => {
         </li>
       </ul>
     </nav>
+
+    <!-- 用户登出区 v4.0.0 -->
+    <div v-if="authStore.isAuthenticated" class="border-t border-amber-100/10 px-3 py-2 shrink-0">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="w-6 h-6 bg-amber-500/20 rounded-full flex items-center justify-center text-xs text-amber-300 flex-shrink-0">
+            {{ (authStore.user?.username || 'U')[0].toUpperCase() }}
+          </span>
+          <span class="text-xs text-stone-400 truncate">{{ authStore.user?.username || '' }}</span>
+        </div>
+        <button
+          @click="authStore.logout(); router.push('/login')"
+          class="text-[10px] text-stone-500 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10 flex-shrink-0"
+          :title="t('sidebar.logout')"
+        >
+          ⏻
+        </button>
+      </div>
+    </div>
 
     <!-- Session list - expanded mode -->
     <div v-if="!collapsed" class="border-t border-amber-100/10 flex flex-col flex-1 min-h-0" >
@@ -305,7 +355,7 @@ const groupedSessions = computed(() => {
         class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
         :title="locale === 'zh' ? t('common.switchToEnglish') : t('common.switchToChinese')"
       >
-        <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : '中' }}</span>
+        <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : 'ZH' }}</span>
       </button>
     </div>
 
@@ -401,6 +451,11 @@ const groupedSessions = computed(() => {
           }"
         ></span>
       </div>
+    </div>
+
+    <!-- v4.0.0: Version -->
+    <div class="border-t border-amber-100/10 px-3 py-2.5 shrink-0">
+      <p class="text-[10px] text-stone-500 text-center tracking-[0.18em] select-none">TARS v4.0.0</p>
     </div>
   </aside>
 

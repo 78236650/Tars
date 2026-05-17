@@ -34,12 +34,19 @@ class FileWriteTool(BaseTool):
         mode = kwargs.get("mode", "write")
         line = kwargs.get("line")
         create_dirs = kwargs.get("create_dirs", True)
+        _workspace_dir = kwargs.get("_workspace_dir")
 
         if not path:
             return ToolResult(success=False, output="", error="请提供文件路径")
 
+        # v4.0.1: 优先使用 tenant workspace sandbox
+        sandbox = self.sandbox
+        if _workspace_dir:
+            from ..sandbox import WorkspaceSandbox
+            sandbox = WorkspaceSandbox(workspace_dir=_workspace_dir)
+
         try:
-            target = self.sandbox.resolve(path)
+            target = sandbox.resolve(path)
         except PermissionError as e:
             return ToolResult(success=False, output="", error=str(e))
 

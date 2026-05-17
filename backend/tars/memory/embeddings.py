@@ -18,7 +18,10 @@ class EmbeddingProvider(ABC):
 
 
 class LocalEmbeddingProvider(EmbeddingProvider):
-    """本地 sentence-transformers 模型（默认 bge-small-zh-v1.5）"""
+    """本地 sentence-transformers 模型（默认 bge-small-zh-v1.5）。
+
+    v4.0.0: 模型延迟加载，仅在首次 encode 时才加载到内存。
+    """
 
     def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5"):
         import os
@@ -26,9 +29,13 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
         self.model_name = model_name
         self._dim = 512
-        from sentence_transformers import SentenceTransformer
-        self._model = SentenceTransformer(self.model_name)
-        self._dim = self._model.get_embedding_dimension()
+        self._model = None
+
+    def _ensure_loaded(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(self.model_name)
+            self._dim = self._model.get_embedding_dimension()
 
     @property
     def dim(self) -> int:
@@ -37,6 +44,7 @@ class LocalEmbeddingProvider(EmbeddingProvider):
     def encode(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
+        self._ensure_loaded()
         vectors = self._model.encode(texts, normalize_embeddings=True)
         return vectors.tolist()
 

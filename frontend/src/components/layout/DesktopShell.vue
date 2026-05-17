@@ -6,7 +6,6 @@ import RightPanel from '@/components/layout/RightPanel.vue'
 import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
 import ReminderNotificationsDrawer from '@/components/chat/ReminderNotificationsDrawer.vue'
 import { useI18n } from '@/i18n'
-import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useSettingsStore } from '@/stores/settings'
 import { useWsStore } from '@/stores/wsStore'
@@ -14,7 +13,6 @@ import { useWsStore } from '@/stores/wsStore'
 const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()
-const chatStore = useChatStore()
 const wsStore = useWsStore()
 const reminderStore = useReminderNotificationsStore()
 const { t } = useI18n()
@@ -75,16 +73,27 @@ const closeReminderNotifications = () => {
           </div>
 
           <div class="flex items-center gap-3">
-            <div class="hidden rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 lg:block">
-              <div class="text-[11px] uppercase tracking-[0.22em] text-stone-500">{{ t('common.model') }}</div>
-              <div class="mt-1 text-sm font-medium text-stone-100">{{ settingsStore.currentModel || t('common.notSelected') }}</div>
-            </div>
             <button
               type="button"
-              class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 text-sm text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
+              data-test="desktop-model-entry"
+              class="hidden min-w-[240px] max-w-[240px] items-center gap-3 rounded-2xl border border-amber-100/10 bg-white/[0.025] px-3 py-2.5 text-left transition hover:border-amber-300/20 hover:bg-white/[0.045] lg:flex"
+              :title="settingsStore.currentModel || t('common.notSelected')"
               @click="router.push('/models')"
             >
-              {{ t('nav.models') }}
+              <span
+                data-test="desktop-model-status"
+                class="h-2 w-2 shrink-0 rounded-full"
+                :class="settingsStore.currentModel ? 'bg-emerald-400' : 'bg-stone-500'"
+              ></span>
+              <span class="min-w-0 flex-1 truncate text-sm text-stone-100">
+                {{ settingsStore.currentModel || t('common.notSelected') }}
+              </span>
+              <span
+                data-test="desktop-model-tag"
+                class="shrink-0 text-xs text-stone-500"
+              >
+                {{ t('common.model') }}
+              </span>
             </button>
             <ReminderBellButton :unread-count="reminderStore.unreadCount" @open="openReminderNotifications" />
           </div>

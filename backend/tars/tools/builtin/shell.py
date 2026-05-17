@@ -81,7 +81,13 @@ class ShellTool(BaseTool):
 
         # 解析工作目录
         try:
-            work_dir = str(self.sandbox.resolve(cwd)) if cwd else self.sandbox.workspace_path
+            _workspace_dir = kwargs.get("_workspace_dir")
+            if _workspace_dir:
+                from ..sandbox import WorkspaceSandbox
+                sandbox = WorkspaceSandbox(workspace_dir=_workspace_dir)
+            else:
+                sandbox = self.sandbox
+            work_dir = str(sandbox.resolve(cwd)) if cwd else sandbox.workspace_path
         except PermissionError as e:
             return ToolResult(success=False, output="", error=str(e))
 

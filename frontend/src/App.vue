@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { RouterView } from 'vue-router'
+import { computed, ref, onMounted } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DesktopShell from '@/components/layout/DesktopShell.vue'
@@ -8,6 +8,8 @@ import DesktopShell from '@/components/layout/DesktopShell.vue'
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const isLoading = ref(true)
+const route = useRoute()
+const showShell = computed(() => route.meta.shell !== false)
 
 onMounted(async () => {
   try {
@@ -29,8 +31,9 @@ onMounted(async () => {
     </div>
   </div>
   <RouterView v-else v-slot="{ Component }">
-    <DesktopShell>
+    <DesktopShell v-if="showShell">
       <component :is="Component" />
     </DesktopShell>
+    <component :is="Component" v-else />
   </RouterView>
 </template>

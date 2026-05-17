@@ -39,4 +39,30 @@ describe('UserSettings', () => {
     expect(wrapper.find('[data-test="surface-close"]').exists()).toBe(true)
     expect(wrapper.html()).toContain('rounded-[28px]')
   })
+
+  it('shows an initial password field in the create user dialog', async () => {
+    const wrapper = mount(UserSettings)
+
+    await wrapper.find('button').trigger('click')
+
+    expect(wrapper.html()).toContain('type="password"')
+  })
+
+  it('passes the initial password when creating a user', async () => {
+    vi.mocked(authApi.createUser).mockResolvedValue({
+      success: true,
+      message: 'ok',
+    })
+
+    const wrapper = mount(UserSettings)
+
+    await wrapper.find('button').trigger('click')
+    await wrapper.find('input').setValue('alice')
+    await wrapper.find('input[type="email"]').setValue('alice@example.com')
+    await wrapper.find('input[type="password"]').setValue('TempPass123!')
+    await wrapper.find('select').setValue('admin')
+    await wrapper.findAll('button').at(-1)?.trigger('click')
+
+    expect(authApi.createUser).toHaveBeenCalledWith('alice', 'alice@example.com', 'TempPass123!', 'admin')
+  })
 })

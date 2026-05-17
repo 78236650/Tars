@@ -113,7 +113,7 @@ describe('layout panels i18n', () => {
 
     expect(leftWrapper.text()).toContain('Chat')
     expect(
-      leftWrapper.findAll('button').find((button) => button.text() === '中')?.attributes('title'),
+      leftWrapper.findAll('button').find((button) => button.text() === 'ZH')?.attributes('title'),
     ).toBe('Switch to Chinese')
     expect(leftWrapper.find('button[aria-label="Model settings"]').attributes('title')).toBe('Model settings')
 
