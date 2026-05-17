@@ -247,7 +247,7 @@ onMounted(() => {
                 <p class="mb-4 line-clamp-2 text-sm text-stone-400">{{ skill.description }}</p>
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="rounded-full px-2 py-1 text-xs" :class="skill.type === 'plugin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'">
-                    {{ skill.type === 'plugin' ? 'Plugin' : 'Prompt' }}
+                    {{ skill.type === 'plugin' ? t('tools.pluginType') : t('tools.promptType') }}
                   </span>
                   <span class="rounded-full bg-white/[0.05] px-2 py-1 text-xs text-stone-300">{{ skill.source }}</span>
                   <span v-if="skill.version" class="text-xs text-stone-500">v{{ skill.version }}</span>
@@ -315,7 +315,7 @@ onMounted(() => {
                       <h4 class="font-semibold text-stone-100">{{ pkg.name }}</h4>
                       <!-- 类型标签 -->
                       <span class="rounded-full px-1.5 py-0.5 text-xs" :class="pkg.type === 'plugin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'">
-                        {{ pkg.type === 'plugin' ? 'Tool' : 'Prompt' }}
+                        {{ pkg.type === 'plugin' ? t('tools.marketToolType') : t('tools.marketPromptType') }}
                       </span>
                       <!-- 已安装标签 -->
                       <span v-if="pkg.installed" class="rounded-full border border-amber-400/20 bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-200">

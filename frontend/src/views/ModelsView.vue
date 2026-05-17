@@ -10,7 +10,7 @@ import type { Endpoint } from '@/types'
 const router = useRouter()
 const settingsStore = useSettingsStore()
 const toast = useToast()
-const { locale, t } = useI18n()
+const { t } = useI18n()
 
 const showAddEndpoint = ref(false)
 const editingEndpoint = ref<Endpoint | null>(null)
@@ -138,7 +138,7 @@ const fetchModels = async (id: string) => {
     const r = await settingsStore.fetchEndpointModels(id)
     if (r.success) {
       if (r.models?.length) {
-        toast.success(`${t('modelsPage.fetchOkPrefix')} ${r.models.length}`)
+        toast.success(t('modelsPage.fetchOk', { count: r.models.length }))
       } else {
         toast.success(t('modelsPage.fetchEmpty'))
       }
