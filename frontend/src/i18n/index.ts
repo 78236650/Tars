@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 
+type MessageParams = Record<string, string | number>
+
 export const messages: Record<string, Record<string, string>> = {
   zh: {
     // 导航
@@ -32,8 +34,16 @@ export const messages: Record<string, Record<string, string>> = {
     'common.reset': '重置',
     'common.test': '测试',
     'common.back': '返回',
+    'common.backToChat': '返回聊天',
     'common.enabled': '已启用',
     'common.disabled': '已禁用',
+    'common.model': '模型',
+    'common.notSelected': '未选择',
+    'common.deleteFailed': '删除失败',
+
+    // Desktop
+    'desktop.default.title': 'TARS 工作台',
+    'desktop.default.subtitle': '统一桌面工作台',
 
     // Sidebar
     'sidebar.currentModel': '当前模型',
@@ -165,6 +175,7 @@ export const messages: Record<string, Record<string, string>> = {
     'modelsPage.fillRequired': '请填写名称与 Base URL',
     'modelsPage.endpointCreated': '端点已添加',
     'modelsPage.deleteConfirm': '确定删除该端点？',
+    'modelsPage.fetchOk': '已拉取 {count} 个模型',
     'modelsPage.fetchOkPrefix': '已拉取',
     'modelsPage.fetchEmpty': '未解析到模型列表，可手动添加',
     'modelsPage.manualEmpty': '请输入至少一个模型 ID',
@@ -206,8 +217,16 @@ export const messages: Record<string, Record<string, string>> = {
     'common.reset': 'Reset',
     'common.test': 'Test',
     'common.back': 'Back',
+    'common.backToChat': 'Back to Chat',
     'common.enabled': 'Enabled',
     'common.disabled': 'Disabled',
+    'common.model': 'Model',
+    'common.notSelected': 'Not selected',
+    'common.deleteFailed': 'Delete failed',
+
+    // Desktop
+    'desktop.default.title': 'TARS Workspace',
+    'desktop.default.subtitle': 'Unified workspace shell',
 
     // Sidebar
     'sidebar.currentModel': 'Current Model',
@@ -339,6 +358,7 @@ export const messages: Record<string, Record<string, string>> = {
     'modelsPage.fillRequired': 'Name and Base URL are required',
     'modelsPage.endpointCreated': 'Endpoint created',
     'modelsPage.deleteConfirm': 'Delete this endpoint?',
+    'modelsPage.fetchOk': 'Fetched {count} models',
     'modelsPage.fetchOkPrefix': 'Fetched',
     'modelsPage.fetchEmpty': 'No models parsed; add manually',
     'modelsPage.manualEmpty': 'Enter at least one model ID',
@@ -353,14 +373,25 @@ export const messages: Record<string, Record<string, string>> = {
 
 const LOCALE_KEY = 'tars_locale'
 
+const interpolate = (template: string, params?: MessageParams): string => {
+  if (!params) {
+    return template
+  }
+
+  return Object.entries(params).reduce((result, [key, value]) => {
+    return result.replaceAll(`{${key}}`, String(value))
+  }, template)
+}
+
 // 全局响应式 locale（所有组件共享）
 const globalLocale = ref<string>(localStorage.getItem(LOCALE_KEY) || 'zh')
 
 export const useI18n = () => {
   const locale = globalLocale
 
-  const t = (key: string): string => {
-    return messages[locale.value]?.[key] || messages['zh'][key] || key
+  const t = (key: string, params?: MessageParams): string => {
+    const message = messages[locale.value]?.[key] || messages['zh'][key] || key
+    return interpolate(message, params)
   }
 
   const setLocale = (newLocale: string) => {
