@@ -2,10 +2,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { authApi } from '@/api'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
+import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types'
 
 const authStore = useAuthStore()
+const { locale, t } = useI18n()
 const users = ref<User[]>([])
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
@@ -55,7 +57,7 @@ const createUser = async () => {
     await loadUsers()
     closeCreateModal()
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Failed to create user')
+    alert(error.response?.data?.message || t('userSettings.createFailed'))
   }
 }
 
@@ -65,7 +67,7 @@ const deleteUser = async () => {
     await loadUsers()
     closeDeleteConfirm()
   } catch (error: any) {
-    alert(error.response?.data?.message || 'Failed to delete user')
+    alert(error.response?.data?.message || t('userSettings.deleteFailed'))
   }
 }
 
@@ -76,8 +78,11 @@ const requestDelete = (userId: string) => {
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+const roleLabel = (role: string) => t(`userSettings.roles.${role}`)
 
 onMounted(loadUsers)
 </script>
@@ -86,12 +91,12 @@ onMounted(loadUsers)
   <div class="mx-auto max-w-4xl">
     <div class="rounded-xl bg-slate-800 p-6">
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-semibold text-white">User Management</h2>
+        <h2 class="text-xl font-semibold text-white">{{ t('userSettings.title') }}</h2>
         <button
           @click="showCreateModal = true"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
         >
-          + Add User
+          + {{ t('userSettings.addUser') }}
         </button>
       </div>
       
@@ -99,12 +104,12 @@ onMounted(loadUsers)
         <table class="w-full">
           <thead>
             <tr class="border-b border-slate-700">
-              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">User</th>
-              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">Email</th>
-              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">Role</th>
-              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">Created</th>
-              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">Last Login</th>
-              <th class="text-right py-3 px-4 text-sm font-medium text-slate-400">Actions</th>
+              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.user') }}</th>
+              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.email') }}</th>
+              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.role') }}</th>
+              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.created') }}</th>
+              <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.lastLogin') }}</th>
+              <th class="text-right py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -134,12 +139,12 @@ onMounted(loadUsers)
                     'bg-gray-900/50 text-gray-400': user.role === 'guest'
                   }"
                 >
-                  {{ user.role.charAt(0).toUpperCase() + user.role.slice(1) }}
+                  {{ roleLabel(user.role) }}
                 </span>
               </td>
               <td class="py-4 px-4 text-slate-400 text-sm">{{ formatDate(user.created_at) }}</td>
               <td class="py-4 px-4 text-slate-400 text-sm">
-                {{ user.last_login ? formatDate(user.last_login) : 'Never' }}
+                {{ user.last_login ? formatDate(user.last_login) : t('userSettings.never') }}
               </td>
               <td class="py-4 px-4 text-right">
                 <button
@@ -147,7 +152,7 @@ onMounted(loadUsers)
                   :disabled="user.id === authStore.user?.id"
                   class="text-sm text-red-400 hover:text-red-300 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
                 >
-                  Delete
+                  {{ t('common.delete') }}
                 </button>
               </td>
             </tr>
@@ -158,47 +163,47 @@ onMounted(loadUsers)
           <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
           </svg>
-          <p>No users found</p>
+          <p>{{ t('userSettings.empty') }}</p>
         </div>
       </div>
     </div>
 
     <AppSurfaceDialog
       :open="showCreateModal"
-      title="Create New User"
-      description="Create a workspace user and assign an initial role."
+      :title="t('userSettings.createTitle')"
+      :description="t('userSettings.createDescription')"
       size="md"
       @close="closeCreateModal"
     >
       <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-slate-300 mb-2">Username</label>
+            <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('userSettings.username') }}</label>
             <input
               v-model="newUser.username"
               class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter username"
+              :placeholder="t('userSettings.usernamePlaceholder')"
             />
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
+            <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('userSettings.email') }}</label>
             <input
               v-model="newUser.email"
               type="email"
               class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter email"
+              :placeholder="t('userSettings.emailPlaceholder')"
             />
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-slate-300 mb-2">Role</label>
+            <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('userSettings.role') }}</label>
             <select
               v-model="newUser.role"
               class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-              <option value="guest">Guest</option>
+              <option value="user">{{ t('userSettings.roles.user') }}</option>
+              <option value="admin">{{ t('userSettings.roles.admin') }}</option>
+              <option value="guest">{{ t('userSettings.roles.guest') }}</option>
             </select>
           </div>
       </div>
@@ -209,13 +214,13 @@ onMounted(loadUsers)
             @click="closeCreateModal"
             class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             @click="createUser"
             class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition-colors"
           >
-            Create
+            {{ t('common.create') }}
           </button>
         </div>
       </template>
@@ -223,8 +228,12 @@ onMounted(loadUsers)
 
     <AppSurfaceDialog
       :open="showDeleteConfirm"
-      title="Confirm Deletion"
-      :description="deletingUser ? `Delete ${deletingUser.username} from the workspace.` : 'Delete this user from the workspace.'"
+      :title="t('userSettings.deleteTitle')"
+      :description="
+        deletingUser
+          ? t('userSettings.deleteUserDescription', { username: deletingUser.username })
+          : t('userSettings.deleteDescription')
+      "
       size="sm"
       @close="closeDeleteConfirm"
     >
@@ -235,8 +244,8 @@ onMounted(loadUsers)
             </svg>
           </div>
           <div>
-            <h3 class="text-lg font-semibold text-white">Confirm Deletion</h3>
-            <p class="text-sm text-slate-400">Are you sure you want to delete this user?</p>
+            <h3 class="text-lg font-semibold text-white">{{ t('userSettings.deleteTitle') }}</h3>
+            <p class="text-sm text-slate-400">{{ t('userSettings.deletePrompt') }}</p>
           </div>
         </div>
 
@@ -246,13 +255,13 @@ onMounted(loadUsers)
             @click="closeDeleteConfirm"
             class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             @click="deleteUser"
             class="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium transition-colors"
           >
-            Delete
+            {{ t('common.delete') }}
           </button>
         </div>
       </template>

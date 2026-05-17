@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useI18n } from '@/i18n'
 
 const settingsStore = useSettingsStore()
 const editingAgent = ref<string | null>(null)
 const localConfigs = ref<Record<string, any>>({})
+const { t } = useI18n()
 
 const subagents = computed(() => {
   const result = []
@@ -64,7 +66,7 @@ const cancelEdit = (agentType: string) => {
 <template>
   <div class="max-w-6xl mx-auto">
     <div class="bg-slate-800 rounded-xl p-6">
-      <h2 class="text-xl font-semibold text-white mb-6">Subagents Configuration</h2>
+      <h2 class="text-xl font-semibold text-white mb-6">{{ t('settings.subagentsTitle') }}</h2>
       
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div
@@ -90,7 +92,7 @@ const cancelEdit = (agentType: string) => {
                 class="px-2 py-1 rounded-full text-xs font-medium"
                 :class="agent.enabled ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'"
               >
-                {{ agent.enabled ? 'Enabled' : 'Disabled' }}
+                {{ agent.enabled ? t('common.enabled') : t('common.disabled') }}
               </span>
             </div>
           </div>
@@ -99,16 +101,16 @@ const cancelEdit = (agentType: string) => {
           
           <div v-if="editingAgent === agent.type" class="space-y-3">
             <div>
-              <label class="block text-xs text-slate-400 mb-1">LLM Model</label>
+              <label class="block text-xs text-slate-400 mb-1">{{ t('settings.subagentsModelLabel') }}</label>
               <input
                 v-model="localConfigs[agent.type].llm_model"
                 class="w-full bg-slate-600 border border-slate-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Leave empty to inherit"
+                :placeholder="t('settings.subagentsInheritPlaceholder')"
               />
             </div>
             
             <div>
-              <label class="block text-xs text-slate-400 mb-1">Temperature: {{ localConfigs[agent.type].temperature.toFixed(1) }}</label>
+              <label class="block text-xs text-slate-400 mb-1">{{ t('settings.subagentsTemperature') }}: {{ localConfigs[agent.type].temperature.toFixed(1) }}</label>
               <input
                 type="range"
                 v-model.number="localConfigs[agent.type].temperature"
@@ -120,7 +122,7 @@ const cancelEdit = (agentType: string) => {
             </div>
             
             <div>
-              <label class="block text-xs text-slate-400 mb-1">Personality Weight: {{ localConfigs[agent.type].personality_weight.toFixed(1) }}</label>
+              <label class="block text-xs text-slate-400 mb-1">{{ t('settings.subagentsPersonalityWeight') }}: {{ localConfigs[agent.type].personality_weight.toFixed(1) }}</label>
               <input
                 type="range"
                 v-model.number="localConfigs[agent.type].personality_weight"
@@ -132,7 +134,7 @@ const cancelEdit = (agentType: string) => {
             </div>
             
             <div class="flex items-center justify-between">
-              <span class="text-sm text-slate-300">Enabled</span>
+              <span class="text-sm text-slate-300">{{ t('common.enabled') }}</span>
               <button
                 @click="localConfigs[agent.type].enabled = !localConfigs[agent.type].enabled"
                 class="w-12 h-6 rounded-full transition-colors"
@@ -150,13 +152,13 @@ const cancelEdit = (agentType: string) => {
                 @click="saveAgent(agent.type)"
                 class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium transition-colors"
               >
-                Save
+                {{ t('common.save') }}
               </button>
               <button
                 @click="cancelEdit(agent.type)"
                 class="flex-1 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-white text-sm font-medium transition-colors"
               >
-                Cancel
+                {{ t('common.cancel') }}
               </button>
             </div>
           </div>
@@ -164,11 +166,11 @@ const cancelEdit = (agentType: string) => {
           <div v-else>
             <div class="grid grid-cols-2 gap-2 text-sm mb-4">
               <div class="bg-slate-600/50 rounded-lg p-2">
-                <span class="text-slate-400">Model:</span>
-                <span class="text-white ml-1">{{ agent.llm_model || 'Inherit' }}</span>
+                <span class="text-slate-400">{{ t('common.model') }}:</span>
+                <span class="text-white ml-1">{{ agent.llm_model || t('settings.subagentsInheritValue') }}</span>
               </div>
               <div class="bg-slate-600/50 rounded-lg p-2">
-                <span class="text-slate-400">Temp:</span>
+                <span class="text-slate-400">{{ t('settings.subagentsTemperatureShort') }}:</span>
                 <span class="text-white ml-1">{{ agent.temperature.toFixed(1) }}</span>
               </div>
             </div>
@@ -177,7 +179,7 @@ const cancelEdit = (agentType: string) => {
               @click="startEdit(agent.type)"
               class="w-full py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-white text-sm font-medium transition-colors"
             >
-              Edit Configuration
+              {{ t('settings.subagentsEdit') }}
             </button>
           </div>
         </div>

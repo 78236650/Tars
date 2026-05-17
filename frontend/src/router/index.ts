@@ -40,6 +40,11 @@ const router = createRouter({
           path: 'users',
           name: 'settings-users',
           component: () => import('@/components/settings/UserSettings.vue')
+        },
+        {
+          path: 'personality',
+          name: 'settings-personality',
+          component: () => import('@/components/settings/PersonalitySettings.vue')
         }
       ]
     },
