@@ -85,6 +85,48 @@ describe('Sidebar i18n', () => {
     expect(wrapper.find('input[type="text"]').attributes('placeholder')).toBe('Search sessions...')
   })
 
+  it('uses EN/ZH labels for the collapsed language toggle', async () => {
+    localStorage.setItem('sidebar_collapsed', 'true')
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/memory', component: { template: '<div />' } },
+        { path: '/settings', component: { template: '<div />' } },
+        { path: '/models', component: { template: '<div />' } },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+
+    const settingsStore = useSettingsStore()
+    settingsStore.currentModel = 'qwen3:8b'
+    settingsStore.currentProvider = 'ollama'
+    settingsStore.loadModels = async () => {}
+
+    const chatStore = useChatStore()
+    chatStore.loadSessions = async () => {}
+    chatStore.sessions = []
+
+    const wrapper = mount(Sidebar, {
+      global: {
+        plugins: [router],
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('EN')
+
+    useI18n().setLocale('en')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('ZH')
+  })
+
   it('localizes delete failure toast message', async () => {
     const router = createRouter({
       history: createMemoryHistory(),

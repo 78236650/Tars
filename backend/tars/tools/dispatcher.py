@@ -68,6 +68,46 @@ class ToolDispatcher:
         tool = self.registry.get(tool_name)
         if not tool:
             return ToolResult(success=False, output="", error=f"工具 '{tool_name}' 不存在")
+
+        # v4.0.0: 基于角色的工具权限检查
+        try:
+            from ..security.tool_permission import tool_permission_checker
+            user_role = (context or {}).get("user_role", "user")
+            if not tool_permission_checker.can_use_tool(user_role, tool_name):
+                # Log to audit
+                try:
+                    from ..security.audit import audit_logger
+                    if audit_logger:
+                        audit_logger.log_permission_denied(
+                            resource=tool_name,
+                            resource_type="tool",
+                            tenant_id=(context or {}).get("tenant_id", "default"),
+                            user_id=(context or {}).get("user_id", "default"),
+                            reason=f"角色 '{user_role}' 无权使用工具 '{tool_name}'",
+                        )
+                except Exception:
+                    pass
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"权限不足：角色 '{user_role}' 无法使用工具 '{tool_name}'",
+                )
+        except Exception:
+            pass  # Security module unavailable → allow
+
+        # v4.0.1: 注入 per-tenant workspace 路径
+        try:
+            from .tenant_workspace import tenant_workspace_manager
+            if tenant_workspace_manager:
+                tenant_id = (context or {}).get("tenant_id", "default")
+                user_role = (context or {}).get("user_role", "user")
+                context = dict(context or {})
+                context["_workspace_dir"] = str(tenant_workspace_manager.get_workspace(tenant_id))
+                context["_tmp_dir"] = str(tenant_workspace_manager.get_tmp_dir(tenant_id))
+                context["_allowed_dirs"] = tenant_workspace_manager.get_allowed_dirs(tenant_id, user_role)
+        except Exception:
+            pass
+
         try:
             merged_arguments = dict(arguments)
             for key, value in (context or {}).items():

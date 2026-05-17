@@ -1,0 +1,12 @@
+# TARS v4.0.0: 并发限流配置
+# 直接控制 LLM API 调用的并发数
+
+providers:
+  ollama:
+    max_concurrent: 2
+    per_user_max: 1
+    queue_timeout: 60
+  custom:
+    max_concurrent: 5
+    per_user_max: 2
+    queue_timeout: 30

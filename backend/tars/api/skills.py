@@ -27,6 +27,53 @@ async def list_skills():
     }
 
 
+# ── v4.0.0: Skill Curator API (before /{skill_id} to avoid route conflict) ──
+
+@router.get("/stats")
+async def get_skill_stats():
+    """Get usage stats for all tracked skills."""
+    try:
+        from tars.skills.curator import skill_curator
+        if skill_curator:
+            return skill_curator.get_stats()
+        return []
+    except ImportError:
+        return []
+
+@router.get("/{skill_id}/stats")
+async def get_single_skill_stats(skill_id: str):
+    """Get usage stats for a single skill."""
+    try:
+        from tars.skills.curator import skill_curator
+        if skill_curator:
+            return skill_curator.get_skill_stats(skill_id) or {"skill_id": skill_id, "total_calls": 0}
+        return {"skill_id": skill_id, "total_calls": 0}
+    except ImportError:
+        return {"skill_id": skill_id, "total_calls": 0}
+
+@router.put("/{skill_id}/archive")
+async def archive_skill(skill_id: str):
+    """Archive a skill (exclude from auto-activation)."""
+    try:
+        from tars.skills.curator import skill_curator
+        if skill_curator:
+            skill_curator.archive(skill_id)
+        return {"status": "ok", "skill_id": skill_id, "state": "archived"}
+    except ImportError:
+        return {"status": "error", "message": "curator not available"}
+
+@router.put("/{skill_id}/activate")
+async def activate_skill(skill_id: str):
+    """Activate an archived skill."""
+    try:
+        from tars.skills.curator import skill_curator
+        if skill_curator:
+            skill_curator.activate(skill_id)
+        return {"status": "ok", "skill_id": skill_id, "state": "active"}
+    except ImportError:
+        return {"status": "error", "message": "curator not available"}
+
+
 @router.get("/{skill_id}")
 async def get_skill(skill_id: str):
     """获取技能详情"""

@@ -7,6 +7,8 @@ import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
+import QueueStatus from '@/components/chat/QueueStatus.vue'
+import WarningBanner from '@/components/chat/WarningBanner.vue'
 
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
@@ -433,6 +435,10 @@ onUnmounted(() => {
       </header>
 
       <ChatPanel :messages="messages" :is-generating="wsStore.isGenerating" @quick-start="quickStart" />
+
+      <!-- v4.0.0: 排队状态和权限拒绝提示 -->
+      <QueueStatus />
+      <WarningBanner />
 
       <footer class="border-t border-amber-100/10 px-6 py-4">
         <!-- 附件预览区 -->

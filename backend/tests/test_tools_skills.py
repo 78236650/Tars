@@ -179,7 +179,7 @@ class TestToolDispatcher:
         reg.register(EchoTool())
         d = ToolDispatcher(reg)
 
-        result = await d.execute_tool("echo", {"msg": "hello"})
+        result = await d.execute_tool("echo", {"msg": "hello"}, context={"user_role": "admin"})
         assert result.success is True
         assert result.output == "hello"
 
@@ -201,7 +201,7 @@ class TestToolDispatcher:
         reg.register(EchoTool())
         d = ToolDispatcher(reg)
 
-        result = await d.execute_tool("echo", {"msg": "hello"}, context={"session_id": "session-a"})
+        result = await d.execute_tool("echo", {"msg": "hello"}, context={"session_id": "session-a", "user_role": "admin"})
         assert result.success is True
         assert result.output == "session-a"
 

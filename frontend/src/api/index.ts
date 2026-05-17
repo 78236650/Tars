@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
   User,
   UserListResponse,
+  LoginResult,
   Personality,
   PersonalityResponse,
   MemoryItem,
@@ -48,6 +49,14 @@ api.interceptors.request.use((config) => {
 })
 
 export const authApi = {
+  login: async (identifier: string, password: string): Promise<LoginResult> => {
+    const response = await api.post<ApiResponse<LoginResult>>('/auth/login', {
+      identifier,
+      password,
+    })
+    return response.data.data as LoginResult
+  },
+
   getCurrentUser: async (apiKey?: string): Promise<User> => {
     const params = apiKey ? { api_key: apiKey } : undefined
     const response = await api.get<User>('/users/me', { params })
@@ -59,8 +68,13 @@ export const authApi = {
     return response.data
   },
   
-  createUser: async (username: string, email: string, role: string = 'user'): Promise<ApiResponse> => {
-    const response = await api.post<ApiResponse>('/users', { username, email, role })
+  createUser: async (
+    username: string,
+    email: string,
+    password: string,
+    role: string = 'user'
+  ): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>('/users', { username, email, password, role })
     return response.data
   },
   
@@ -269,6 +283,11 @@ export const skillsApi = {
   enableSkill: (id: string) => api.put(`/skills/${id}/enable`),
   disableSkill: (id: string) => api.put(`/skills/${id}/disable`),
   reload: () => api.post('/skills/reload'),
+  // v4.0.0: 技能统计
+  getStats: () => api.get('/skills/stats'),
+  // v4.0.0: 技能归档/激活
+  archive: (id: string) => api.put(`/skills/${id}/archive`),
+  activate: (id: string) => api.put(`/skills/${id}/activate`),
 }
 
 export const skillhubApi = {
@@ -474,4 +493,166 @@ export const meetingApi = {
     const response = await api.put(`/meeting/${id}/summary`, { summary, key_points: keyPoints })
     return response.data
   },
+}
+
+// ========= v4.0.0: Modules API =========
+
+export interface ModuleStatus {
+  name: string
+  enabled: boolean
+  description?: string
+  modules?: string[]
+}
+
+export const modulesApi = {
+  list: async (): Promise<ModuleStatus[]> => {
+    const response = await api.get<ModuleStatus[]>('/modules')
+    return response.data
+  }
+}
+
+// ========= v4.0.0: Providers API =========
+
+export interface ProviderInfo {
+  name: string
+  display_name: string
+  auth_type: string
+  supports_tools: boolean
+}
+
+export const providersApi = {
+  list: async (): Promise<ProviderInfo[]> => {
+    const response = await api.get<ProviderInfo[]>('/providers')
+    return response.data
+  },
+
+  test: async (name: string): Promise<{ status: string; models_count?: number; message?: string }> => {
+    const response = await api.post(`/providers/${name}/test`)
+    return response.data
+  }
+}
+
+// ========= v4.0.0: Audit API =========
+
+export interface AuditLogItem {
+  id: string
+  timestamp: string
+  user_id: string
+  action: string
+  resource: string
+  detail: string
+  ip_address: string
+}
+
+export interface AuditLogResponse {
+  items: AuditLogItem[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export const auditApi = {
+  getLogs: async (params?: {
+    action?: string
+    user_id?: string
+    page?: number
+    page_size?: number
+  }): Promise<AuditLogResponse> => {
+    const response = await api.get<AuditLogResponse>('/audit/logs', { params })
+    return response.data
+  }
+}
+
+// ========= v4.0.0: Admin Memory API =========
+
+export interface AdminMemoryUser {
+  tenant_id: string
+  memory_count: number
+  shared_count: number
+}
+
+export interface AdminMemoryUsersResponse {
+  users: AdminMemoryUser[]
+}
+
+export const adminMemoryApi = {
+  getUsers: async (): Promise<AdminMemoryUsersResponse> => {
+    const response = await api.get<AdminMemoryUsersResponse>('/admin/memory/users')
+    return response.data
+  },
+
+  getUserMemories: async (userId: string): Promise<{ items: MemoryItem[] }> => {
+    const response = await api.get<{ items: MemoryItem[] }>(`/admin/memory/users/${userId}`)
+    return response.data
+  },
+
+  purgeUser: async (userId: string): Promise<{ success: boolean }> => {
+    const response = await api.delete(`/admin/memory/users/${userId}/purge`)
+    return response.data
+  },
+
+  createShared: async (data: { content: string; category: string }): Promise<{ success: boolean }> => {
+    const response = await api.post('/admin/memory/shared', data)
+    return response.data
+  },
+
+  deleteShared: async (id: string): Promise<{ success: boolean }> => {
+    const response = await api.delete(`/admin/memory/shared/${id}`)
+    return response.data
+  }
+}
+
+// ========= v4.0.2: Roles API =========
+
+export interface RoleTemplate {
+  id: string
+  name: string
+  description: string
+  is_builtin: boolean
+  allowed_tools: string[] | '*'
+  denied_tools: string[]
+  allowed_modules: string[]
+  resource_permissions?: Record<string, string[]>
+  workspace_restriction: boolean
+  max_concurrent: number
+  user_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export const rolesApi = {
+  list: async (): Promise<RoleTemplate[]> => {
+    const response = await api.get<RoleTemplate[]>('/roles')
+    return response.data
+  },
+
+  get: async (id: string): Promise<RoleTemplate> => {
+    const response = await api.get<RoleTemplate>(`/roles/${id}`)
+    return response.data
+  },
+
+  create: async (data: Omit<RoleTemplate, 'is_builtin' | 'user_count' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; template: RoleTemplate }> => {
+    const response = await api.post('/roles', data)
+    return response.data
+  },
+
+  update: async (id: string, data: Partial<RoleTemplate>): Promise<{ success: boolean; template: RoleTemplate }> => {
+    const response = await api.put(`/roles/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const response = await api.delete(`/roles/${id}`)
+    return response.data
+  },
+
+  assignRole: async (userId: string, roleTemplateId: string): Promise<{ success: boolean }> => {
+    const response = await api.post(`/users/${userId}/role`, { role_template_id: roleTemplateId })
+    return response.data
+  },
+
+  getUserPermissions: async (userId: string): Promise<{ allowed_tools: string[]; allowed_modules: string[]; role_template_id: string }> => {
+    const response = await api.get(`/users/${userId}/permissions`)
+    return response.data
+  }
 }

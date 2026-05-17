@@ -1,6 +1,57 @@
 # Changelog
 
-## v2.9.1 (2026-05-16)
+## v4.0.0 "Hardened Base" (2026-05-17)
+
+多用户内网部署底座加固：安全、性能、Provider 插件化、模块化启动。
+
+### Phase 1: Security Hardening（安全加固）
+
+- ✅ **敏感信息脱敏引擎** — 正则模式库检测 API Key / 手机号 / 邮箱 / 银行卡 / 私钥 / 密码字段，支持 partial mask 和 full redact 两种模式
+- ✅ **提示词注入防护** — 5 类攻击模式检测（delimiter injection / role override / jailbreak / context boundary / hidden command），severity 分级，教育讨论不误杀
+- ✅ **审计日志系统** — 全量记录工具调用、权限拒绝、记忆操作、模型调用，SQLite 持久化 + REST 查询 API（admin 鉴权）
+- ✅ **记忆权限管理** — private/shared 双作用域，跨租户隔离，admin 可管理所有用户记忆，检索自动包含 shared 记忆
+- ✅ **角色工具权限** — `config/tool_permissions.yaml` 配置 admin/user/guest 工具白名单，dispatcher 层拦截 + 审计记录
+- ✅ **Admin 记忆管理 API** — 用户记忆统计、详情查看、清空私有记忆、创建/删除共享记忆
+
+### Phase 2: Performance（性能优化）
+
+- ✅ **延迟导入** — `lazy.py` 工具类 + embedding 模型首次使用时加载，冷启动加速
+- ✅ **Skills Manifest Cache** — 技能目录 mtime 快照缓存，二次启动跳过重扫（4.3x 加速）
+- ✅ **LLM 连接复用池** — 单 httpx.AsyncClient 共享，支持环境变量覆盖超时，shutdown 时正确关闭
+- ✅ **Prompt Cache** — 静态部分（persona + tools）TTL 缓存，动态部分（memory_context）每次重建，线程安全 + LRU eviction
+- ✅ **并发限流** — asyncio.Semaphore + per-user 计数器，YAML 配置 max_concurrent / per_user_max / queue_timeout，超限返回友好提示
+
+### Phase 3: Provider Plugin Architecture（Provider 插件化）
+
+- ✅ **ProviderBase ABC** — 统一抽象接口（chat / list_models / test_connection），ChatResponse / ModelInfo dataclass
+- ✅ **ProviderRegistry** — 自动注册 builtin，支持外部 register，get_instance 缓存
+- ✅ **OpenAI Compatible Provider** — 合并 custom + openrouter，quirks 适配（tool_call_nested 等）
+- ✅ **Ollama Plugin 迁移** — 旧文件改为 redirect，消除双份实现
+- ✅ **配置化** — `config/providers.yaml` 声明式配置，`${ENV_VAR}` 展开，`scripts/migrate_providers.py` 自动迁移
+- ✅ **热切换** — agent.switch_model 支持 provider_name 参数，运行时切换无需重启
+- ✅ **API 端点** — `GET /api/providers` 列表 + `POST /api/providers/{name}/test` 连接测试
+
+### Phase 4: Platform Polish（平台收尾）
+
+- ✅ **模块化启动** — `config/modules.yaml` 控制可选模块（bi / meeting / knowledge / skillhub），未启用模块不注册路由
+- ✅ **Skill Curator** — 技能使用统计（调用次数 / 最后使用时间），archive/activate 状态管理，SkillRouter 跳过已归档技能
+- ✅ **API 端点** — `GET /api/modules` 模块状态 + `GET /api/skills/stats` 技能统计 + `PUT /api/skills/{id}/archive`
+
+### 测试
+
+- 157 个单元/集成测试全部通过
+- 覆盖：脱敏引擎、审计日志、注入防护、记忆权限、连接池、Prompt Cache、限流器、Provider 基类/注册、模块加载、技能统计、工具调度
+
+### 配置文件新增
+
+- `backend/config/providers.yaml` — LLM Provider 配置
+- `backend/config/modules.yaml` — 可选模块启用/禁用
+- `backend/config/concurrency.yaml` — 并发限流参数
+- `backend/config/tool_permissions.yaml` — 角色工具权限
+
+---
+
+## v3.9.1 (2026-05-16)
 
 ### 视觉统一收口（Graphite Amber）
 

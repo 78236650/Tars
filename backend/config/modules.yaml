@@ -1,0 +1,31 @@
+# TARS v4.0.0: Module Configuration
+# Controls which optional feature modules are enabled on startup.
+
+modules:
+  # Core modules (always enabled)
+  core:
+    - agent
+    - tools
+    - skills
+    - memory
+    - auth
+    - security
+
+  # Optional modules (enable/disable per deployment)
+  optional:
+    meeting:
+      enabled: false
+      description: "会议助手（录音转写 + 摘要）"
+      routes: ["/api/meeting"]
+    bi:
+      enabled: false
+      description: "BI 工作台（数据分析 + 可视化）"
+      routes: ["/api/bi"]
+    knowledge:
+      enabled: true
+      description: "知识库（文档解析 + RAG）"
+      routes: ["/api/knowledge"]
+    skillhub:
+      enabled: true
+      description: "SkillHub 技能市场"
+      routes: ["/api/skillhub"]

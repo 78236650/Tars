@@ -9,7 +9,9 @@ from pydantic import BaseModel
 
 from tars.agent import Agent
 from tars.database import Endpoint, EndpointStore
-from tars.models import CustomProvider, OllamaProvider
+from tars.models import OpenAICompatProvider as _OpenAICompat, OllamaProvider
+# Backward compat alias
+CustomProvider = _OpenAICompat
 
 logger = logging.getLogger(__name__)
 

@@ -23,17 +23,19 @@ class FileTool(BaseTool):
     def __init__(self, allowed_dirs: Optional[List[str]] = None):
         self.allowed_dirs = allowed_dirs or []
 
-    def _is_path_allowed(self, path: Path) -> bool:
-        if not self.allowed_dirs:
+    def _is_path_allowed(self, path: Path, context_dirs: list = None) -> bool:
+        dirs = context_dirs or self.allowed_dirs
+        if not dirs:
             return True
         resolved = str(path.resolve())
-        return any(resolved.startswith(str(Path(d).resolve())) for d in self.allowed_dirs)
+        return any(resolved.startswith(str(Path(d).resolve())) for d in dirs)
 
     async def execute(self, **kwargs) -> ToolResult:
         file_path = kwargs.get("path", "")
         encoding = kwargs.get("encoding", "utf-8")
         start_line = kwargs.get("start_line")
         end_line = kwargs.get("end_line")
+        _allowed_dirs = kwargs.get("_allowed_dirs")
 
         if not file_path:
             return ToolResult(success=False, output="", error="请提供文件路径")
@@ -44,7 +46,7 @@ class FileTool(BaseTool):
             return ToolResult(success=False, output="", error=f"文件不存在: {file_path}")
         if not path.is_file():
             return ToolResult(success=False, output="", error=f"路径不是文件: {file_path}")
-        if not self._is_path_allowed(path):
+        if not self._is_path_allowed(path, _allowed_dirs):
             return ToolResult(success=False, output="", error=f"路径不在允许目录内: {file_path}")
 
         try:
@@ -86,12 +88,19 @@ class FileListTool(BaseTool):
         dir_path = kwargs.get("path", ".")
         pattern = kwargs.get("pattern")
         recursive = kwargs.get("recursive", False)
+        _allowed_dirs = kwargs.get("_allowed_dirs")
 
         target = Path(dir_path).resolve()
         if not target.exists():
             return ToolResult(success=False, output="", error=f"路径不存在: {dir_path}")
         if not target.is_dir():
             return ToolResult(success=False, output="", error=f"路径不是目录: {dir_path}")
+
+        # v4.0.1: 路径权限检查
+        if _allowed_dirs:
+            resolved = str(target)
+            if not any(resolved.startswith(str(Path(d).resolve())) for d in _allowed_dirs):
+                return ToolResult(success=False, output="", error=f"路径不在允许目录内: {dir_path}")
 
         try:
             if recursive:

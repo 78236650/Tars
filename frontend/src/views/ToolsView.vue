@@ -67,6 +67,16 @@ const localizeBuiltinTool = <T extends Tool>(tool: T): T => {
 const tools = ref<Tool[]>([])
 // 已安装技能
 const skills = ref<SkillItem[]>([])
+// v4.0.0: 技能统计
+interface SkillStats {
+  skill_id: string
+  total_calls: number
+  last_used: string | null
+  first_used: string | null
+}
+const skillStats = ref<Record<string, SkillStats>>({})
+// v4.0.0: 归档/激活中状态
+const togglingSkillId = ref<string | null>(null)
 // SkillHub
 const hubResults = ref<SkillHubPackage[]>([])
 const hubSearchQuery = ref('')
@@ -99,6 +109,38 @@ const loadSkills = async () => {
     skills.value = resp.data.skills || []
   } catch (e) {
     console.error('加载技能失败:', e)
+  }
+}
+
+// v4.0.0: 加载技能调用统计
+const loadSkillStats = async () => {
+  try {
+    const resp = await skillsApi.getStats()
+    const items: any[] = resp.data?.items || resp.data || []
+    const map: Record<string, SkillStats> = {}
+    for (const item of items) {
+      map[item.skill_id] = item
+    }
+    skillStats.value = map
+  } catch (e) {
+    console.error('加载技能统计失败:', e)
+  }
+}
+
+// v4.0.0: 归档/激活切换
+const toggleArchive = async (skillId: string, currentlyArchived: boolean) => {
+  togglingSkillId.value = skillId
+  try {
+    if (currentlyArchived) {
+      await skillsApi.activate(skillId)
+    } else {
+      await skillsApi.archive(skillId)
+    }
+    await loadSkills()
+  } catch (e) {
+    console.error('操作失败:', e)
+  } finally {
+    togglingSkillId.value = null
   }
 }
 
@@ -212,6 +254,9 @@ const handleCloseDetail = () => {
 // SkillHub Tab 激活时自动加载目录
 const onTabChange = (tab: 'builtin' | 'skills' | 'skillhub') => {
   activeTab.value = tab
+  if (tab === 'skills') {
+    loadSkillStats()
+  }
   if (tab === 'skillhub' && !hubLoaded.value) {
     loadCatalog()
   }
@@ -220,6 +265,7 @@ const onTabChange = (tab: 'builtin' | 'skills' | 'skillhub') => {
 onMounted(() => {
   loadTools()
   loadSkills()
+  loadSkillStats()
 })
 </script>
 
@@ -294,26 +340,54 @@ onMounted(() => {
             <div v-else class="py-12 text-center text-stone-400">{{ t('tools.noTools') }}</div>
           </div>
 
-          <!-- Tab 2: 已安装技能 -->
+          <!-- Tab 2: 已安装技能 (v4.0.0: 统计 + 归档) -->
           <div v-if="activeTab === 'skills'">
-            <div v-if="filteredSkills.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-if="filteredSkills.length > 0">
+              <!-- 表头（桌面端） -->
+              <div class="hidden lg:grid grid-cols-12 gap-4 px-4 py-2 mb-2 text-xs font-medium text-stone-400 uppercase tracking-[0.05em]">
+                <span class="col-span-3">{{ t('tools.skillName') }}</span>
+                <span class="col-span-4">{{ t('tools.skillDescription') }}</span>
+                <span class="col-span-1 text-center">{{ t('tools.skillCalls') }}</span>
+                <span class="col-span-2 text-center">{{ t('tools.skillStatus') }}</span>
+                <span class="col-span-2 text-right">{{ t('tools.skillActions') }}</span>
+              </div>
               <div
                 v-for="skill in filteredSkills"
                 :key="skill.id"
-                class="cursor-pointer rounded-[24px] border border-amber-100/10 bg-[#171411]/82 p-6 transition hover:border-amber-300/25 hover:bg-amber-500/10"
-                @click="handleToolClick(skill)"
+                class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 items-center rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-4 transition hover:border-amber-300/25 hover:bg-amber-500/10 mb-2"
               >
-                <div class="flex items-start justify-between mb-3">
-                  <h3 class="text-lg font-semibold text-stone-100">{{ skill.name }}</h3>
-                  <div class="h-3 w-3 rounded-full" :class="skill.enabled ? 'bg-emerald-400' : 'bg-stone-600'"></div>
+                <!-- 技能名 -->
+                <div class="lg:col-span-3 cursor-pointer" @click="handleToolClick(skill)">
+                  <h3 class="text-sm font-semibold text-stone-100">{{ skill.name }}</h3>
                 </div>
-                <p class="mb-4 line-clamp-2 text-sm text-stone-400">{{ skill.description }}</p>
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span class="rounded-full px-2 py-1 text-xs" :class="skill.type === 'plugin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'">
-                    {{ skill.type === 'plugin' ? t('tools.pluginType') : t('tools.promptType') }}
+                <!-- 描述 -->
+                <p class="lg:col-span-4 text-xs text-stone-400 line-clamp-2">{{ skill.description }}</p>
+                <!-- 调用次数 -->
+                <div class="lg:col-span-1 text-center">
+                  <span class="text-xs font-mono text-stone-300">{{ skillStats[skill.id]?.total_calls ?? '-' }}</span>
+                </div>
+                <!-- 状态 -->
+                <div class="lg:col-span-2 text-center">
+                  <span
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                    :class="skill.enabled ? 'bg-emerald-500/10 text-emerald-300' : 'bg-stone-500/10 text-stone-400'"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full" :class="skill.enabled ? 'bg-emerald-400' : 'bg-stone-500'"></span>
+                    {{ skill.enabled ? t('tools.skillActive') : t('tools.skillArchived') }}
                   </span>
-                  <span class="rounded-full bg-white/[0.05] px-2 py-1 text-xs text-stone-300">{{ skill.source }}</span>
-                  <span v-if="skill.version" class="text-xs text-stone-500">v{{ skill.version }}</span>
+                </div>
+                <!-- 操作 -->
+                <div class="lg:col-span-2 flex items-center justify-end gap-2">
+                  <button
+                    @click.stop="toggleArchive(skill.id, skill.enabled)"
+                    :disabled="togglingSkillId === skill.id"
+                    class="rounded-xl px-2.5 py-1 text-xs font-medium transition disabled:opacity-50"
+                    :class="skill.enabled
+                      ? 'border border-stone-500/30 text-stone-400 hover:text-amber-300 hover:border-amber-300/30'
+                      : 'border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:border-emerald-400/30'"
+                  >
+                    {{ togglingSkillId === skill.id ? '...' : (skill.enabled ? t('tools.skillArchive') : t('tools.skillActivate')) }}
+                  </button>
                 </div>
               </div>
             </div>

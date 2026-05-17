@@ -9,6 +9,7 @@ import os
 import asyncio
 import json
 import traceback
+import yaml
 
 # 导入 TARS 模块
 from tars.channels import ConnectionManager
@@ -18,6 +19,11 @@ from tars.gateway.permission import PermissionManager, UserRole
 from tars.evolution import EvolutionManager
 from tars.scheduler import init_scheduler, shutdown_scheduler, get_scheduler
 from tars.models.config import router as model_config_router
+from tars.models import load_providers_from_config
+
+# v4.0.0: Module Registry & Skill Curator
+from tars.modules.registry import module_registry
+from tars.skills.curator import init_skill_curator
 
 # 新的工具/技能/SkillHub 系统
 from tars.tools import registry as tool_registry
@@ -45,12 +51,15 @@ from tars.api.bi import router as bi_router, init_bi_api
 from tars.api.knowledge import router as knowledge_router, init_knowledge_api
 from tars.api.meeting import router as meeting_router, init_meeting_api
 from tars.api.memory import router as memory_router, init_memory_api
+from tars.api.audit import router as audit_router, init_audit_api
+from tars.api.admin import router as admin_router, init_admin_api
+from tars.api.roles import router as roles_router, init_roles_api
 from tars.memory.scheduler import MemoryScheduler
 from tars.tenant import TenantContextCache
 from tars.cron import CronRuntime
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="2.8.1")
+app = FastAPI(title="TARS Agent", version="4.0.0")
 
 # CORS 配置
 app.add_middleware(
@@ -79,6 +88,14 @@ from tars.models.config import init_endpoint_store
 
 endpoint_store = EndpointStore(db)
 init_endpoint_store(endpoint_store)
+
+# v4.0.0: Module switch loading & skill curator
+module_registry.load()
+init_skill_curator(db)
+
+# v4.0.1: Per-tenant workspace 隔离
+from tars.tools.tenant_workspace import init_tenant_workspace
+init_tenant_workspace()
 
 # ========= 注册内置工具到全局 tool_registry =========
 project_dir = Path(__file__).parent.parent
@@ -181,6 +198,17 @@ knowledge_retriever = KnowledgeRetriever(vector_store, embedding_provider)
 tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever))
 
 # ========= 初始化 Agent =========
+# v4.0.0: 从配置加载所有 provider，获取默认实例
+providers = load_providers_from_config()
+default_provider = providers.get("_default")
+
+# v4.0.0: 加载模块配置 + 技能 Curator
+from tars.modules.registry import module_registry  # noqa: E402
+module_registry.load()
+
+from tars.skills.curator import init_skill_curator  # noqa: E402
+_skill_curator = init_skill_curator(db)
+
 agent = AgentV2(
     db=db, tool_registry=tool_registry, skill_registry=skill_registry,
     file_storage=file_storage, file_parser=file_parser,
@@ -219,21 +247,68 @@ meeting_tool.provider = agent.provider
 app.include_router(model_config_router)
 app.include_router(tools_router)
 app.include_router(skills_router)
-app.include_router(skillhub_router)
 app.include_router(files_router)
 app.include_router(sessions_router)
 app.include_router(tasks_router)
 app.include_router(invoke_router)
-app.include_router(bi_router)
-app.include_router(knowledge_router)
-app.include_router(meeting_router)
 app.include_router(memory_router)
+app.include_router(audit_router)
+app.include_router(admin_router)
+app.include_router(roles_router)
+
+# 条件注册可选模块路由
+if module_registry.is_enabled("skillhub"):
+    app.include_router(skillhub_router)
+if module_registry.is_enabled("bi"):
+    app.include_router(bi_router)
+if module_registry.is_enabled("knowledge"):
+    app.include_router(knowledge_router)
+if module_registry.is_enabled("meeting"):
+    app.include_router(meeting_router)
+
 init_sessions_api(db)
 init_tasks_api(db, agent)
-init_bi_api(db)
-init_knowledge_api(db, vector_store, embedding_provider)
-init_meeting_api(db, meeting_tool)
+if module_registry.is_enabled("bi"):
+    init_bi_api(db)
+if module_registry.is_enabled("knowledge"):
+    init_knowledge_api(db, vector_store, embedding_provider)
+if module_registry.is_enabled("meeting"):
+    init_meeting_api(db, meeting_tool)
 init_memory_api(db, memory_manager)
+init_audit_api(db)
+init_admin_api(db)
+
+# v4.0.2: 角色模板管理
+from tars.gateway.role_template import init_role_template_manager
+init_role_template_manager(db)
+init_roles_api(user_store)
+
+# v4.0.0: 初始化记忆权限引擎
+from tars.security.memory_permission import init_memory_permission  # noqa: E402
+init_memory_permission(db)
+
+# v4.0.0: 初始化 Prompt Cache 和 Rate Limiter
+from tars.cache.prompt_cache import init_prompt_cache  # noqa: E402
+init_prompt_cache(ttl_seconds=300)
+
+from tars.concurrency.limiter import init_rate_limiter  # noqa: E402
+
+# Load concurrency settings from YAML config
+_conc_config = {}
+_conc_path = Path(__file__).parent.parent / "config" / "concurrency.yaml"
+if _conc_path.exists():
+    try:
+        with open(_conc_path) as f:
+            _conc_config = yaml.safe_load(f) or {}
+    except Exception:
+        pass
+
+_ollama_cfg = _conc_config.get("providers", {}).get("ollama", {})
+init_rate_limiter(
+    max_concurrent=_ollama_cfg.get("max_concurrent", 2),
+    per_user_max=_ollama_cfg.get("per_user_max", 1),
+    queue_timeout=_ollama_cfg.get("queue_timeout", 60),
+)
 
 init_invoke_api(
     agent=agent,
@@ -265,12 +340,18 @@ class SkillResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     username: str
     email: str
+    password: str
     role: Optional[str] = "user"
 
 class UserUpdateRequest(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+
+
+class AuthLoginRequest(BaseModel):
+    identifier: str
+    password: str
 
 class UserResponse(BaseModel):
     id: str
@@ -283,6 +364,66 @@ class UserResponse(BaseModel):
 class UserListResponse(BaseModel):
     users: List[UserResponse]
     total: int
+
+
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_EMAIL = "admin@tars.local"
+DEFAULT_ADMIN_PASSWORD = "Admin123!"
+
+
+def _serialize_user(user) -> Dict[str, Any]:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role.value,
+        "created_at": user.created_at.isoformat(),
+        "last_login": user.last_login.isoformat() if user.last_login else None,
+    }
+
+
+def _get_user_by_identifier(identifier: str):
+    user = user_store.get_user_by_email(identifier)
+    if user:
+        return user
+
+    for candidate in user_store.get_all_users():
+        if candidate.username == identifier:
+            return candidate
+    return None
+
+
+def _validate_initial_password(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="初始密码至少 8 位")
+
+
+def ensure_default_admin():
+    """在系统没有管理员时创建默认管理员，保证首次可登录。"""
+    users = user_store.get_all_users()
+    if any(user.role == UserRole.ADMIN for user in users):
+        return None
+
+    email_conflict = any(user.email == DEFAULT_ADMIN_EMAIL for user in users)
+    username_conflict = any(user.username == DEFAULT_ADMIN_USERNAME for user in users)
+    if email_conflict or username_conflict:
+        print(
+            "[Startup] 跳过默认管理员创建：默认用户名或邮箱已被非管理员占用 "
+            f"(username={DEFAULT_ADMIN_USERNAME}, email={DEFAULT_ADMIN_EMAIL})"
+        )
+        return None
+
+    created_user = user_store.create_user(
+        DEFAULT_ADMIN_USERNAME,
+        DEFAULT_ADMIN_EMAIL,
+        UserRole.ADMIN,
+        password=DEFAULT_ADMIN_PASSWORD,
+    )
+    print(
+        "[Startup] 已创建默认管理员账号 "
+        f"(username={DEFAULT_ADMIN_USERNAME}, email={DEFAULT_ADMIN_EMAIL})"
+    )
+    return created_user
 
 @app.get("/api/users", response_model=UserListResponse)
 async def get_users():
@@ -313,13 +454,26 @@ async def get_current_user(api_key: Optional[str] = None):
     if not user:
         raise HTTPException(status_code=401, detail="无效的 API Key")
     
+    return _serialize_user(user)
+
+
+@app.post("/api/auth/login", response_model=SkillResponse)
+async def login(request: AuthLoginRequest):
+    """使用账号密码登录并返回现有 API Key"""
+    identifier = request.identifier.strip()
+    user = _get_user_by_identifier(identifier)
+    if not user or not user_store.verify_password(user.id, request.password):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    user_store.update_last_login(user.id)
+    fresh_user = user_store.get_user_by_id(user.id)
     return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "role": user.role.value,
-        "created_at": user.created_at.isoformat(),
-        "last_login": user.last_login.isoformat() if user.last_login else None
+        "success": True,
+        "message": "登录成功",
+        "data": {
+            "api_key": fresh_user.api_key,
+            "user": _serialize_user(fresh_user),
+        },
     }
 
 @app.post("/api/users", response_model=SkillResponse)
@@ -333,8 +487,15 @@ async def create_user(request: UserCreateRequest):
     existing_user = user_store.get_user_by_email(request.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="该邮箱已被注册")
-    
-    user = user_store.create_user(request.username, request.email, role)
+
+    _validate_initial_password(request.password)
+
+    user = user_store.create_user(
+        request.username,
+        request.email,
+        role,
+        password=request.password,
+    )
     return {
         "success": True,
         "message": "用户创建成功",
@@ -829,7 +990,15 @@ async def delete_cronjob(job_id: str):
 # ================ WebSocket 路由 ================
 
 async def _serve_websocket(websocket: WebSocket, tenant_id: str):
-    # 生成唯一的连接 ID
+    # v4.0.1: 验证 WebSocket 连接的 tenant 归属
+    api_key = websocket.query_params.get("api_key", "")
+    if api_key and user_store:
+        ws_user = user_store.get_user_by_api_key(api_key)
+        if ws_user and tenant_id != "default":
+            if getattr(ws_user, "role", "user") != "admin" and ws_user.id != tenant_id:
+                await websocket.close(code=4003, reason="无权访问该租户空间")
+                return
+
     import uuid
     connection_id = str(uuid.uuid4())
     tenant_context = tenant_context_cache.get_or_create(
@@ -863,6 +1032,31 @@ async def websocket_endpoint_default(websocket: WebSocket):
 async def websocket_endpoint_tenant(websocket: WebSocket, tenant_id: str):
     await _serve_websocket(websocket, tenant_id)
 
+# ================ v4.0.0: Provider + Module API ================
+
+@app.get("/api/providers")
+async def list_providers():
+    """List registered provider types."""
+    from tars.models import provider_registry
+    return provider_registry.list_providers()
+
+@app.get("/api/modules")
+async def list_modules():
+    """List module status (core + optional)."""
+    return module_registry.list_modules()
+
+@app.post("/api/providers/{name}/test")
+async def test_provider(name: str):
+    """Quick test: check if a configured provider is reachable."""
+    try:
+        instance = providers.get(name)
+        if not instance:
+            return {"status": "error", "message": f"Provider {name} not configured"}
+        ok, msg = await instance.test_connection()
+        return {"status": "ok" if ok else "error", "message": msg}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # ================ 启动 ================
 
 def init_skills():
@@ -874,6 +1068,7 @@ async def startup_event():
     """启动事件"""
     await init_scheduler()
     await cron_runtime.load_from_db()
+    ensure_default_admin()
     # 遗忘清理
     stats = memory_manager.cleanup()
     if stats["decayed"] or stats["deleted"]:
@@ -906,6 +1101,9 @@ async def shutdown_event():
     await shutdown_scheduler()
     from tars.tools.builtin.meeting_recognizer import shutdown_whisper_pool
     shutdown_whisper_pool()
+    # v4.0.0: close shared connection pool
+    from tars.models.connection_pool import close_connection_pool
+    await close_connection_pool()
 
 if __name__ == "__main__":
     # 初始化技能系统

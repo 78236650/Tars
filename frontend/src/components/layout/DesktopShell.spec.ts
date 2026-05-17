@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { nextTick } from 'vue'
 import DesktopShell from './DesktopShell.vue'
 import { useSettingsStore } from '@/stores/settings'
@@ -172,6 +172,58 @@ describe('DesktopShell', () => {
     })
 
     expect(wrapper.text()).toContain('qwen3:8b')
+  })
+
+  it('renders the refined B-style model entry as a minimal single-line control', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/',
+          component: { template: '<div />' },
+          meta: {
+            desktopTitle: '聊天',
+            desktopSubtitle: '对话',
+          },
+        },
+        {
+          path: '/models',
+          component: { template: '<div />' },
+        },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+    const pushSpy = vi.spyOn(router, 'push')
+
+    const settingsStore = useSettingsStore()
+    settingsStore.currentModel = 'qwen3.6-flash-2026-04-16'
+    settingsStore.currentProvider = 'ollama'
+
+    const wrapper = mount(DesktopShell, {
+      global: {
+        plugins: [router],
+        stubs: {
+          LeftPanel: { template: '<div />' },
+          RightPanel: { template: '<div />' },
+          ReminderBellButton: { template: '<button />' },
+          ReminderNotificationsDrawer: { template: '<div />' },
+        },
+      },
+      slots: { default: '<div />' },
+    })
+
+    const modelEntry = wrapper.find('[data-test="desktop-model-entry"]')
+    expect(modelEntry.exists()).toBe(true)
+    expect(modelEntry.text()).toContain('qwen3.6-flash-2026-04-16')
+    expect(modelEntry.find('[data-test="desktop-model-status"]').exists()).toBe(true)
+    expect(modelEntry.find('[data-test="desktop-model-tag"]').text()).toBe('模型')
+    expect(modelEntry.find('[data-test="desktop-model-label"]').exists()).toBe(false)
+    expect(modelEntry.find('[data-test="desktop-model-chevron"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').filter((button) => button.text().trim() === '模型')).toHaveLength(0)
+
+    await modelEntry.trigger('click')
+    expect(pushSpy).toHaveBeenCalledWith('/models')
   })
 
   it('shows connection status indicator', async () => {

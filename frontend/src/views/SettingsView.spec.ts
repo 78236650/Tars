@@ -40,6 +40,7 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('子代理')
     expect(wrapper.text()).toContain('用户管理')
     expect(wrapper.text()).toContain('人格设置')
+    expect(wrapper.text()).toContain('EN')
 
     useI18n().setLocale('en')
     await nextTick()
@@ -49,5 +50,6 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('Sub-Agents')
     expect(wrapper.text()).toContain('Users')
     expect(wrapper.text()).toContain('Personality')
+    expect(wrapper.text()).toContain('ZH')
   })
 })

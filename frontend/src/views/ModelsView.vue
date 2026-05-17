@@ -5,6 +5,7 @@ import axios from 'axios'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
+import { providersApi, type ProviderInfo } from '@/api'
 import type { Endpoint } from '@/types'
 
 const router = useRouter()
@@ -18,6 +19,10 @@ const manualModelsText = ref('')
 const addForm = ref({ name: '', base_url: '', api_key: '' })
 const editForm = ref({ name: '', base_url: '', api_key: '', modelsText: '' })
 const busyEndpointId = ref<string | null>(null)
+
+// v4.0.0: Provider 列表
+const providers = ref<ProviderInfo[]>([])
+const providerStatuses = ref<Record<string, string>>({})
 
 function formatApiError(e: unknown): string {
   if (axios.isAxiosError(e)) {
@@ -39,8 +44,14 @@ function formatApiError(e: unknown): string {
   return String(e)
 }
 
-onMounted(() => {
+onMounted(async () => {
   settingsStore.loadModels()
+  try {
+    const provs = await providersApi.list()
+    providers.value = provs
+  } catch {
+    console.error('Failed to load providers')
+  }
 })
 
 const ollamaConnected = computed(() => settingsStore.ollamaStatus === 'connected')
@@ -65,6 +76,25 @@ const isCurrentRemote = (ep: Endpoint, model: string) =>
   settingsStore.currentProvider === 'openai_compatible' &&
   settingsStore.currentEndpointId === ep.id &&
   settingsStore.currentModel === model
+
+// v4.0.0: Provider 测试连接
+const testProvider = async (name: string) => {
+  if (providerStatuses.value[name] === 'testing') return
+  providerStatuses.value[name] = 'testing'
+  try {
+    const res = await providersApi.test(name)
+    providerStatuses.value[name] = res.status === 'ok' ? 'ok' : 'error'
+  } catch {
+    providerStatuses.value[name] = 'error'
+  }
+}
+
+const getProviderStatus = (name: string): string => {
+  if (providerStatuses.value[name]) return providerStatuses.value[name]
+  // 对于 ollama，使用 settingsStore 的状态
+  if (name === 'ollama') return ollamaConnected.value ? 'ok' : 'disconnected'
+  return 'unknown'
+}
 
 const openEdit = (ep: Endpoint) => {
   editingEndpoint.value = ep
@@ -132,132 +162,199 @@ const removeEndpoint = async (id: string) => {
   }
 }
 
-const fetchModels = async (id: string) => {
-  busyEndpointId.value = id
-  try {
-    const r = await settingsStore.fetchEndpointModels(id)
-    if (r.success) {
-      if (r.models?.length) {
-        toast.success(t('modelsPage.fetchOk', { count: r.models.length }))
-      } else {
-        toast.success(t('modelsPage.fetchEmpty'))
-      }
-      void settingsStore.loadModels().catch(() => {})
-    }
-  } catch (e) {
-    toast.error(formatApiError(e))
-  } finally {
-    busyEndpointId.value = null
-  }
-}
-
-const testConn = async (id: string) => {
-  busyEndpointId.value = id
-  try {
-    const r = await settingsStore.testEndpoint(id)
-    toast[r.success ? 'success' : 'error'](r.message)
-  } catch (e) {
-    toast.error(formatApiError(e))
-  } finally {
-    busyEndpointId.value = null
-  }
+const openManual = (ep: Endpoint) => {
+  manualTargetId.value = manualTargetId.value === ep.id ? null : ep.id
+  manualModelsText.value = (ep.models || []).join('\n')
 }
 
 const applyManualModels = async (ep: Endpoint) => {
   const models = manualModelsText.value
-    .split(/[\n,]/)
+    .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
-  if (!models.length) {
-    toast.error(t('modelsPage.manualEmpty'))
-    return
-  }
   try {
     await settingsStore.updateEndpoint(ep.id, { models })
     toast.success(t('common.success'))
-    manualModelsText.value = ''
-    void settingsStore.loadModels().catch(() => {})
+    manualTargetId.value = null
   } catch (e) {
     toast.error(formatApiError(e))
   }
 }
 
 const manualTargetId = ref<string | null>(null)
-const openManual = (ep: Endpoint) => {
-  manualTargetId.value = manualTargetId.value === ep.id ? null : ep.id
-  manualModelsText.value = ''
+
+const fetchModels = async (id: string) => {
+  busyEndpointId.value = id
+  try {
+    const res = await settingsStore.fetchEndpointModels(id)
+    toast.success(`${t('modelsPage.fetchModels')}: found ${(res.models || []).length} models`)
+  } catch (e) {
+    toast.error(formatApiError(e))
+  } finally {
+    busyEndpointId.value = null
+  }
 }
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col overflow-hidden">
-      <header class="flex shrink-0 items-center justify-between border-b border-amber-100/10 px-6 py-4">
-        <div class="flex min-w-0 items-center gap-3">
-          <div
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-amber-700 shadow-[0_10px_30px_rgba(217,119,6,0.35)]"
-          >
-            <span class="text-lg font-bold text-stone-950">T</span>
-          </div>
-          <div class="min-w-0">
-            <h1 class="truncate text-lg font-semibold text-stone-100">{{ t('models.title') }}</h1>
-            <p class="truncate text-sm text-stone-400">{{ t('models.subtitle') }}</p>
-          </div>
-        </div>
-      </header>
+    <main class="flex-1 min-h-0 overflow-hidden">
+      <div class="h-full overflow-y-auto px-6 py-6 space-y-6">
 
-      <div class="flex-1 overflow-y-auto">
-        <div class="mx-auto max-w-5xl space-y-8 p-6 lg:p-8">
-          <!-- Ollama -->
-          <section class="rounded-[28px] border border-amber-100/10 bg-[#171411]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.28)]">
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 class="text-base font-semibold text-stone-100">{{ t('modelsPage.ollamaBlock') }}</h2>
-              <div class="flex items-center gap-2 text-sm text-stone-300">
+        <!-- Header -->
+        <header class="rounded-3xl border border-amber-100/10 bg-[#1a1511]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.3)]">
+          <div class="flex flex-col gap-2">
+            <h1 class="text-2xl font-semibold text-stone-100">{{ t('desktop.models.title') }}</h1>
+            <p class="text-sm text-stone-400">{{ t('desktop.models.subtitle') }}</p>
+          </div>
+        </header>
+
+        <!-- v4.0.0: Provider 分组卡片 -->
+        <section v-if="providers.length > 0" class="space-y-4">
+          <h2 class="text-sm font-medium text-stone-400 uppercase tracking-[0.08em]">{{ t('modelsPage.providers') }}</h2>
+          <div v-for="prov in providers" :key="prov.name" class="rounded-2xl border border-amber-100/10 bg-white/[0.02] p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-medium text-stone-300">
+                {{ prov.display_name || prov.name }}
                 <span
-                  class="h-2 w-2 shrink-0 rounded-full"
-                  :class="ollamaConnected ? 'bg-emerald-400' : 'bg-red-500'"
-                />
-                <code class="break-all rounded-xl border border-amber-100/10 bg-black/25 px-2.5 py-1.5 text-xs text-stone-400">{{
-                  settingsStore.ollamaBaseUrl
-                }}</code>
+                  class="ml-2 text-xs px-2 py-0.5 rounded-full"
+                  :class="getProviderStatus(prov.name) === 'ok'
+                    ? 'bg-green-500/10 text-green-300'
+                    : getProviderStatus(prov.name) === 'disconnected'
+                    ? 'bg-stone-500/10 text-stone-400'
+                    : 'bg-rose-500/10 text-rose-300'"
+                >
+                  {{ getProviderStatus(prov.name) === 'ok' ? t('modelsPage.online') : t('modelsPage.offline') }}
+                </span>
+              </h3>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="testProvider(prov.name)"
+                  :disabled="providerStatuses[prov.name] === 'testing'"
+                  class="text-xs text-amber-400 hover:text-amber-300 transition disabled:opacity-50"
+                >
+                  {{ providerStatuses[prov.name] === 'testing' ? '...' : t('modelsPage.testConnection') }}
+                </button>
               </div>
             </div>
-            <p class="mb-4 text-xs text-stone-500">{{ t('modelsPage.ollamaEnvHint') }}</p>
-            <div v-if="settingsStore.ollamaModels.length" class="flex flex-wrap gap-2">
-              <button
-                v-for="m in settingsStore.ollamaModels"
-                :key="m"
-                type="button"
-                @click="selectOllama(m)"
-                class="rounded-full border px-3 py-1.5 text-sm transition"
-                :class="
-                  isCurrentOllama(m)
-                    ? 'border-amber-300/60 bg-amber-500 text-stone-950 shadow-[0_12px_30px_rgba(217,119,6,0.25)]'
-                    : 'border-amber-100/10 bg-white/[0.04] text-stone-200 hover:border-amber-300/25 hover:bg-amber-500/10'
-                "
-              >
-                {{ m }}
-              </button>
-            </div>
-            <p v-else class="text-sm text-stone-500">{{ t('modelsPage.ollamaEmpty') }}</p>
-          </section>
 
-          <!-- OpenAI-compatible -->
-          <section class="rounded-[28px] border border-amber-100/10 bg-[#171411]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.28)]">
-            <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-              <h2 class="text-base font-semibold text-stone-100">{{ t('modelsPage.remoteBlock') }}</h2>
-              <button
-                type="button"
-                @click="showAddEndpoint = !showAddEndpoint"
-                class="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-amber-400"
-              >
-                + {{ t('modelsPage.addEndpoint') }}
-              </button>
-            </div>
+            <!-- Ollama Provider → 显示本地模型 -->
+            <template v-if="prov.name === 'ollama'">
+              <div v-if="ollamaConnected && settingsStore.ollamaModels.length > 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                <button
+                  v-for="mod in settingsStore.ollamaModels"
+                  :key="mod"
+                  @click="selectOllama(mod)"
+                  class="rounded-xl px-3 py-2 text-sm text-left font-medium border transition"
+                  :class="isCurrentOllama(mod)
+                    ? 'bg-amber-500 text-stone-950 shadow-[0_12px_30px_rgba(217,119,6,0.25)]'
+                    : 'border-amber-100/10 bg-white/[0.04] text-stone-200 hover:border-amber-300/25 hover:bg-amber-500/10'"
+                >
+                  {{ mod }}
+                </button>
+              </div>
+              <div v-else class="text-xs text-stone-500">
+                {{ ollamaConnected ? t('modelsPage.noModelsHint') : t('modelsPage.ollamaDisconnected') }}
+              </div>
+            </template>
 
-            <div
-              v-if="showAddEndpoint"
-              class="mb-6 space-y-3 rounded-[24px] border border-amber-100/10 bg-black/20 p-4"
-            >
+            <!-- OpenAI Compatible Provider → 显示端点模型 -->
+            <template v-else-if="prov.name === 'openai_compat'">
+              <div v-if="settingsStore.endpoints.length > 0" class="space-y-3">
+                <div v-for="ep in settingsStore.endpoints" :key="ep.id" class="rounded-xl border border-amber-100/10 bg-[#14110f]/60 p-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-medium text-stone-300">
+                      {{ ep.name }}
+                      <span v-if="!ep.enabled" class="ml-2 text-xs text-stone-500">({{ t('common.disabled') }})</span>
+                    </h4>
+                    <div class="flex items-center gap-2">
+                      <button
+                        @click="fetchModels(ep.id)"
+                        :disabled="busyEndpointId === ep.id"
+                        class="text-xs text-amber-400 hover:text-amber-300 transition disabled:opacity-50"
+                      >
+                        {{ busyEndpointId === ep.id ? '...' : t('modelsPage.fetchModels') }}
+                      </button>
+                      <button @click="openEdit(ep)" class="text-xs text-stone-400 hover:text-stone-200 transition">
+                        {{ t('common.edit') }}
+                      </button>
+                      <button @click="removeEndpoint(ep.id)" class="text-xs text-stone-400 hover:text-rose-400 transition">
+                        {{ t('common.delete') }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 模型列表 -->
+                  <div v-if="ep.models && ep.models.length > 0" class="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+                    <button
+                      v-for="mod in ep.models"
+                      :key="ep.id + '-' + mod"
+                      :disabled="!ep.enabled"
+                      @click="selectRemote(ep, mod)"
+                      class="rounded-xl px-3 py-1.5 text-xs font-medium border transition text-left"
+                      :class="isCurrentRemote(ep, mod)
+                        ? 'bg-amber-500 text-stone-950'
+                        : 'border-amber-100/10 bg-white/[0.04] text-stone-200 hover:border-amber-300/25 hover:bg-amber-500/10 disabled:opacity-40 disabled:cursor-not-allowed'"
+                    >
+                      {{ mod }}
+                    </button>
+                  </div>
+                  <div v-else class="space-y-2">
+                    <p class="text-xs text-stone-500">{{ t('modelsPage.noModelsHint') }}</p>
+                    <button
+                      type="button"
+                      @click="openManual(ep)"
+                      class="text-xs text-amber-300 transition hover:text-amber-200"
+                    >
+                      {{ t('modelsPage.manualModels') }}
+                    </button>
+                    <div v-if="manualTargetId === ep.id" class="flex flex-col gap-2 mt-2">
+                      <textarea
+                        v-model="manualModelsText"
+                        rows="3"
+                        :placeholder="t('modelsPage.manualPlaceholder')"
+                        class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 font-mono text-xs text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        @click="applyManualModels(ep)"
+                        class="self-end rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-medium text-stone-950 transition hover:bg-amber-400"
+                      >
+                        {{ t('common.save') }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="text-xs text-stone-500">{{ t('modelsPage.noEndpoints') }}</div>
+            </template>
+
+            <!-- 其他 Provider → 简洁显示 -->
+            <template v-else>
+              <p class="text-xs text-stone-500">{{ prov.auth_type === 'none' ? t('modelsPage.noAuthNeeded') : t('modelsPage.configuredInSettings') }}</p>
+            </template>
+          </div>
+        </section>
+
+        <!-- 添加端点按钮 -->
+        <section class="flex items-center gap-3">
+          <button
+            @click="showAddEndpoint = true"
+            class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
+          >
+            + {{ t('modelsPage.createEndpoint') }}
+          </button>
+        </section>
+
+        <!-- 添加端点弹窗 -->
+        <div
+          v-if="showAddEndpoint"
+          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          @click.self="showAddEndpoint = false"
+        >
+          <div class="w-full max-w-md rounded-[28px] border border-amber-100/10 bg-[#171411] p-5 shadow-[0_30px_100px_rgba(8,7,5,0.65)]">
+            <h3 class="mb-4 text-lg font-semibold text-stone-100">{{ t('modelsPage.createEndpoint') }}</h3>
+            <div class="space-y-3">
               <input
                 v-model="addForm.name"
                 type="text"
@@ -267,7 +364,7 @@ const openManual = (ep: Endpoint) => {
               <input
                 v-model="addForm.base_url"
                 type="url"
-                :placeholder="t('modelsPage.baseUrlPh')"
+                :placeholder="t('modelsPage.urlPh')"
                 class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
               <input
@@ -277,120 +374,23 @@ const openManual = (ep: Endpoint) => {
                 :placeholder="t('modelsPage.apiKeyPh')"
                 class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
-              <div class="flex justify-end gap-2">
-                <button
-                  type="button"
-                  @click="showAddEndpoint = false"
-                  class="px-3 py-2 text-sm text-stone-400 transition hover:text-stone-100"
-                >
-                  {{ t('common.cancel') }}
-                </button>
-                <button
-                  type="button"
-                  @click="createEndpoint"
-                  class="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-amber-400"
-                >
-                  {{ t('common.create') }}
-                </button>
-              </div>
             </div>
-
-            <div v-if="!settingsStore.endpoints.length" class="py-8 text-center text-sm text-stone-500">
-              {{ t('modelsPage.noEndpoints') }}
-            </div>
-
-            <div v-else class="space-y-4">
-              <div
-                v-for="ep in settingsStore.endpoints"
-                :key="ep.id"
-                class="rounded-[24px] border border-amber-100/10 bg-white/[0.03] p-4"
+            <div class="mt-5 flex justify-end gap-2">
+              <button type="button" @click="showAddEndpoint = false" class="px-3 py-2 text-sm text-stone-400 transition hover:text-stone-100">
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                type="button"
+                @click="createEndpoint"
+                class="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-medium text-stone-950 transition hover:bg-amber-400"
               >
-                <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <h3 class="truncate font-medium text-stone-100">{{ ep.name }}</h3>
-                    <p class="mt-0.5 truncate text-xs text-stone-500" :title="ep.base_url">{{ ep.base_url }}</p>
-                  </div>
-                  <div class="flex shrink-0 flex-wrap gap-2">
-                    <button
-                      type="button"
-                      :disabled="busyEndpointId === ep.id"
-                      @click="fetchModels(ep.id)"
-                      class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10 disabled:opacity-50"
-                    >
-                      {{ t('modelsPage.fetchModels') }}
-                    </button>
-                    <button
-                      type="button"
-                      :disabled="busyEndpointId === ep.id"
-                      @click="testConn(ep.id)"
-                      class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10 disabled:opacity-50"
-                    >
-                      {{ t('common.test') }}
-                    </button>
-                    <button
-                      type="button"
-                      @click="openEdit(ep)"
-                      class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
-                    >
-                      {{ t('common.edit') }}
-                    </button>
-                    <button
-                      type="button"
-                      @click="removeEndpoint(ep.id)"
-                      class="px-2 py-1 text-xs rounded bg-red-900/40 hover:bg-red-800/60 text-red-200"
-                    >
-                      {{ t('common.delete') }}
-                    </button>
-                  </div>
-                </div>
-
-                <div v-if="ep.models?.length" class="flex flex-wrap gap-2">
-                  <button
-                    v-for="mod in ep.models"
-                    :key="mod"
-                    type="button"
-                    :disabled="!ep.enabled"
-                    @click="selectRemote(ep, mod)"
-                    class="rounded-full border px-3 py-1.5 text-sm transition disabled:opacity-40"
-                    :class="
-                      isCurrentRemote(ep, mod)
-                        ? 'border-amber-300/60 bg-amber-500 text-stone-950 shadow-[0_12px_30px_rgba(217,119,6,0.25)]'
-                        : 'border-amber-100/10 bg-white/[0.04] text-stone-200 hover:border-amber-300/25 hover:bg-amber-500/10'
-                    "
-                  >
-                    {{ mod }}
-                  </button>
-                </div>
-                <div v-else class="space-y-2">
-                  <p class="text-xs text-stone-500">{{ t('modelsPage.noModelsHint') }}</p>
-                  <button
-                    type="button"
-                    @click="openManual(ep)"
-                    class="text-xs text-amber-300 transition hover:text-amber-200"
-                  >
-                    {{ t('modelsPage.manualModels') }}
-                  </button>
-                  <div v-if="manualTargetId === ep.id" class="flex flex-col gap-2 mt-2">
-                    <textarea
-                      v-model="manualModelsText"
-                      rows="3"
-                      :placeholder="t('modelsPage.manualPlaceholder')"
-                      class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 font-mono text-xs text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      @click="applyManualModels(ep)"
-                      class="self-end rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-medium text-stone-950 transition hover:bg-amber-400"
-                    >
-                      {{ t('common.save') }}
-                    </button>
-                  </div>
-                </div>
-              </div>
+                {{ t('common.create') }}
+              </button>
             </div>
-          </section>
+          </div>
         </div>
       </div>
+    </main>
 
     <!-- Edit modal -->
     <div

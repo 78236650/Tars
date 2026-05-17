@@ -58,6 +58,7 @@ class Memory:
     memory_type: str = "episodic"
     event_time: Optional[datetime] = None
     entity_refs: Optional[List[str]] = None
+    scope: str = "private"
 
 
 @dataclass
@@ -115,6 +116,19 @@ class Transcription:
     error_message: Optional[str] = None
     approved_at: Optional[str] = None
     knowledge_doc_id: Optional[str] = None
+
+
+@dataclass
+class AuditLog:
+    id: str
+    tenant_id: str = "default"
+    user_id: str = "default"
+    action: str = ""
+    resource_type: str = ""
+    resource_id: str = ""
+    detail: str = ""
+    client_ip: str = ""
+    created_at: datetime = None
 
 
 class Database:
@@ -197,6 +211,13 @@ class Database:
         # 数据库迁移：为旧表添加 embedding 列
         try:
             cursor.execute("ALTER TABLE memories ADD COLUMN embedding BLOB")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+
+        # v4.0.0: 记忆 scope 字段 (private | shared)
+        try:
+            cursor.execute("ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'private'")
             conn.commit()
         except sqlite3.OperationalError:
             pass  # 列已存在
@@ -640,6 +661,25 @@ class Database:
         except Exception:
             pass
 
+        # v4.0.0: 审计日志表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                user_id TEXT NOT NULL DEFAULT 'default',
+                action TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT DEFAULT '',
+                detail TEXT DEFAULT '',
+                client_ip TEXT DEFAULT '',
+                created_at TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_logs(tenant_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)")
+
         conn.commit()
 
     def create_session(
@@ -809,6 +849,7 @@ class Database:
         event_time: Optional[str] = None,
         entity_refs: Optional[List[str]] = None,
         tenant_id: str = "default",
+        scope: str = "private",
     ) -> Memory:
         memory_id = str(uuid.uuid4())
         now = get_local_now()
@@ -826,9 +867,9 @@ class Database:
             (
                 id, tenant_id, content, category, importance, created_at, updated_at,
                 last_accessed, embedding, access_count, source, event_time, entity_refs,
-                pinned, compressed_from, memory_type
+                pinned, compressed_from, memory_type, scope
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 memory_id,
@@ -847,6 +888,7 @@ class Database:
                 1 if pinned else 0,
                 compressed_from_json,
                 memory_type,
+                scope,
             ),
         )
 
@@ -871,6 +913,7 @@ class Database:
             memory_type=memory_type,
             event_time=_parse_db_datetime(event_time_value),
             entity_refs=entity_refs,
+            scope=scope,
         )
 
     def _memory_from_row(self, row) -> Memory:
@@ -893,6 +936,7 @@ class Database:
             memory_type=row[11] or "episodic",
             event_time=_parse_db_datetime(row[13]) if row[13] else None,
             entity_refs=entity_refs,
+            scope=row[14] if len(row) > 14 and row[14] else "private",
         )
 
     def get_memory(self, memory_id: str, tenant_id: str = "default") -> Optional[Memory]:
@@ -902,7 +946,7 @@ class Database:
             """
             SELECT
                 id, tenant_id, content, category, importance, created_at, updated_at,
-                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope
             FROM memories
             WHERE id = ? AND tenant_id = ?
             """,
@@ -939,7 +983,7 @@ class Database:
                     SELECT m.id, m.tenant_id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
                     FROM memories m
                     JOIN memories_fts fts ON m.rowid = fts.rowid
-                    WHERE memories_fts MATCH ? AND m.tenant_id = ?
+                    WHERE memories_fts MATCH ? AND (m.tenant_id = ? OR m.scope = 'shared')
                     ORDER BY rank
                     LIMIT ?
                 """, (safe_query, tenant_id, limit))
@@ -958,7 +1002,7 @@ class Database:
             try:
                 cursor.execute("""
                     SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
-                    FROM memories WHERE tenant_id = ? AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
+                    FROM memories WHERE (tenant_id = ? OR scope = 'shared') AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
                 """, (tenant_id, f"%{query}%", limit))
                 for row in cursor.fetchall():
                     memories.append(Memory(
@@ -975,7 +1019,7 @@ class Database:
             try:
                 cursor.execute("""
                     SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
-                    FROM memories WHERE tenant_id = ? AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
+                    FROM memories WHERE (tenant_id = ? OR scope = 'shared') AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
                 """, (tenant_id, f"%{query}%", limit))
                 for row in cursor.fetchall():
                     memories.append(Memory(
@@ -998,7 +1042,7 @@ class Database:
         cursor.execute("""
             SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
             FROM memories
-            WHERE tenant_id = ? AND category = ?
+            WHERE (tenant_id = ? OR scope = 'shared') AND category = ?
             ORDER BY importance DESC, updated_at DESC
             LIMIT ?
         """, (tenant_id, category, limit))
@@ -1942,6 +1986,133 @@ class Database:
                 pass
 
         return True
+
+    # ── v4.0.0: scope 管理 ────────────────────────────────────
+
+    def set_memory_scope(self, memory_id: str, scope: str, tenant_id: str = "default") -> bool:
+        """Set scope for a memory (private/shared). Admin only."""
+        if scope not in ("private", "shared"):
+            return False
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE memories SET scope = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
+            (scope, get_local_now(), memory_id, tenant_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def find_memory_any_tenant(self, memory_id: str) -> Optional[Memory]:
+        """Find a memory by ID without tenant filter (for admin/cross-tenant lookup)."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope
+            FROM memories WHERE id = ?
+            """,
+            (memory_id,),
+        )
+        row = cursor.fetchone()
+        return self._memory_from_row(row)
+
+    def get_memory_scope(self, memory_id: str, tenant_id: str = "default") -> str:
+        """Return the scope of a memory."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT scope FROM memories WHERE id = ? AND tenant_id = ?",
+            (memory_id, tenant_id),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else "private"
+
+    # ── v4.0.0: 审计日志方法 ──────────────────────────────────────
+
+    def add_audit_log(
+        self,
+        action: str,
+        resource_type: str,
+        tenant_id: str = "default",
+        user_id: str = "default",
+        resource_id: str = "",
+        detail: str = "",
+        client_ip: str = "",
+    ) -> Optional[AuditLog]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        log_id = str(uuid.uuid4())
+        now = get_local_now()
+        cursor.execute(
+            "INSERT INTO audit_logs (id, tenant_id, user_id, action, resource_type, resource_id, detail, client_ip, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (log_id, tenant_id, user_id, action, resource_type, resource_id, detail, client_ip, now),
+        )
+        conn.commit()
+        return AuditLog(
+            id=log_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            detail=detail,
+            client_ip=client_ip,
+            created_at=now,
+        )
+
+    def list_audit_logs(
+        self,
+        tenant_id: str = "default",
+        user_id: str = "",
+        action: str = "",
+        resource_type: str = "",
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[AuditLog], int]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        conditions = ["tenant_id = ?"]
+        params = [tenant_id]
+        if user_id:
+            conditions.append("user_id = ?")
+            params.append(user_id)
+        if action:
+            conditions.append("action = ?")
+            params.append(action)
+        if resource_type:
+            conditions.append("resource_type = ?")
+            params.append(resource_type)
+
+        where = " WHERE " + " AND ".join(conditions)
+
+        # total
+        cursor.execute(f"SELECT COUNT(*) FROM audit_logs{where}", params)
+        total = cursor.fetchone()[0]
+
+        # page
+        offset = (page - 1) * page_size
+        cursor.execute(
+            f"SELECT id, tenant_id, user_id, action, resource_type, resource_id, detail, client_ip, created_at "
+            f"FROM audit_logs{where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params + [page_size, offset],
+        )
+        return [self._row_to_audit_log(row) for row in cursor.fetchall()], total
+
+    def _row_to_audit_log(self, row) -> AuditLog:
+        return AuditLog(
+            id=row[0],
+            tenant_id=row[1],
+            user_id=row[2],
+            action=row[3],
+            resource_type=row[4],
+            resource_id=row[5],
+            detail=row[6],
+            client_ip=row[7],
+            created_at=_parse_db_datetime(row[8]),
+        )
 
     def _row_to_transcription(self, row) -> Transcription:
         return Transcription(

@@ -27,12 +27,14 @@ class WorkspaceManager:
     def _ensure_workspace(self):
         """确保工作区存在"""
         self.workspace_path.mkdir(parents=True, exist_ok=True)
-        
+
         if not self.soul_path.exists():
             self._create_default_soul()
-        
+
         if not self.user_path.exists():
             self._create_default_user()
+
+        self.soul = self.load_soul()
 
     def _create_default_soul(self):
         """创建默认 SOUL.md"""

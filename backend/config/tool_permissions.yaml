@@ -1,0 +1,48 @@
+# TARS v4.0.0: 工具权限映射（基于角色）
+# 角色: admin, user, guest
+# admin 默认允许所有工具
+
+roles:
+  admin:
+    allowed_tools: "*"
+    workspace_restriction: false
+
+  user:
+    allowed_tools:
+      - weather
+      - web_search
+      - web_fetch
+      - file           # 只读
+      - file_list      # 只读
+      - file_write     # 限制在 workspace 内
+      - python_exec
+      - memory
+      - command
+      - knowledge_search
+      - meeting_recognizer
+    denied_tools:
+      - shell          # 需要 admin 单独授权
+      - process
+      - network
+      - cronjob
+    workspace_restriction: true
+
+  guest:
+    allowed_tools:
+      - weather
+      - web_search
+    denied_tools:
+      - file
+      - file_list
+      - file_write
+      - shell
+      - python_exec
+      - process
+      - network
+      - command
+      - memory
+      - cronjob
+      - web_fetch
+      - knowledge_search
+      - meeting_recognizer
+    workspace_restriction: true

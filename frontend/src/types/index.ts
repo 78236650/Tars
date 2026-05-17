@@ -3,6 +3,7 @@ export interface User {
   username: string
   email: string
   role: string
+  role_template_id?: string
   api_key?: string
   created_at: string
   last_login?: string
@@ -17,6 +18,11 @@ export interface UserResponse {
 export interface UserListResponse {
   users: User[]
   total: number
+}
+
+export interface LoginResult {
+  api_key: string
+  user: User
 }
 
 export interface SoulParameters {

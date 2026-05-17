@@ -1,6 +1,9 @@
 # TARS Database - User Store
 # 用户数据持久化存储模块
 
+import hashlib
+import hmac
+import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
@@ -18,10 +21,14 @@ class User:
     api_key: str
     created_at: datetime
     last_login: Optional[datetime] = None
+    role_template_id: Optional[str] = None
 
 
 class UserStore:
     """用户数据存储管理器"""
+
+    _PASSWORD_ALGORITHM = "pbkdf2_sha256"
+    _PASSWORD_ITERATIONS = 100000
     
     def __init__(self, db):
         self.db = db
@@ -41,9 +48,18 @@ class UserStore:
                 role TEXT NOT NULL,
                 api_key TEXT UNIQUE,
                 created_at TIMESTAMP NOT NULL,
-                last_login TIMESTAMP
+                last_login TIMESTAMP,
+                password_hash TEXT
             )
         """)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN role_template_id TEXT DEFAULT 'standard'")
+        except Exception:
+            pass
         
         # user_sessions 表 - 用户与会话关联
         cursor.execute("""
@@ -89,8 +105,49 @@ class UserStore:
     def _generate_api_key(self) -> str:
         """生成唯一的 API Key"""
         return str(uuid.uuid4()).replace("-", "")
+
+    def _hash_password(self, password: str) -> str:
+        salt = secrets.token_hex(16)
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            self._PASSWORD_ITERATIONS,
+        )
+        return (
+            f"{self._PASSWORD_ALGORITHM}$"
+            f"{self._PASSWORD_ITERATIONS}$"
+            f"{salt}$"
+            f"{digest.hex()}"
+        )
+
+    def _verify_password_hash(self, password: str, password_hash: str) -> bool:
+        if not password_hash:
+            return False
+
+        try:
+            algorithm, iterations, salt, expected_digest = password_hash.split("$", 3)
+        except ValueError:
+            return False
+
+        if algorithm != self._PASSWORD_ALGORITHM:
+            return False
+
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            int(iterations),
+        )
+        return hmac.compare_digest(digest.hex(), expected_digest)
     
-    def create_user(self, username: str, email: str, role: UserRole = UserRole.USER) -> User:
+    def create_user(
+        self,
+        username: str,
+        email: str,
+        role: UserRole = UserRole.USER,
+        password: Optional[str] = None,
+    ) -> User:
         """
         创建新用户
         
@@ -98,6 +155,7 @@ class UserStore:
             username: 用户名
             email: 邮箱
             role: 用户角色（默认为普通用户）
+            password: 用户密码（可选）
         
         Returns:
             User: 创建的用户对象
@@ -105,12 +163,17 @@ class UserStore:
         user_id = str(uuid.uuid4())
         api_key = self._generate_api_key()
         now = datetime.now(timezone(timedelta(hours=8)))
+        password_hash = self._hash_password(password) if password is not None else None
         
         conn = self.db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, username, email, role.value, api_key, now, None)
+            """
+            INSERT INTO users
+            (id, username, email, role, api_key, created_at, last_login, password_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, username, email, role.value, api_key, now, None, password_hash)
         )
         conn.commit()
         
@@ -122,6 +185,18 @@ class UserStore:
             api_key=api_key,
             created_at=now
         )
+
+    def verify_password(self, user_id: str, password: str) -> bool:
+        """校验用户密码是否正确"""
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            return False
+
+        return self._verify_password_hash(password, row[0])
     
     def get_user_by_id(self, user_id: str) -> Optional[User]:
         """通过用户ID获取用户"""
@@ -138,10 +213,11 @@ class UserStore:
                 role=UserRole(row[3]),
                 api_key=row[4],
                 created_at=datetime.fromisoformat(row[5]),
-                last_login=datetime.fromisoformat(row[6]) if row[6] else None
+                last_login=datetime.fromisoformat(row[6]) if row[6] else None,
+                role_template_id=row[8] if len(row) > 8 else None,
             )
         return None
-    
+
     def get_user_by_api_key(self, api_key: str) -> Optional[User]:
         """通过 API Key 获取用户"""
         conn = self.db._get_conn()
@@ -157,10 +233,11 @@ class UserStore:
                 role=UserRole(row[3]),
                 api_key=row[4],
                 created_at=datetime.fromisoformat(row[5]),
-                last_login=datetime.fromisoformat(row[6]) if row[6] else None
+                last_login=datetime.fromisoformat(row[6]) if row[6] else None,
+                role_template_id=row[8] if len(row) > 8 else None,
             )
         return None
-    
+
     def get_user_by_email(self, email: str) -> Optional[User]:
         """通过邮箱获取用户"""
         conn = self.db._get_conn()
@@ -176,10 +253,11 @@ class UserStore:
                 role=UserRole(row[3]),
                 api_key=row[4],
                 created_at=datetime.fromisoformat(row[5]),
-                last_login=datetime.fromisoformat(row[6]) if row[6] else None
+                last_login=datetime.fromisoformat(row[6]) if row[6] else None,
+                role_template_id=row[8] if len(row) > 8 else None,
             )
         return None
-    
+
     def get_all_users(self) -> List[User]:
         """获取所有用户列表"""
         conn = self.db._get_conn()
@@ -225,6 +303,9 @@ class UserStore:
         if 'role' in kwargs:
             updates.append("role = ?")
             params.append(kwargs['role'].value)
+        if 'role_template_id' in kwargs:
+            updates.append("role_template_id = ?")
+            params.append(kwargs['role_template_id'])
         
         if not updates:
             return False

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { personalityApi, subagentApi, modelApi } from '@/api'
+import { personalityApi, subagentApi, modelApi, modulesApi, rolesApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import type { Personality, SubAgent, Endpoint, ModelsOverviewResponse } from '@/types'
 
 const STORAGE_KEY = 'tars_settings'
@@ -26,6 +27,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const endpoints = ref<Endpoint[]>([])
   const currentModel = ref('')
   const currentProvider = ref<'ollama' | 'openai_compatible'>('ollama')
+  const enabledModules = ref<string[]>([])
+  // v4.0.2: 角色模板允许的模块（null = 未加载或无限制）
+  const roleAllowedModules = ref<string[] | null>(null)
   const currentEndpointId = ref<string | null>(null)
 
   const _loadFromStorage = (): StoredSettings => {
@@ -234,8 +238,36 @@ export const useSettingsStore = defineStore('settings', () => {
     return modelApi.testEndpoint(id)
   }
 
+  const loadModules = async () => {
+    try {
+      const modules = await modulesApi.list()
+      enabledModules.value = modules
+        .filter((m) => m.enabled)
+        .map((m) => m.name)
+    } catch {
+      // 加载失败时默认启用所有模块
+      enabledModules.value = []
+    }
+  }
+
+  // v4.0.2: 加载当前用户角色模板的模块权限
+  const loadRoleModules = async () => {
+    const authStore = useAuthStore()
+    if (!authStore.isAuthenticated || !authStore.user?.id) {
+      roleAllowedModules.value = null
+      return
+    }
+    try {
+      const perms = await rolesApi.getUserPermissions(authStore.user.id)
+      roleAllowedModules.value = perms.allowed_modules
+    } catch {
+      // 加载失败时不限制
+      roleAllowedModules.value = null
+    }
+  }
+
   const initSettings = async () => {
-    await Promise.all([loadPersonality(), loadSubagents(), loadModels()])
+    await Promise.all([loadPersonality(), loadSubagents(), loadModels(), loadModules(), loadRoleModules()])
   }
 
   return {
@@ -249,6 +281,10 @@ export const useSettingsStore = defineStore('settings', () => {
     currentModel,
     currentProvider,
     currentEndpointId,
+    enabledModules,
+    roleAllowedModules,
+    loadModules,
+    loadRoleModules,
     loadPersonality,
     updatePersonality,
     loadSubagents,
