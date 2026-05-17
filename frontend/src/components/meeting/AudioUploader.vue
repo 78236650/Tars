@@ -17,8 +17,8 @@
       />
       <div class="drop-content">
         <span class="icon">📁</span>
-        <p class="title">{{ isUploading ? '上传中...' : '点击或拖拽音频文件到此处' }}</p>
-        <p class="hint">支持 MP3, WAV, M4A, MP4, WEBM, OGG, FLAC, WMA（最大 50MB）</p>
+        <p class="title">{{ isUploading ? t('meeting.uploading') : t('meeting.uploadPrompt') }}</p>
+        <p class="hint">{{ t('meeting.uploadHint') }}</p>
         <div v-if="isUploading" class="progress-bar">
           <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
         </div>
@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { meetingApi } from '@/api'
+import { useI18n } from '@/i18n'
 
 const emit = defineEmits<{ uploaded: [transcription: any] }>()
 
@@ -39,6 +40,7 @@ const isDragging = ref(false)
 const isUploading = ref(false)
 const uploadProgress = ref(0)
 const uploadError = ref('')
+const { t } = useI18n()
 
 const SUPPORTED_FORMATS = ['.mp3', '.wav', '.m4a', '.mp4', '.webm', '.ogg', '.flac', '.wma']
 
@@ -49,8 +51,8 @@ function triggerFileInput() {
 
 function validateFile(file: File): string | null {
   const ext = '.' + file.name.split('.').pop()?.toLowerCase()
-  if (!SUPPORTED_FORMATS.includes(ext)) return `不支持的格式 '${ext}'`
-  if (file.size > 50 * 1024 * 1024) return '文件过大（>50MB）'
+  if (!SUPPORTED_FORMATS.includes(ext)) return t('meeting.unsupportedFormat', { ext })
+  if (file.size > 50 * 1024 * 1024) return t('meeting.fileTooLarge')
   return null
 }
 
@@ -76,9 +78,9 @@ async function uploadFile(file: File) {
     const result = await meetingApi.upload(file)
     uploadProgress.value = 100
     if (result.success) emit('uploaded', result.transcription)
-    else uploadError.value = '上传失败'
+    else uploadError.value = t('meeting.uploadFailed')
   } catch (e: any) {
-    uploadError.value = e.response?.data?.detail || e.message || '上传失败'
+    uploadError.value = e.response?.data?.detail || e.message || t('meeting.uploadFailed')
   } finally {
     setTimeout(() => { isUploading.value = false; uploadProgress.value = 0 }, 500)
   }

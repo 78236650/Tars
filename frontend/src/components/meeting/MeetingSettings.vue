@@ -1,24 +1,22 @@
 <template>
   <div class="meeting-settings">
-    <button class="settings-toggle" @click="showPanel = !showPanel">
-      ⚙️ 设置
-    </button>
+    <button class="settings-toggle" @click="showPanel = !showPanel">⚙️ {{ t('meeting.settingsToggle') }}</button>
 
     <div v-if="showPanel" class="settings-panel">
       <!-- 模型选择 -->
       <div class="setting-section">
-        <h4>摘要模型</h4>
+        <h4>{{ t('meeting.summaryModel') }}</h4>
         <div class="model-selector">
           <select v-model="selectedModel" @change="switchModel">
             <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
           </select>
-          <span class="model-hint">独立于主 Agent，不影响聊天模型</span>
+          <span class="model-hint">{{ t('meeting.modelHint') }}</span>
         </div>
       </div>
 
       <!-- 提示词模板 -->
       <div class="setting-section">
-        <h4>摘要模板</h4>
+        <h4>{{ t('meeting.summaryTemplate') }}</h4>
         <div class="template-list">
           <label
             v-for="tpl in templates"
@@ -29,15 +27,15 @@
             <input type="radio" :value="tpl.id" v-model="activeTemplate" @change="selectTemplate(tpl.id)" />
             <div>
               <span class="tpl-name">{{ tpl.name }}</span>
-              <span v-if="tpl.is_default" class="default-badge">默认</span>
+              <span v-if="tpl.is_default" class="default-badge">{{ t('meeting.templateDefault') }}</span>
               <p class="tpl-desc">{{ tpl.description }}</p>
             </div>
           </label>
           <label class="template-option" :class="{ active: activeTemplate === 'custom' }">
             <input type="radio" value="custom" v-model="activeTemplate" @change="selectTemplate('custom')" />
             <div>
-              <span class="tpl-name">自定义</span>
-              <p class="tpl-desc">使用自定义提示词</p>
+              <span class="tpl-name">{{ t('meeting.templateCustomName') }}</span>
+              <p class="tpl-desc">{{ t('meeting.templateCustomDesc') }}</p>
             </div>
           </label>
         </div>
@@ -45,22 +43,22 @@
 
       <!-- 自定义提示词编辑 -->
       <div v-if="activeTemplate === 'custom'" class="setting-section">
-        <h4>自定义提示词</h4>
+        <h4>{{ t('meeting.customPrompt') }}</h4>
         <textarea
           v-model="customPrompt"
           class="prompt-editor"
           rows="8"
-          placeholder="输入自定义摘要提示词..."
+          :placeholder="t('meeting.customPromptPlaceholder')"
         ></textarea>
         <div class="prompt-actions">
-          <button class="btn-save" @click="saveCustomPrompt">保存</button>
-          <button class="btn-reset" @click="resetPrompt">恢复默认</button>
+          <button class="btn-save" @click="saveCustomPrompt">{{ t('common.save') }}</button>
+          <button class="btn-reset" @click="resetPrompt">{{ t('common.reset') }}</button>
         </div>
       </div>
 
       <!-- 预览当前模板 -->
       <div v-if="activeTemplate !== 'custom' && currentPromptPreview" class="setting-section">
-        <h4>模板预览</h4>
+        <h4>{{ t('meeting.templatePreview') }}</h4>
         <pre class="prompt-preview">{{ currentPromptPreview }}</pre>
       </div>
     </div>
@@ -70,6 +68,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import { useI18n } from '@/i18n'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
@@ -79,6 +78,7 @@ const activeTemplate = ref('general')
 const customPrompt = ref('')
 const availableModels = ref<string[]>([])
 const selectedModel = ref('')
+const { t } = useI18n()
 
 const currentPromptPreview = computed(() => {
   const tpl = templates.value.find(t => t.id === activeTemplate.value)
@@ -118,7 +118,7 @@ async function switchModel() {
   try {
     await api.put('/meeting/settings/model', { provider: 'ollama', model: selectedModel.value })
   } catch (e: any) {
-    alert(e.response?.data?.detail || '模型切换失败')
+    alert(e.response?.data?.detail || t('meeting.modelSwitchFailed'))
   }
 }
 
@@ -134,7 +134,7 @@ async function saveCustomPrompt() {
     await api.put('/meeting/settings/prompt', { prompt: customPrompt.value })
     activeTemplate.value = 'custom'
   } catch (e: any) {
-    alert('保存失败')
+    alert(t('meeting.saveFailed'))
   }
 }
 

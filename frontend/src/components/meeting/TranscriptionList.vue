@@ -1,9 +1,9 @@
 <template>
   <div class="transcription-list">
-    <h3 class="list-title">转录历史</h3>
+    <h3 class="list-title">{{ t('meeting.historyTitle') }}</h3>
     <div v-if="transcriptions.length === 0" class="empty-state">
-      <p>暂无转录记录</p>
-      <p class="hint">上传音频文件开始转录</p>
+      <p>{{ t('meeting.emptyTitle') }}</p>
+      <p class="hint">{{ t('meeting.emptyHint') }}</p>
     </div>
     <div v-else class="list-items">
       <div
@@ -14,7 +14,7 @@
         @click="selectItem(item)"
       >
         <div class="item-header">
-          <span class="file-name">{{ item.file_name || '未知文件' }}</span>
+          <span class="file-name">{{ item.file_name || t('meeting.unknownFile') }}</span>
           <span class="status-badge" :class="item.status">
             {{ statusText(item.status) }}
           </span>
@@ -27,7 +27,7 @@
         <button
           class="delete-btn"
           @click.stop="deleteItem(item.id)"
-          title="删除"
+          :title="t('common.delete')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import type { Transcription } from '@/types'
+import { useI18n } from '@/i18n'
 
 interface Props {
   transcriptions: Transcription[]
@@ -51,24 +52,19 @@ const emit = defineEmits<{
   select: [item: Transcription]
   delete: [id: string]
 }>()
+const { t, locale } = useI18n()
 
 function selectItem(item: Transcription) {
   emit('select', item)
 }
 
 function deleteItem(id: string) {
-  if (!confirm('确定要删除这条转录记录吗？')) return
+  if (!confirm(t('meeting.deleteConfirm'))) return
   emit('delete', id)
 }
 
 function statusText(status: string): string {
-  const map: Record<string, string> = {
-    pending: '待处理',
-    processing: '处理中',
-    completed: '已完成',
-    failed: '失败',
-  }
-  return map[status] || status
+  return t(`meeting.status.${status}`)
 }
 
 function formatSize(bytes: number | null): string {
@@ -82,13 +78,13 @@ function formatDuration(seconds: number | null): string {
   if (!seconds) return ''
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
-  return `${m}分${s}秒`
+  return locale.value === 'zh' ? `${m}分${s}秒` : `${m}m ${s}s`
 }
 
 function formatDate(iso: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return d.toLocaleDateString('zh-CN', {
+  return d.toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

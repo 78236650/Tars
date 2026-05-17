@@ -1,12 +1,12 @@
 <template>
   <div class="knowledge-manager">
     <div class="header">
-      <h2 class="title">知识库管理</h2>
-      <button class="btn-primary" @click="showCreateModal = true">+ 新建知识库</button>
+      <h2 class="title">{{ t('knowledge.title') }}</h2>
+      <button class="btn-primary" @click="showCreateModal = true">+ {{ t('knowledge.create') }}</button>
     </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="collections.length === 0" class="empty">暂无知识库，请点击上方按钮创建</div>
+    <div v-if="loading" class="loading">{{ t('knowledge.loading') }}</div>
+    <div v-else-if="collections.length === 0" class="empty">{{ t('knowledge.empty') }}</div>
     <div v-else class="collections-list">
       <div v-for="coll in collections" :key="coll.id" class="collection-card">
         <div class="card-header">
@@ -15,8 +15,8 @@
             <span v-if="coll.description" class="coll-desc">{{ coll.description }}</span>
           </div>
           <div class="coll-actions">
-            <button class="btn-icon" title="搜索测试" @click="openSearch(coll)">🔍</button>
-            <button class="btn-icon btn-danger" title="删除" @click="deleteCollection(coll.id)">🗑️</button>
+            <button class="btn-icon" :title="t('knowledge.searchTest')" @click="openSearch(coll)">🔍</button>
+            <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteCollection(coll.id)">🗑️</button>
           </div>
         </div>
         <div class="card-body">
@@ -27,7 +27,7 @@
           <div class="documents-list">
             <div v-for="doc in getDocuments(coll.id)" :key="doc.id" class="doc-item">
               <span class="doc-name">📄 {{ doc.file_name }}</span>
-              <span class="doc-meta">{{ doc.chunk_count }} chunks · {{ doc.status }}</span>
+              <span class="doc-meta">{{ t('knowledge.documentMeta', { count: doc.chunk_count, status: doc.status }) }}</span>
               <button class="btn-icon-small" @click="deleteDocument(coll.id, doc.id)">✕</button>
             </div>
           </div>
@@ -37,27 +37,27 @@
 
     <AppSurfaceDialog
       :open="showCreateModal"
-      title="新建知识库"
-      description="创建新的知识集合并补充基础描述"
+      :title="t('knowledge.createTitle')"
+      :description="t('knowledge.createDescription')"
       size="md"
       @close="showCreateModal = false"
     >
       <div class="space-y-4">
         <div class="form-group">
-          <label>名称</label>
-          <input v-model="createForm.name" type="text" placeholder="如：产品文档" />
+          <label>{{ t('knowledge.nameLabel') }}</label>
+          <input v-model="createForm.name" type="text" :placeholder="t('knowledge.namePlaceholder')" />
         </div>
         <div class="form-group">
-          <label>描述</label>
-          <input v-model="createForm.description" type="text" placeholder="知识库用途描述" />
+          <label>{{ t('knowledge.descriptionLabel') }}</label>
+          <input v-model="createForm.description" type="text" :placeholder="t('knowledge.descriptionPlaceholder')" />
         </div>
       </div>
 
       <template #footer>
         <div class="surface-actions">
-          <button class="btn-secondary" @click="showCreateModal = false">取消</button>
+          <button class="btn-secondary" @click="showCreateModal = false">{{ t('common.cancel') }}</button>
           <button class="btn-primary" :disabled="creating" @click="createCollection">
-            {{ creating ? '创建中...' : '创建' }}
+            {{ creating ? t('knowledge.creating') : t('common.create') }}
           </button>
         </div>
       </template>
@@ -65,26 +65,26 @@
 
     <AppSurfaceDrawer
       :open="showSearchModal"
-      :title="`搜索测试 - ${activeCollection?.name ?? ''}`"
-      description="验证知识库检索效果并快速查看命中片段"
+      :title="t('knowledge.searchTitle', { name: activeCollection?.name ?? '' })"
+      :description="t('knowledge.searchDescription')"
       side="right"
       @close="showSearchModal = false"
     >
       <div class="space-y-4">
         <div class="search-box">
-          <input v-model="searchQuery" type="text" placeholder="输入搜索内容..." @keyup.enter="performSearch" />
+          <input v-model="searchQuery" type="text" :placeholder="t('knowledge.searchPlaceholder')" @keyup.enter="performSearch" />
           <button class="btn-primary" :disabled="searching" @click="performSearch">
-            {{ searching ? '搜索中...' : '搜索' }}
+            {{ searching ? t('knowledge.searching') : t('common.search') }}
           </button>
         </div>
         <div v-if="searchResults.length > 0" class="search-results">
           <div v-for="(r, idx) in searchResults" :key="idx" class="result-item">
-            <div class="result-source">📄 {{ r.source.file_name }} (chunk {{ r.source.chunk_index + 1 }}/{{ r.source.chunk_total }})</div>
+            <div class="result-source">{{ t('knowledge.resultSource', { fileName: r.source.file_name, index: r.source.chunk_index + 1, total: r.source.chunk_total }) }}</div>
             <div class="result-text">{{ r.text }}</div>
-            <div class="result-score">相似度: {{ (r.score * 100).toFixed(1) }}%</div>
+            <div class="result-score">{{ t('knowledge.similarity', { score: (r.score * 100).toFixed(1) }) }}</div>
           </div>
         </div>
-        <div v-else-if="searched" class="search-empty">未找到相关内容</div>
+        <div v-else-if="searched" class="search-empty">{{ t('knowledge.searchEmpty') }}</div>
       </div>
     </AppSurfaceDrawer>
   </div>
@@ -94,6 +94,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { knowledgeApi } from '@/api'
 import type { KnowledgeCollection, KnowledgeDocument } from '@/types'
+import { useI18n } from '@/i18n'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import DocumentUploader from './DocumentUploader.vue'
@@ -109,6 +110,7 @@ const searchQuery = ref('')
 const searching = ref(false)
 const searched = ref(false)
 const searchResults = ref<any[]>([])
+const { t } = useI18n()
 
 const createForm = ref({ name: '', description: '' })
 
@@ -121,7 +123,7 @@ async function loadCollections() {
       loadDocuments(coll.id)
     }
   } catch (e) {
-    alert('加载知识库失败')
+    alert(t('knowledge.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -142,7 +144,7 @@ function getDocuments(collectionId: string): KnowledgeDocument[] {
 
 async function createCollection() {
   if (!createForm.value.name) {
-    alert('请填写名称')
+    alert(t('knowledge.fillName'))
     return
   }
   creating.value = true
@@ -152,29 +154,29 @@ async function createCollection() {
     createForm.value = { name: '', description: '' }
     await loadCollections()
   } catch (e: any) {
-    alert('创建失败: ' + (e.response?.data?.detail || e.message))
+    alert(t('knowledge.createFailed', { message: e.response?.data?.detail || e.message }))
   } finally {
     creating.value = false
   }
 }
 
 async function deleteCollection(id: string) {
-  if (!confirm('确定删除此知识库？其中的所有文档也将被删除。')) return
+  if (!confirm(t('knowledge.deleteCollectionConfirm'))) return
   try {
     await knowledgeApi.deleteCollection(id)
     await loadCollections()
   } catch (e) {
-    alert('删除失败')
+    alert(t('knowledge.deleteFailed'))
   }
 }
 
 async function deleteDocument(collectionId: string, docId: string) {
-  if (!confirm('确定删除此文档？')) return
+  if (!confirm(t('knowledge.deleteDocumentConfirm'))) return
   try {
     await knowledgeApi.deleteDocument(collectionId, docId)
     await loadDocuments(collectionId)
   } catch (e) {
-    alert('删除失败')
+    alert(t('knowledge.deleteFailed'))
   }
 }
 
@@ -199,7 +201,7 @@ async function performSearch() {
     searchResults.value = res.results
     searched.value = true
   } catch (e) {
-    alert('搜索失败')
+    alert(t('knowledge.searchFailed'))
   } finally {
     searching.value = false
   }

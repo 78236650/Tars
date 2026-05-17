@@ -1,12 +1,12 @@
 <template>
   <div class="datasource-settings">
     <div class="header">
-      <h2 class="title">数据源管理</h2>
-      <button class="btn-primary" @click="showCreateModal = true">+ 新建数据源</button>
+      <h2 class="title">{{ t('bi.datasourceTitle') }}</h2>
+      <button class="btn-primary" @click="showCreateModal = true">+ {{ t('bi.createDatasource') }}</button>
     </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="datasources.length === 0" class="empty">暂无数据源，请点击上方按钮创建</div>
+    <div v-if="loading" class="loading">{{ t('bi.loading') }}</div>
+    <div v-else-if="datasources.length === 0" class="empty">{{ t('bi.empty') }}</div>
     <div v-else class="datasource-list">
       <div v-for="ds in datasources" :key="ds.id" class="datasource-card">
         <div class="card-header">
@@ -15,18 +15,18 @@
             <span class="ds-type">{{ ds.db_type }}</span>
           </div>
           <div class="ds-actions">
-            <button class="btn-icon" title="测试连接" @click="testConnection(ds.id)">🔌</button>
-            <button class="btn-icon" title="刷新 Schema" @click="refreshSchema(ds.id)">🔄</button>
-            <button class="btn-icon" title="编辑标注" @click="editAnnotations(ds)">📝</button>
-            <button class="btn-icon btn-danger" title="删除" @click="deleteDataSource(ds.id)">🗑️</button>
+            <button class="btn-icon" :title="t('bi.testConnection')" @click="testConnection(ds.id)">🔌</button>
+            <button class="btn-icon" :title="t('bi.refreshSchema')" @click="refreshSchema(ds.id)">🔄</button>
+            <button class="btn-icon" :title="t('bi.editAnnotations')" @click="editAnnotations(ds)">📝</button>
+            <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteDataSource(ds.id)">🗑️</button>
           </div>
         </div>
         <div class="card-body">
           <div class="schema-summary">
-            表数量: {{ Object.keys(ds.schema_snapshot.tables || {}).length }}
+            {{ t('bi.tableCount', { count: Object.keys(ds.schema_snapshot.tables || {}).length }) }}
           </div>
           <div v-if="ds.schema_annotations && Object.keys(ds.schema_annotations).length > 0" class="annotations-summary">
-            已标注: {{ Object.keys(ds.schema_annotations).length }} 张表
+            {{ t('bi.annotatedCount', { count: Object.keys(ds.schema_annotations).length }) }}
           </div>
         </div>
       </div>
@@ -34,18 +34,18 @@
 
     <AppSurfaceDialog
       :open="showCreateModal"
-      title="新建数据源"
-      description="统一配置 BI 数据源连接信息"
+      :title="t('bi.createTitle')"
+      :description="t('bi.createDescription')"
       size="lg"
       @close="showCreateModal = false"
     >
       <div class="space-y-4">
         <div class="form-group">
-          <label>名称</label>
-          <input v-model="createForm.name" type="text" placeholder="如：生产库-订单" />
+          <label>{{ t('bi.nameLabel') }}</label>
+          <input v-model="createForm.name" type="text" :placeholder="t('bi.namePlaceholder')" />
         </div>
         <div class="form-group">
-          <label>数据库类型</label>
+          <label>{{ t('bi.dbTypeLabel') }}</label>
           <select v-model="createForm.db_type">
             <option value="mysql">MySQL</option>
             <option value="postgresql">PostgreSQL</option>
@@ -56,8 +56,8 @@
           </select>
         </div>
         <div class="form-group">
-          <label>连接 URL</label>
-          <input v-model="createForm.connection_url" type="text" placeholder="mysql+pymysql://user:pass@host:3306/db" />
+          <label>{{ t('bi.connectionUrlLabel') }}</label>
+          <input v-model="createForm.connection_url" type="text" :placeholder="t('bi.connectionPlaceholder')" />
           <div class="hint">
             MySQL: mysql+pymysql://user:pass@host:3306/db<br>
             PostgreSQL: postgresql+psycopg2://user:pass@host:5432/db<br>
@@ -68,9 +68,9 @@
 
       <template #footer>
         <div class="surface-actions">
-          <button class="btn-secondary" @click="showCreateModal = false">取消</button>
+          <button class="btn-secondary" @click="showCreateModal = false">{{ t('common.cancel') }}</button>
           <button class="btn-primary" :disabled="creating" @click="createDataSource">
-            {{ creating ? '创建中...' : '创建' }}
+            {{ creating ? t('bi.creating') : t('common.create') }}
           </button>
         </div>
       </template>
@@ -78,8 +78,8 @@
 
     <AppSurfaceDrawer
       :open="showAnnotatorModal"
-      :title="selectedDataSource ? `Schema 标注 - ${selectedDataSource.name}` : 'Schema 标注'"
-      description="编辑表结构业务语义、字段说明与关系信息"
+      :title="selectedDataSource ? t('schemaAnnotator.title', { name: selectedDataSource.name }) : t('schemaAnnotator.titleFallback')"
+      :description="t('schemaAnnotator.description')"
       side="right"
       @close="showAnnotatorModal = false"
     >
@@ -98,6 +98,7 @@
 import { ref, onMounted } from 'vue'
 import { biApi } from '@/api'
 import type { DataSource } from '@/types'
+import { useI18n } from '@/i18n'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import SchemaAnnotator from './SchemaAnnotator.vue'
@@ -108,6 +109,7 @@ const showCreateModal = ref(false)
 const showAnnotatorModal = ref(false)
 const creating = ref(false)
 const selectedDataSource = ref<DataSource | null>(null)
+const { t } = useI18n()
 
 const createForm = ref({
   name: '',
@@ -121,7 +123,7 @@ async function loadDataSources() {
     const res = await biApi.listDataSources()
     datasources.value = res.datasources
   } catch (e) {
-    alert('加载数据源失败')
+    alert(t('bi.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -129,7 +131,7 @@ async function loadDataSources() {
 
 async function createDataSource() {
   if (!createForm.value.name || !createForm.value.connection_url) {
-    alert('请填写完整信息')
+    alert(t('bi.fillRequired'))
     return
   }
   creating.value = true
@@ -139,38 +141,38 @@ async function createDataSource() {
     createForm.value = { name: '', db_type: 'mysql', connection_url: '' }
     await loadDataSources()
   } catch (e: any) {
-    alert('创建失败: ' + (e.response?.data?.detail || e.message))
+    alert(t('bi.createFailed', { message: e.response?.data?.detail || e.message }))
   } finally {
     creating.value = false
   }
 }
 
 async function deleteDataSource(id: string) {
-  if (!confirm('确定删除此数据源？')) return
+  if (!confirm(t('bi.deleteConfirm'))) return
   try {
     await biApi.deleteDataSource(id)
     await loadDataSources()
   } catch (e) {
-    alert('删除失败')
+    alert(t('bi.deleteFailed'))
   }
 }
 
 async function testConnection(id: string) {
   try {
     const res = await biApi.testConnection(id)
-    alert(res.success ? '连接成功' : '连接失败: ' + res.message)
+    alert(res.success ? t('bi.connectionSuccess') : t('bi.connectionFailed', { message: res.message }))
   } catch (e) {
-    alert('测试失败')
+    alert(t('bi.testFailed'))
   }
 }
 
 async function refreshSchema(id: string) {
   try {
     await biApi.refreshSchema(id)
-    alert('Schema 刷新成功')
+    alert(t('bi.schemaRefreshSuccess'))
     await loadDataSources()
   } catch (e) {
-    alert('刷新失败')
+    alert(t('bi.refreshFailed'))
   }
 }
 
