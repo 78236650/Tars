@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LeftPanel from '@/components/layout/LeftPanel.vue'
 import RightPanel from '@/components/layout/RightPanel.vue'
 import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
 import ReminderNotificationsDrawer from '@/components/chat/ReminderNotificationsDrawer.vue'
+import { useI18n } from '@/i18n'
 import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useSettingsStore } from '@/stores/settings'
@@ -16,9 +17,31 @@ const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const wsStore = useWsStore()
 const reminderStore = useReminderNotificationsStore()
+const { t } = useI18n()
 
-const desktopTitle = computed(() => String(route.meta.desktopTitle || 'TARS Workspace'))
-const desktopSubtitle = computed(() => String(route.meta.desktopSubtitle || '统一桌面工作台'))
+const desktopTitle = computed(() => {
+  if (route.meta.desktopTitleKey) {
+    return t(String(route.meta.desktopTitleKey))
+  }
+
+  if (route.meta.desktopTitle) {
+    return String(route.meta.desktopTitle)
+  }
+
+  return t('desktop.default.title')
+})
+
+const desktopSubtitle = computed(() => {
+  if (route.meta.desktopSubtitleKey) {
+    return t(String(route.meta.desktopSubtitleKey))
+  }
+
+  if (route.meta.desktopSubtitle) {
+    return String(route.meta.desktopSubtitle)
+  }
+
+  return t('desktop.default.subtitle')
+})
 
 const openReminderNotifications = async () => {
   try {
@@ -53,15 +76,15 @@ const closeReminderNotifications = () => {
 
           <div class="flex items-center gap-3">
             <div class="hidden rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 lg:block">
-              <div class="text-[11px] uppercase tracking-[0.22em] text-stone-500">Model</div>
-              <div class="mt-1 text-sm font-medium text-stone-100">{{ settingsStore.currentModel || '未选择模型' }}</div>
+              <div class="text-[11px] uppercase tracking-[0.22em] text-stone-500">{{ t('common.model') }}</div>
+              <div class="mt-1 text-sm font-medium text-stone-100">{{ settingsStore.currentModel || t('common.notSelected') }}</div>
             </div>
             <button
               type="button"
               class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 text-sm text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
               @click="router.push('/models')"
             >
-              模型
+              {{ t('nav.models') }}
             </button>
             <ReminderBellButton :unread-count="reminderStore.unreadCount" @open="openReminderNotifications" />
           </div>

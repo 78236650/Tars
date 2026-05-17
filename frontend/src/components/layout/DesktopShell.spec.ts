@@ -2,14 +2,56 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { describe, expect, it, beforeEach } from 'vitest'
+import { nextTick } from 'vue'
 import DesktopShell from './DesktopShell.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWsStore } from '@/stores/wsStore'
+import { useI18n } from '@/i18n'
 
 describe('DesktopShell', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    useI18n().setLocale('zh')
+  })
+
+  it('renders desktop title and subtitle from i18n route keys', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/models',
+          component: { template: '<div />' },
+          meta: {
+            desktopTitleKey: 'desktop.models.title',
+            desktopSubtitleKey: 'desktop.models.subtitle',
+          },
+        },
+      ],
+    })
+    await router.push('/models')
+    await router.isReady()
+
+    const wrapper = mount(DesktopShell, {
+      global: {
+        plugins: [router],
+        stubs: {
+          LeftPanel: { template: '<div />' },
+          RightPanel: { template: '<div />' },
+          ReminderBellButton: { template: '<button />' },
+          ReminderNotificationsDrawer: { template: '<div />' },
+        },
+      },
+      slots: { default: '<div />' },
+    })
+
+    expect(wrapper.text()).toContain('模型中心')
+
+    const { setLocale } = useI18n()
+    setLocale('en')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Model Center')
   })
 
   it('renders route metadata in header', async () => {
