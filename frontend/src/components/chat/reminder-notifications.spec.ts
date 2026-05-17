@@ -1,16 +1,19 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import ReminderBellButton from './ReminderBellButton.vue'
 import ReminderNotificationsDrawer from './ReminderNotificationsDrawer.vue'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
+import { useI18n } from '@/i18n'
 
 describe('reminder notifications UI', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    useI18n().setLocale('zh')
   })
 
-  it('renders bell badge and emits open event', async () => {
+  it('renders bell badge labels in both locales and emits open event', async () => {
     const wrapper = mount(ReminderBellButton, {
       props: {
         unreadCount: 3,
@@ -18,11 +21,20 @@ describe('reminder notifications UI', () => {
     })
 
     expect(wrapper.text()).toContain('3')
+    expect(wrapper.attributes('title')).toBe('提醒通知')
+    expect(wrapper.attributes('aria-label')).toBe('打开提醒通知')
+
+    const { setLocale } = useI18n()
+    setLocale('en')
+    await nextTick()
+
+    expect(wrapper.attributes('title')).toBe('Reminder notifications')
+    expect(wrapper.attributes('aria-label')).toBe('Open reminder notifications')
     await wrapper.trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
   })
 
-  it('renders notification detail summary and broadcast fallback text', () => {
+  it('renders notification detail summary and broadcast fallback text in both locales', async () => {
     const store = useReminderNotificationsStore()
     store.items = [
       {
@@ -63,5 +75,15 @@ describe('reminder notifications UI', () => {
     expect(wrapper.text()).toContain('摘要日志')
     expect(wrapper.text()).toContain('调度命中')
     expect(wrapper.text()).toContain('通过 broadcast 投递通知')
+
+    const { setLocale } = useI18n()
+    setLocale('en')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Reminder Notifications')
+    expect(wrapper.text()).toContain('Unread 1')
+    expect(wrapper.text()).toContain('Broadcast fallback path')
+    expect(wrapper.text()).toContain('Summary Log')
+    expect(wrapper.text()).toContain('Scheduler matched')
   })
 })

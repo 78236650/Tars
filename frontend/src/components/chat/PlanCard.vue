@@ -1,8 +1,13 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+import { useI18n } from '@/i18n'
+
+const props = defineProps<{
   plan: { goal: string }
   steps: { id: number; description: string; tool: string; status: string; output?: string; error?: string }[]
 }>()
+const { t } = useI18n()
+const completedCount = computed(() => props.steps.filter((s) => s.status === 'completed').length)
 
 const statusIcon = (status: string) => {
   switch (status) {
@@ -29,7 +34,7 @@ const statusColor = (status: string) => {
   <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 mb-3">
     <div class="flex items-center gap-2 mb-3 pb-2 border-b border-slate-700">
       <span class="text-lg">📋</span>
-      <h4 class="font-semibold text-white">执行计划: {{ plan.goal }}</h4>
+      <h4 class="font-semibold text-white">{{ t('planCard.title', { goal: plan.goal }) }}</h4>
     </div>
 
     <div class="space-y-2">
@@ -55,7 +60,7 @@ const statusColor = (status: string) => {
     </div>
 
     <div class="mt-3 pt-2 border-t border-slate-700 text-xs text-slate-500">
-      进度: {{ steps.filter(s => s.status === 'completed').length }}/{{ steps.length }} 完成
+      {{ t('planCard.progress', { completed: completedCount, total: steps.length }) }}
     </div>
   </div>
 </template>

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { memoryApi } from '@/api'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import type { LongtermMemoryGroup, MemoryItem, MemoryMergeResponse } from '@/types'
+import { useI18n } from '@/i18n'
 import MemoryCard from './MemoryCard.vue'
 import MergePreviewDialog from './MergePreviewDialog.vue'
 
@@ -22,6 +23,7 @@ const editingContent = ref('')
 const mergeDialogOpen = ref(false)
 const mergeLoading = ref(false)
 const mergePreview = ref<MemoryMergeResponse | null>(null)
+const { t } = useI18n()
 
 const currentEditingMemory = computed(() => {
   if (!editingId.value) return null
@@ -153,20 +155,20 @@ onMounted(() => {
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 p-4">
       <div>
-        <h2 class="text-lg font-semibold text-stone-100">长期记忆</h2>
-        <p class="mt-1 text-sm text-stone-400">按主实体分组，支持编辑、Pin 保护、删除和多选合并压缩。</p>
+        <h2 class="text-lg font-semibold text-stone-100">{{ t('memory.longtermTitle') }}</h2>
+        <p class="mt-1 text-sm text-stone-400">{{ t('memory.longtermSubtitle') }}</p>
       </div>
       <button
         class="rounded-xl bg-amber-600 px-4 py-3 text-sm font-medium text-stone-950 transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
         :disabled="selectedIds.length < 2"
         @click="openMergeDialog"
       >
-        合并压缩 {{ selectedIds.length ? `(${selectedIds.length})` : '' }}
+        {{ t('memory.mergeCompress') }} {{ selectedIds.length ? `(${selectedIds.length})` : '' }}
       </button>
     </div>
 
     <div v-if="loading" class="rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
-      加载中...
+      {{ t('memory.loading') }}
     </div>
 
     <section
@@ -177,9 +179,9 @@ onMounted(() => {
       <button class="flex w-full items-center justify-between" @click="toggleGroup(group.group_name)">
         <div class="text-left">
           <h3 class="text-base font-semibold text-stone-100">{{ group.group_name }}</h3>
-          <p class="mt-1 text-sm text-stone-400">{{ group.items.length }} 条记忆</p>
+          <p class="mt-1 text-sm text-stone-400">{{ t('memory.itemsCount', { count: group.items.length }) }}</p>
         </div>
-        <span class="text-sm text-stone-400">{{ isGroupCollapsed(group.group_name) ? '展开' : '收起' }}</span>
+        <span class="text-sm text-stone-400">{{ isGroupCollapsed(group.group_name) ? t('memory.expand') : t('memory.collapse') }}</span>
       </button>
 
       <div v-if="!isGroupCollapsed(group.group_name)" class="mt-4 space-y-4">
@@ -204,7 +206,7 @@ onMounted(() => {
     </section>
 
     <div v-if="!loading && !groups.length" class="rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
-      暂无长期记忆
+      {{ t('memory.longtermEmpty') }}
     </div>
 
     <div v-else-if="groups.length" class="flex justify-center">
@@ -215,8 +217,8 @@ onMounted(() => {
       >
         {{
           groups.reduce((sum, group) => sum + group.items.length, 0) >= total
-            ? '已加载全部长期记忆'
-            : (loading ? '加载中...' : '加载更多')
+            ? t('memory.allLoaded')
+            : (loading ? t('memory.loading') : t('memory.loadMore'))
         }}
       </button>
     </div>
@@ -233,14 +235,14 @@ onMounted(() => {
 
     <AppSurfaceDialog
       :open="Boolean(currentEditingMemory)"
-      title="编辑长期记忆"
-      :description="currentEditingMemory ? `正在编辑 ${currentEditingMemory.category} 类型记忆` : ''"
+      :title="t('memory.editLongtermTitle')"
+      :description="currentEditingMemory ? t('memory.editLongtermDescription', { category: currentEditingMemory.category }) : ''"
       size="lg"
       @close="closeEditor"
     >
       <div class="space-y-4">
         <div class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
-          <p class="text-xs uppercase tracking-[0.2em] text-stone-500">原始内容</p>
+          <p class="text-xs uppercase tracking-[0.2em] text-stone-500">{{ t('memory.originalContent') }}</p>
           <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-stone-300">
             {{ currentEditingMemory?.summary || currentEditingMemory?.content }}
           </p>
@@ -248,7 +250,7 @@ onMounted(() => {
 
         <div>
           <label class="mb-2 block text-sm font-medium text-stone-200" for="longterm-memory-editor">
-            编辑内容
+            {{ t('memory.editContent') }}
           </label>
           <textarea
             id="longterm-memory-editor"
@@ -266,7 +268,7 @@ onMounted(() => {
             class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-2 text-stone-200 transition-colors hover:bg-white/[0.08]"
             @click="closeEditor"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -274,7 +276,7 @@ onMounted(() => {
             :disabled="!editingContent.trim()"
             @click="saveEdit"
           >
-            保存
+            {{ t('common.save') }}
           </button>
         </div>
       </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { MemoryItem } from '@/types'
+import { useI18n } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -32,10 +33,11 @@ const emit = defineEmits<{
   (e: 'edit'): void
   (e: 'delete'): void
 }>()
+const { t } = useI18n()
 
 const displayTime = computed(() => {
   const value = props.memory.event_time || props.memory.created_at || props.memory.updated_at
-  if (!value) return '未知时间'
+  if (!value) return t('memory.unknownTime')
   return new Date(value).toLocaleString()
 })
 
@@ -57,7 +59,7 @@ const importancePercent = computed(() => Math.max(0, Math.min(100, Math.round((p
         <div class="flex flex-wrap items-center gap-2 text-xs text-stone-400">
           <span class="rounded-full bg-stone-800/60 px-2 py-1">{{ memory.category }}</span>
           <span>{{ displayTime }}</span>
-          <span v-if="memory.pinned" class="rounded-full bg-amber-500/20 px-2 py-1 text-amber-300">Pinned</span>
+          <span v-if="memory.pinned" class="rounded-full bg-amber-500/20 px-2 py-1 text-amber-300">{{ t('memory.pinned') }}</span>
           <span class="rounded-full bg-stone-800/60 px-2 py-1">{{ memory.memory_type }}</span>
         </div>
 
@@ -77,7 +79,7 @@ const importancePercent = computed(() => Math.max(0, Math.min(100, Math.round((p
 
         <div class="mt-3">
           <div class="mb-1 flex items-center justify-between text-xs text-stone-400">
-            <span>Importance</span>
+            <span>{{ t('memory.importance') }}</span>
             <span>{{ importancePercent }}%</span>
           </div>
           <div class="h-2 overflow-hidden rounded-full bg-stone-800/60">
@@ -92,35 +94,35 @@ const importancePercent = computed(() => Math.max(0, Math.min(100, Math.round((p
         class="rounded-lg border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:bg-amber-500/10"
         @click="emit('toggle-expand')"
       >
-        {{ expanded ? '收起详情' : '展开详情' }}
+        {{ expanded ? t('memory.collapseDetail') : t('memory.expandDetail') }}
       </button>
       <button
         v-if="showPromote"
         class="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition hover:bg-amber-500/20"
         @click="emit('promote')"
       >
-        标记重要
+        {{ t('memory.markImportant') }}
       </button>
       <button
         v-if="showPin"
         class="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 transition hover:bg-amber-500/20"
         @click="emit('toggle-pin')"
       >
-        {{ memory.pinned ? '取消 Pin' : 'Pin 保护' }}
+        {{ memory.pinned ? t('memory.unpin') : t('memory.pinProtect') }}
       </button>
       <button
         v-if="showEdit"
         class="rounded-lg border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:bg-amber-500/10"
         @click="emit('edit')"
       >
-        编辑
+        {{ t('common.edit') }}
       </button>
       <button
         v-if="showDelete"
         class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300 transition hover:bg-red-500/20"
         @click="emit('delete')"
       >
-        删除
+        {{ t('common.delete') }}
       </button>
     </div>
   </article>

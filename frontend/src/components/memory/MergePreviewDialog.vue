@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import type { MemoryMergeResponse } from '@/types'
+import { useI18n } from '@/i18n'
 
 defineProps<{
   open: boolean
@@ -14,20 +15,22 @@ const emit = defineEmits<{
   (e: 'preview'): void
   (e: 'confirm'): void
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
   <AppSurfaceDialog
     :open="open"
-    title="合并压缩预览"
-    :description="`已选择 ${selectedCount} 条长期记忆`"
+    :title="t('memory.mergePreviewTitle')"
+    :description="t('memory.mergePreviewDescription', { count: selectedCount })"
     size="xl"
     @close="emit('close')"
   >
     <div class="space-y-4">
       <section class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
         <p class="text-sm leading-6 text-stone-300">
-          点击“生成预览”后，将调用后端合并接口生成摘要；确认后会替换原始记忆。
+          {{ t('memory.mergePreviewHint') }}
         </p>
       </section>
 
@@ -36,8 +39,8 @@ const emit = defineEmits<{
         class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4"
       >
         <div class="flex flex-wrap items-center gap-3 text-xs text-stone-400">
-          <span>目标类型：{{ preview.memory_type }}</span>
-          <span>Importance：{{ Math.round(preview.importance * 100) }}%</span>
+          <span>{{ t('memory.targetType', { value: preview.memory_type }) }}</span>
+          <span>{{ t('memory.importance') }}: {{ Math.round(preview.importance * 100) }}%</span>
         </div>
         <pre class="mt-4 whitespace-pre-wrap rounded-2xl border border-amber-100/10 bg-[#0d0b09] p-4 text-sm leading-6 text-stone-100">{{ preview.merged_content }}</pre>
       </section>
@@ -50,7 +53,7 @@ const emit = defineEmits<{
           class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-2 text-stone-200 transition-colors hover:bg-white/[0.08]"
           @click="emit('close')"
         >
-          取消
+          {{ t('common.cancel') }}
         </button>
         <button
           type="button"
@@ -58,7 +61,7 @@ const emit = defineEmits<{
           :disabled="loading"
           @click="emit('preview')"
         >
-          {{ loading ? '生成中...' : (preview ? '重新生成预览' : '生成预览') }}
+          {{ loading ? t('memory.loading') : (preview ? t('memory.regeneratePreview') : t('memory.generatePreview')) }}
         </button>
         <button
           v-if="preview"
@@ -67,7 +70,7 @@ const emit = defineEmits<{
           :disabled="loading"
           @click="emit('confirm')"
         >
-          确认替换原记忆
+          {{ t('memory.replaceOriginal') }}
         </button>
       </div>
     </template>

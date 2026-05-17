@@ -2,18 +2,20 @@
 import { computed, onMounted, ref } from 'vue'
 import { memoryApi } from '@/api'
 import type { MemoryCompressionStatus, MemoryStats } from '@/types'
+import { useI18n } from '@/i18n'
 import PersonalityTab from '@/components/memory/PersonalityTab.vue'
 import RecentMemoryTab from '@/components/memory/RecentMemoryTab.vue'
 import LongtermMemoryTab from '@/components/memory/LongtermMemoryTab.vue'
 import AllMemoryTab from '@/components/memory/AllMemoryTab.vue'
 import CompressDialog from '@/components/memory/CompressDialog.vue'
 
-const tabs = [
-  { key: 'personality', label: '人格' },
-  { key: 'recent', label: '近期记忆' },
-  { key: 'longterm', label: '长期记忆' },
-  { key: 'all', label: '全部记忆' },
-]
+const { t } = useI18n()
+const tabs = computed(() => [
+  { key: 'personality', label: t('memory.tab.personality') },
+  { key: 'recent', label: t('memory.tab.recent') },
+  { key: 'longterm', label: t('memory.tab.longterm') },
+  { key: 'all', label: t('memory.tab.all') },
+])
 
 const activeTab = ref<'personality' | 'recent' | 'longterm' | 'all'>('personality')
 const stats = ref<MemoryStats | null>(null)
@@ -64,44 +66,44 @@ onMounted(() => {
           <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <div class="flex items-center gap-3">
-                <h1 class="text-2xl font-semibold text-stone-100">记忆管理</h1>
+                <h1 class="text-2xl font-semibold text-stone-100">{{ t('memory.title') }}</h1>
                 <span
                   v-if="pendingBadgeVisible"
                   class="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300"
                 >
-                  待压缩 {{ stats?.pending_compression }}
+                  {{ t('memory.pendingCompression', { count: stats?.pending_compression ?? 0 }) }}
                 </span>
               </div>
               <p class="mt-2 text-sm text-stone-400">
-                统一管理人格、近期记忆、长期记忆，以及自动/手动压缩能力。
+                {{ t('memory.subtitle') }}
               </p>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
               <div class="rounded-2xl border border-amber-100/10 bg-black/20 px-4 py-3 text-sm text-stone-300">
-                总数 <span class="ml-2 font-semibold text-stone-100">{{ stats?.total ?? 0 }}</span>
+                {{ t('memory.total') }} <span class="ml-2 font-semibold text-stone-100">{{ stats?.total ?? 0 }}</span>
               </div>
               <div class="rounded-2xl border border-amber-100/10 bg-black/20 px-4 py-3 text-sm text-stone-300">
-                近期 <span class="ml-2 font-semibold text-stone-100">{{ stats?.recent ?? 0 }}</span>
+                {{ t('memory.recent') }} <span class="ml-2 font-semibold text-stone-100">{{ stats?.recent ?? 0 }}</span>
               </div>
               <div class="rounded-2xl border border-amber-100/10 bg-black/20 px-4 py-3 text-sm text-stone-300">
-                长期 <span class="ml-2 font-semibold text-stone-100">{{ stats?.longterm ?? 0 }}</span>
+                {{ t('memory.longterm') }} <span class="ml-2 font-semibold text-stone-100">{{ stats?.longterm ?? 0 }}</span>
               </div>
               <div class="rounded-2xl border border-amber-100/10 bg-black/20 px-4 py-3 text-sm text-stone-300">
-                上次压缩 <span class="ml-2 font-semibold text-stone-100">{{ stats?.last_compressed_at || '暂无' }}</span>
+                {{ t('memory.lastCompressed') }} <span class="ml-2 font-semibold text-stone-100">{{ stats?.last_compressed_at || t('memory.none') }}</span>
               </div>
               <button
                 class="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-medium text-stone-950 transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="compressing"
                 @click="runCompress"
               >
-                {{ compressing ? '压缩中...' : '手动压缩' }}
+                {{ compressing ? t('memory.compressing') : t('memory.manualCompress') }}
               </button>
               <button
                 class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-stone-100 transition hover:border-amber-300/25 hover:bg-amber-500/10"
                 @click="openCompressDialog"
               >
-                查看进度
+                {{ t('memory.viewProgress') }}
               </button>
             </div>
           </div>

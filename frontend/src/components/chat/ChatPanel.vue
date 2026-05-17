@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
 import { defineAsyncComponent } from 'vue'
 const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRenderer.vue'))
@@ -67,7 +67,7 @@ function renderMarkdown(text: string): string {
   html = html.split('<pre><code').join(
     '<div class="code-block"><div class="code-block-header">' +
     '<span class="code-block-lang"></span>' +
-    '<button class="code-block-copy">复制</button></div><pre><code'
+    `<button class="code-block-copy">${t('chat.copy')}</button></div><pre><code`
   )
   html = html.split('</code></pre>').join('</code></pre></div>')
   return html
@@ -109,14 +109,14 @@ const emit = defineEmits<{
   quickStart: [text: string]
 }>()
 
-const quickCards = [
-  { icon: '📝', label: '写代码', text: '开发一个五子棋HTML游戏' },
-  { icon: '📊', label: '数据分析', text: '分析CSV销售数据并生成报告' },
-  { icon: '🔍', label: '查资料', text: '搜索最新AI框架对比' },
-  { icon: '🐛', label: '调试修复', text: '帮我修复这个Python脚本的bug' },
-]
-
 const { t } = useI18n()
+const quickCards = computed(() => [
+  { icon: '📝', label: t('chat.quick.writeCode'), text: t('chat.quick.writeCodePrompt') },
+  { icon: '📊', label: t('chat.quick.dataAnalysis'), text: t('chat.quick.dataAnalysisPrompt') },
+  { icon: '🔍', label: t('chat.quick.research'), text: t('chat.quick.researchPrompt') },
+  { icon: '🐛', label: t('chat.quick.debug'), text: t('chat.quick.debugPrompt') },
+])
+
 const panelRef = ref<HTMLElement | null>(null)
 const collapsedTools = ref<Set<string>>(new Set())
 // v2.6: 处理步骤折叠状态
@@ -179,7 +179,7 @@ onMounted(() => {
     if (!code) return
     navigator.clipboard.writeText(code.textContent || '').then(() => {
       ;(btn as HTMLElement).textContent = '✓'
-      setTimeout(() => { (btn as HTMLElement).textContent = '复制' }, 2000)
+      setTimeout(() => { (btn as HTMLElement).textContent = t('chat.copy') }, 2000)
     }).catch(() => {})
   })
 })
@@ -194,7 +194,7 @@ onMounted(() => {
         </svg>
       </div>
       <h2 class="text-xl font-semibold text-white mb-1">TARS Agent</h2>
-      <p class="text-sm text-slate-400 mb-8">你的 AI 工程助手 — 代码、规划、执行</p>
+      <p class="text-sm text-slate-400 mb-8">{{ t('chat.workspaceSubtitle') }}</p>
 
       <!-- 快捷入口 -->
       <div class="grid grid-cols-2 gap-3 w-full max-w-md">
@@ -233,7 +233,7 @@ onMounted(() => {
                 'bg-gradient-to-br from-blue-500 to-purple-600 text-white': msg.role === 'assistant',
                 'bg-red-900/50 text-red-300': msg.role === 'system',
               }">
-              <template v-if="msg.role === 'user'">你</template>
+              <template v-if="msg.role === 'user'">{{ t('chat.role.user') }}</template>
               <template v-else-if="msg.role === 'assistant'">T</template>
               <template v-else>!</template>
             </div>
@@ -245,7 +245,7 @@ onMounted(() => {
                 'text-blue-400': msg.role === 'user',
                 'text-purple-400': msg.role === 'assistant',
                 'text-red-400': msg.role === 'system',
-              }">{{ msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'TARS' : 'System' }}</span>
+              }">{{ msg.role === 'user' ? t('chat.role.userEn') : msg.role === 'assistant' ? t('chat.role.assistant') : t('chat.role.systemEn') }}</span>
               <span class="text-[10px] text-slate-600">{{ formatTime(msg.timestamp) }}</span>
             </div>
 
@@ -272,7 +272,7 @@ onMounted(() => {
 
               <!-- BI 图表渲染 -->
               <div v-if="msg.biChart" class="mt-3">
-                <div class="text-xs text-stone-500 mb-2">📊 {{ msg.biChart.title || '数据图表' }}</div>
+                <div class="text-xs text-stone-500 mb-2">📊 {{ msg.biChart.title || t('chat.chartFallback') }}</div>
                 <ChartRenderer
                   :chart-type="msg.biChart.chart_type"
                   :echarts-option="msg.biChart.echarts_option"
@@ -317,7 +317,7 @@ onMounted(() => {
                 >
                   <div class="thinking-header">
                     <span>{{ msg.thinking.isActive ? '▼' : isThinkingExpanded(msg.id) ? '▼' : '▶' }}</span>
-                    <span>🔄 {{ msg.thinking.isActive ? '处理中...' : '处理步骤' }}</span>
+                    <span>🔄 {{ msg.thinking.isActive ? t('chat.processing') : t('chat.processingSteps') }}</span>
                     <span class="step-count">({{ msg.thinking.steps.length }})</span>
                   </div>
 
@@ -338,8 +338,8 @@ onMounted(() => {
               </div>
 
               <div class="flex items-center gap-2 mt-2 opacity-0 hover:opacity-100 transition-opacity">
-                <button class="text-xs text-slate-600 hover:text-slate-400" title="复制">📋</button>
-                <button class="text-xs text-slate-600 hover:text-slate-400" title="引用">💬</button>
+                <button class="text-xs text-slate-600 hover:text-slate-400" :title="t('chat.copy')">📋</button>
+                <button class="text-xs text-slate-600 hover:text-slate-400" :title="t('chat.quote')">💬</button>
               </div>
             </div>
           </div>

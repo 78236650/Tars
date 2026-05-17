@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import type { ReminderNotification, ReminderSummaryLog } from '@/types'
+import { useI18n } from '@/i18n'
 
 const props = defineProps<{
   open: boolean
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const reminderNotificationsStore = useReminderNotificationsStore()
+const { t, locale } = useI18n()
 const {
   items,
   selectedId,
@@ -26,8 +28,8 @@ const {
 const hasSelection = computed(() => !!selectedDetail.value)
 
 const formatDateTime = (value: string | null | undefined) => {
-  if (!value) return '暂无'
-  return new Date(value).toLocaleString('zh-CN', {
+  if (!value) return t('memory.none')
+  return new Date(value).toLocaleString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -40,13 +42,13 @@ const formatDateTime = (value: string | null | undefined) => {
 const getStatusLabel = (status: string) => {
   switch (status) {
     case 'delivered':
-      return '已投递'
+      return t('reminder.status.delivered')
     case 'broadcast':
-      return '兼容广播'
+      return t('reminder.status.broadcast')
     case 'failed':
-      return '投递失败'
+      return t('reminder.status.failed')
     default:
-      return status || '未知状态'
+      return status || t('reminder.status.unknown')
   }
 }
 
@@ -65,19 +67,19 @@ const getStatusClass = (status: string) => {
 
 const getStepLabel = (log: ReminderSummaryLog) => {
   const labels: Record<string, string> = {
-    scheduler_matched: '调度命中',
-    runtime_executing: 'Runtime 执行',
-    notification_recorded: '通知记录写入',
-    websocket_delivery_attempted: 'WebSocket 投递尝试',
-    delivery_result: '投递结果',
+    scheduler_matched: t('reminder.step.schedulerMatched'),
+    runtime_executing: t('reminder.step.runtimeExecuting'),
+    notification_recorded: t('reminder.step.notificationRecorded'),
+    websocket_delivery_attempted: t('reminder.step.websocketDeliveryAttempted'),
+    delivery_result: t('reminder.step.deliveryResult'),
   }
   return labels[log.step] || log.step
 }
 
 const getTargetSessionLabel = (notification: ReminderNotification) => {
   if (notification.session_id) return notification.session_id
-  if (notification.delivery_status === 'broadcast') return '兼容广播路径'
-  return '未指定会话'
+  if (notification.delivery_status === 'broadcast') return t('reminder.target.broadcastFallback')
+  return t('reminder.target.unspecified')
 }
 
 const selectNotification = async (notification: ReminderNotification) => {
@@ -93,11 +95,11 @@ const selectNotification = async (notification: ReminderNotification) => {
       <section class="flex w-full max-w-sm flex-col border-r border-slate-800">
         <header class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div>
-            <h2 class="text-base font-semibold text-white">提醒通知</h2>
-            <p class="mt-1 text-xs text-slate-400">未读 {{ unreadCount }} 条</p>
+            <h2 class="text-base font-semibold text-white">{{ t('reminder.drawerTitle') }}</h2>
+            <p class="mt-1 text-xs text-slate-400">{{ t('reminder.unreadCount', { count: unreadCount }) }}</p>
           </div>
           <button class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white" @click="emit('close')">
-            <span class="sr-only">关闭提醒通知</span>
+            <span class="sr-only">{{ t('reminder.close') }}</span>
             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -106,13 +108,13 @@ const selectNotification = async (notification: ReminderNotification) => {
 
         <div class="flex-1 overflow-y-auto p-3">
           <div v-if="loadingList" class="rounded-2xl border border-slate-800 bg-slate-800/70 px-4 py-6 text-sm text-slate-400">
-            正在加载提醒列表...
+            {{ t('reminder.loadingList') }}
           </div>
           <div v-else-if="errorMessage" class="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
             {{ errorMessage }}
           </div>
           <div v-else-if="items.length === 0" class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400">
-            暂无 reminder 通知。创建并触发 reminder 后，这里会显示最近记录。
+            {{ t('reminder.empty') }}
           </div>
           <div v-else class="space-y-2">
             <button
@@ -151,16 +153,16 @@ const selectNotification = async (notification: ReminderNotification) => {
 
       <section class="hidden min-w-0 flex-1 flex-col md:flex">
         <header class="border-b border-slate-800 px-6 py-4">
-          <h3 class="text-base font-semibold text-white">详情摘要</h3>
-          <p class="mt-1 text-xs text-slate-400">用于确认本次 reminder 是否执行并投递成功</p>
+          <h3 class="text-base font-semibold text-white">{{ t('reminder.detailTitle') }}</h3>
+          <p class="mt-1 text-xs text-slate-400">{{ t('reminder.detailDescription') }}</p>
         </header>
 
         <div class="flex-1 overflow-y-auto px-6 py-5">
           <div v-if="loadingDetail" class="rounded-2xl border border-slate-800 px-4 py-6 text-sm text-slate-400">
-            正在加载通知详情...
+            {{ t('reminder.loadingDetail') }}
           </div>
           <div v-else-if="!hasSelection" class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400">
-            选择左侧一条通知后，可查看任务名、目标会话、投递状态与摘要日志。
+            {{ t('reminder.emptyDetail') }}
           </div>
           <div v-else-if="selectedDetail" class="space-y-5">
             <div class="rounded-3xl border border-slate-800 bg-slate-800/70 p-5">
@@ -175,25 +177,25 @@ const selectNotification = async (notification: ReminderNotification) => {
               </div>
 
               <div class="mt-4 rounded-2xl bg-slate-900/70 p-4">
-                <p class="text-xs text-slate-500">提醒内容</p>
+                <p class="text-xs text-slate-500">{{ t('reminder.contentLabel') }}</p>
                 <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-200">{{ selectedDetail.message }}</p>
               </div>
 
               <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                  <p class="text-xs text-slate-500">触发时间</p>
+                  <p class="text-xs text-slate-500">{{ t('reminder.triggeredAt') }}</p>
                   <p class="mt-2 text-sm text-slate-200">{{ formatDateTime(selectedDetail.triggered_at) }}</p>
                 </div>
                 <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                  <p class="text-xs text-slate-500">目标会话</p>
+                  <p class="text-xs text-slate-500">{{ t('reminder.targetSession') }}</p>
                   <p class="mt-2 break-all text-sm text-slate-200">{{ getTargetSessionLabel(selectedDetail) }}</p>
                 </div>
                 <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                  <p class="text-xs text-slate-500">已读时间</p>
+                  <p class="text-xs text-slate-500">{{ t('reminder.readAt') }}</p>
                   <p class="mt-2 text-sm text-slate-200">{{ formatDateTime(selectedDetail.read_at) }}</p>
                 </div>
                 <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                  <p class="text-xs text-slate-500">任务 ID</p>
+                  <p class="text-xs text-slate-500">{{ t('reminder.taskId') }}</p>
                   <p class="mt-2 break-all text-sm text-slate-200">{{ selectedDetail.job_id }}</p>
                 </div>
               </div>
@@ -209,8 +211,8 @@ const selectNotification = async (notification: ReminderNotification) => {
             <div class="rounded-3xl border border-slate-800 bg-slate-800/60 p-5">
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <h4 class="text-sm font-semibold text-white">摘要日志</h4>
-                  <p class="mt-1 text-xs text-slate-500">仅展示本次 reminder 的关键链路，不扩展为完整业务时间线。</p>
+                  <h4 class="text-sm font-semibold text-white">{{ t('reminder.summaryLogTitle') }}</h4>
+                  <p class="mt-1 text-xs text-slate-500">{{ t('reminder.summaryLogDescription') }}</p>
                 </div>
               </div>
 
@@ -218,7 +220,7 @@ const selectNotification = async (notification: ReminderNotification) => {
                 v-if="!selectedDetail.summary_logs || selectedDetail.summary_logs.length === 0"
                 class="mt-4 rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-sm text-slate-400"
               >
-                暂无摘要日志，可结合聊天流中的 `cron_reminder` 系统消息继续验证。
+                {{ t('reminder.emptySummaryLog') }}
               </div>
               <div v-else class="mt-4 space-y-3">
                 <div
