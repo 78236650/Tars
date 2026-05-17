@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
@@ -26,16 +26,16 @@ const autoResize = () => {
 
 // 斜杠命令
 const showCommands = ref(false)
-const commands = [
-  { name: '/plan', desc: '规划模式，分解任务', usage: '/plan ' },
-  { name: '/yolo', desc: '执行模式，直接动手', usage: '/yolo' },
-  { name: '/brainstorm', desc: '头脑风暴，发散思维', usage: '/brainstorm ' },
-  { name: '/subagent', desc: '委派子代理执行', usage: '/subagent code ' },
-  { name: '/skill', desc: '激活一个技能', usage: '/skill ' },
-  { name: '/clear', desc: '清空对话，新会话', usage: '/clear' },
-  { name: '/help', desc: '显示所有命令', usage: '/help' },
-]
-const selectCommand = (cmd: typeof commands[0]) => {
+const commands = computed(() => [
+  { name: '/plan', desc: t('chat.command.plan'), usage: '/plan ' },
+  { name: '/yolo', desc: t('chat.command.yolo'), usage: '/yolo' },
+  { name: '/brainstorm', desc: t('chat.command.brainstorm'), usage: '/brainstorm ' },
+  { name: '/subagent', desc: t('chat.command.subagent'), usage: '/subagent code ' },
+  { name: '/skill', desc: t('chat.command.skill'), usage: '/skill ' },
+  { name: '/clear', desc: t('chat.command.clear'), usage: '/clear' },
+  { name: '/help', desc: t('chat.command.help'), usage: '/help' },
+])
+const selectCommand = (cmd: (typeof commands.value)[number]) => {
   inputMessage.value = cmd.usage
   showCommands.value = false
 }
@@ -217,7 +217,7 @@ const setupWsHandler = () => {
         }
       }
     } else if (data.type === 'plan_step_failed') {
-      const decision = confirm(`步骤 ${data.step_id} 失败: ${data.error}\n\n点击确定重试，取消中止`)
+      const decision = confirm(t('chat.stepFailedConfirm', { stepId: data.step_id, error: data.error }))
       wsStore.send({
         type: 'user_decision',
         session_id: data.session_id,
@@ -238,7 +238,7 @@ const setupWsHandler = () => {
         chatStore.currentSessionId = data.new_session_id
       }
     } else if (data.type === 'confirmation_required') {
-      const ok = confirm(`需要确认:\n${data.message}`)
+      const ok = confirm(t('chat.confirmationRequired', { message: data.message }))
       wsStore.send({
         type: 'user_decision',
         session_id: data.session_id,
@@ -401,15 +401,15 @@ onUnmounted(() => {
       <header class="flex items-center justify-between gap-4 border-b border-amber-100/10 px-6 py-4">
         <div class="min-w-0">
           <div class="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-stone-500">
-            <span>Conversation</span>
+            <span>{{ t('chat.conversation') }}</span>
             <span class="h-1 w-1 rounded-full bg-slate-600"></span>
-            <span>{{ chatStore.currentSessionId ? 'Live Session' : 'Idle' }}</span>
+            <span>{{ chatStore.currentSessionId ? t('chat.liveSession') : t('chat.idleSession') }}</span>
           </div>
           <div class="mt-2 flex items-center gap-3">
             <span class="h-2.5 w-2.5 rounded-full" :class="wsStore.isConnected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
             <p class="text-sm text-stone-300">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</p>
             <span class="rounded-full border border-amber-100/10 bg-white/[0.04] px-3 py-1 text-xs text-stone-300">
-              {{ settingsStore.currentModel || '未选择模型' }}
+              {{ settingsStore.currentModel || t('chat.notSelectedModel') }}
             </span>
           </div>
         </div>
@@ -420,14 +420,14 @@ onUnmounted(() => {
             class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
             @click="quickStart('/plan ')"
           >
-            规划模式
+            {{ t('chat.planMode') }}
           </button>
           <button
             type="button"
             class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
             @click="quickStart('/brainstorm ')"
           >
-            头脑风暴
+            {{ t('chat.brainstormMode') }}
           </button>
         </div>
       </header>
@@ -467,7 +467,7 @@ onUnmounted(() => {
             <button
               @click="toggleCommands"
               class="rounded-xl p-3 transition hover:bg-amber-500/10"
-              title="命令"
+              :title="t('chat.commandButton')"
             >
               <span class="text-lg font-bold text-amber-300">/</span>
             </button>
@@ -475,7 +475,7 @@ onUnmounted(() => {
               v-if="showCommands"
               class="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-[20px] border border-amber-100/10 bg-[#171411] shadow-[0_24px_80px_rgba(8,7,5,0.55)]"
             >
-              <div class="border-b border-amber-100/10 px-3 py-2 text-xs font-medium text-stone-400">斜杠命令</div>
+              <div class="border-b border-amber-100/10 px-3 py-2 text-xs font-medium text-stone-400">{{ t('chat.commandTitle') }}</div>
               <button
                 v-for="cmd in commands"
                 :key="cmd.name"
@@ -511,7 +511,7 @@ onUnmounted(() => {
             :disabled="(!inputMessage.trim() && attachments.length === 0) || !wsStore.isConnected"
             class="rounded-xl bg-amber-500 px-6 py-3 font-medium text-stone-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-stone-700 disabled:text-stone-300"
           >
-            Send
+            {{ t('common.send') }}
           </button>
         </div>
       </footer>

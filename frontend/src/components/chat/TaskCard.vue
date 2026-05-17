@@ -2,8 +2,10 @@
 // v2.6.1: 内嵌任务进度卡片 — 替换 TaskPanel 抽屉
 import { ref } from 'vue'
 import { useWsStore } from '@/stores/wsStore'
+import { useI18n } from '@/i18n'
 
 const wsStore = useWsStore()
+const { t } = useI18n()
 
 interface TaskStep {
   id: number; step_order: number; description: string; tool: string
@@ -35,7 +37,15 @@ const statusColor = (s: string): string => {
 }
 
 const taskStatusLabel = (s: string): string => {
-  const m: Record<string, string> = { pending: '等待中', running: '执行中', completed: '已完成', failed: '失败', skipped: '已跳过', paused: '已暂停', aborted: '已中止' }
+  const m: Record<string, string> = {
+    pending: t('taskCard.status.pending'),
+    running: t('taskCard.status.running'),
+    completed: t('taskCard.status.completed'),
+    failed: t('taskCard.status.failed'),
+    skipped: t('taskCard.status.skipped'),
+    paused: t('taskCard.status.paused'),
+    aborted: t('taskCard.status.aborted'),
+  }
   return m[s] || s
 }
 
@@ -63,7 +73,7 @@ const sendDecision = (decision: string) => {
       <!-- Progress bar -->
       <div class="my-3">
         <div class="flex justify-between text-xs text-slate-500 mb-1">
-          <span>步骤 {{ task.current_step }}/{{ task.total_steps }}</span>
+          <span>{{ t('taskCard.stepsProgress', { current: task.current_step, total: task.total_steps }) }}</span>
         </div>
         <div class="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
           <div class="h-full bg-blue-500 rounded-full transition-all duration-300"
@@ -79,14 +89,14 @@ const sendDecision = (decision: string) => {
             <span class="text-slate-300">{{ step.description }}</span>
             <span v-if="step.tool" class="text-slate-600 ml-1">({{ step.tool }})</span>
             <div v-if="step.error" class="text-red-400 mt-0.5">{{ step.error }}</div>
-            <span v-if="step.retries > 0" class="text-amber-400 ml-1 text-[10px]">重试{{ step.retries }}次</span>
+            <span v-if="step.retries > 0" class="text-amber-400 ml-1 text-[10px]">{{ t('taskCard.retryCount', { count: step.retries }) }}</span>
           </div>
         </div>
       </div>
 
       <!-- Artifacts -->
       <div v-if="task.artifacts?.length && task.status === 'completed'" class="mt-3 pt-3 border-t border-slate-700/50">
-        <p class="text-xs text-slate-500 mb-1">📦 产出</p>
+        <p class="text-xs text-slate-500 mb-1">📦 {{ t('taskCard.artifacts') }}</p>
         <div v-for="art in task.artifacts" :key="art" class="text-xs text-slate-400 font-mono truncate">{{ art }}</div>
       </div>
 
@@ -97,15 +107,15 @@ const sendDecision = (decision: string) => {
 
       <!-- Actions -->
       <div v-if="task.status === 'running'" class="flex gap-2 mt-3 pt-2 border-t border-slate-700/50">
-        <button @click="sendDecision('pause')" class="text-xs px-2 py-1 rounded bg-amber-600/20 text-amber-400 hover:bg-amber-600/30">暂停</button>
-        <button @click="sendDecision('abort')" class="text-xs px-2 py-1 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">取消</button>
+        <button @click="sendDecision('pause')" class="text-xs px-2 py-1 rounded bg-amber-600/20 text-amber-400 hover:bg-amber-600/30">{{ t('taskCard.pause') }}</button>
+        <button @click="sendDecision('abort')" class="text-xs px-2 py-1 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">{{ t('taskCard.abort') }}</button>
       </div>
       <div v-else-if="task.status === 'paused'" class="flex gap-2 mt-3 pt-2 border-t border-slate-700/50">
-        <button @click="sendDecision('resume')" class="text-xs px-2 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30">恢复</button>
-        <button @click="sendDecision('abort')" class="text-xs px-2 py-1 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">取消</button>
+        <button @click="sendDecision('resume')" class="text-xs px-2 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30">{{ t('taskCard.resume') }}</button>
+        <button @click="sendDecision('abort')" class="text-xs px-2 py-1 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30">{{ t('taskCard.abort') }}</button>
       </div>
       <div v-else-if="task.status === 'failed' || task.status === 'aborted'" class="flex gap-2 mt-3 pt-2 border-t border-slate-700/50">
-        <button @click="sendDecision('retry')" class="text-xs px-2 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30">重试</button>
+        <button @click="sendDecision('retry')" class="text-xs px-2 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30">{{ t('taskCard.retry') }}</button>
       </div>
     </div>
   </div>

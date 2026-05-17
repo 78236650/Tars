@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 
 const props = defineProps<{
   unreadCount: number
@@ -9,6 +10,7 @@ const emit = defineEmits<{
   open: []
 }>()
 
+const { t } = useI18n()
 const badgeText = computed(() => (props.unreadCount > 99 ? '99+' : String(props.unreadCount)))
 </script>
 
@@ -16,8 +18,8 @@ const badgeText = computed(() => (props.unreadCount > 99 ? '99+' : String(props.
   <button
     type="button"
     class="relative rounded-lg p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
-    title="提醒通知"
-    aria-label="打开提醒通知"
+    :title="t('reminder.buttonTitle')"
+    :aria-label="t('reminder.buttonOpen')"
     @click="emit('open')"
   >
     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

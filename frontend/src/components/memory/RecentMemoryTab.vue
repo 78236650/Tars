@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { memoryApi } from '@/api'
 import type { MemoryItem } from '@/types'
+import { useI18n } from '@/i18n'
 import MemoryCard from './MemoryCard.vue'
 
 const emit = defineEmits<{
@@ -16,6 +17,7 @@ const query = ref('')
 const category = ref('')
 const expandedIds = ref<string[]>([])
 const listRef = ref<HTMLElement | null>(null)
+const { t } = useI18n()
 
 const categories = ['all', 'fact', 'decision', 'domain_knowledge', 'general', 'project_record']
 
@@ -86,7 +88,7 @@ onMounted(() => {
         v-model="query"
         type="text"
         class="rounded-xl border border-amber-100/10 bg-[#110f0d] px-4 py-3 text-sm text-stone-100 outline-none focus:border-amber-400/50"
-        placeholder="搜索近期记忆"
+        :placeholder="t('memory.searchRecent')"
         @keyup.enter="refresh"
       />
       <select
@@ -95,14 +97,14 @@ onMounted(() => {
         @change="refresh"
       >
         <option v-for="item in categories" :key="item" :value="item">
-          {{ item === 'all' ? '全部分类' : item }}
+          {{ item === 'all' ? t('memory.allCategories') : item }}
         </option>
       </select>
       <button
         class="rounded-xl bg-amber-600 px-4 py-3 text-sm font-medium text-stone-950 transition hover:bg-amber-500"
         @click="refresh"
       >
-        搜索
+        {{ t('memory.search') }}
       </button>
     </div>
 
@@ -124,10 +126,10 @@ onMounted(() => {
       />
 
       <div v-if="loading" class="rounded-xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
-        加载中...
+        {{ t('memory.loading') }}
       </div>
       <div v-else-if="!items.length" class="rounded-xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
-        最近 7 天暂无匹配的 episodic 记忆
+        {{ t('memory.recentEmpty') }}
       </div>
     </div>
   </div>

@@ -141,7 +141,7 @@ const deleteSession = async (id: string, e: Event) => {
     await chatStore.deleteSession(id)
     toast.success(t('chat.sessionDeleted'))
   } catch (err) {
-    toast.error('Failed')
+    toast.error(t('common.deleteFailed'))
   }
 }
 
@@ -169,9 +169,9 @@ const groupedSessions = computed(() => {
     else olderItems.push(s)
   }
   
-  if (todayItems.length) groups.push({ label: '今天', items: todayItems })
-  if (yesterdayItems.length) groups.push({ label: '昨天', items: yesterdayItems })
-  if (olderItems.length) groups.push({ label: '更早', items: olderItems })
+  if (todayItems.length) groups.push({ label: t('sidebar.today'), items: todayItems })
+  if (yesterdayItems.length) groups.push({ label: t('sidebar.yesterday'), items: yesterdayItems })
+  if (olderItems.length) groups.push({ label: t('sidebar.earlier'), items: olderItems })
   return groups
 })
 
@@ -185,7 +185,7 @@ const groupedSessions = computed(() => {
     <div class="p-4 border-b border-amber-100/10">
       <div v-if="!collapsed" class="overflow-hidden">
         <h1 class="text-xl font-bold tracking-wide text-amber-400">TARS</h1>
-        <p class="text-xs text-stone-500 mt-0.5">AI Assistant</p>
+        <p class="text-xs text-stone-500 mt-0.5">{{ t('sidebar.assistantSubtitle') }}</p>
       </div>
       <div v-else class="flex justify-center">
         <span class="text-lg font-bold text-amber-400">T</span>
@@ -231,7 +231,7 @@ const groupedSessions = computed(() => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="搜索会话..."
+            :placeholder="t('sidebar.searchSessions')"
             class="w-full pl-9 pr-3 py-2 bg-white/[0.04] border border-amber-100/10 rounded-lg text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-400 focus:bg-white/[0.06] transition-colors"
           />
         </div>
@@ -303,7 +303,7 @@ const groupedSessions = computed(() => {
       <button
         @click="toggleLocale"
         class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
-        :title="locale === 'zh' ? 'EN' : '中文'"
+        :title="locale === 'zh' ? t('common.switchToEnglish') : t('common.switchToChinese')"
       >
         <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : '中' }}</span>
       </button>
