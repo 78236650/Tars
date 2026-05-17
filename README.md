@@ -1,4 +1,4 @@
-# TARS AI Agent v2.9.1
+# TARS AI Agent v3.9.1
 
 一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理与自动压缩。
 
@@ -493,7 +493,7 @@ cd backend
 - 🔧 **Memory REST API** — 12 个端点（CRUD + stats + compress + merge）
 - ⚡ **性能优化** — SQL 层分页、stats 查询合并、entity_refs 索引、混合格式兼容修复
 
-### v2.9.1
+### v3.9.1
 - 🎨 **Graphite Amber 视觉统一收口** — 全站深色暖系改造，琥珀（amber）替换蓝色（blue）主色调
 - 🖥️ **DesktopShell 桌面态可折叠窄栏** — 右栏支持展开/折叠态，localStorage 持久化，48px 窄栏 + 展开恢复把手
 - 📦 **通用弹层壳 AppSurfaceDialog / AppSurfaceDrawer** — 统一视觉边界，居中弹窗 + 侧边抽屉，覆盖 Tools/Memory/Knowledge/BI/Settings 核心弹层
