@@ -82,3 +82,10 @@ Thumbs.db
 *.db-shm
 *.db-wal
 backend/uploads/
+
+# Local workspace
+.superpowers/
+.trae/
+
+# Test files
+gomoku.html
