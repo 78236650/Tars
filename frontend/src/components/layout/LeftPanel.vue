@@ -155,14 +155,15 @@ const isActive = (path: string) => {
       <button
         @click="toggleLocale"
         class="w-full flex items-center justify-center p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
-        :title="locale === 'zh' ? 'Switch to English' : '切换到中文'"
+        :title="locale === 'zh' ? t('common.switchToEnglish') : t('common.switchToChinese')"
       >
         <span class="text-xs font-medium">{{ locale === 'zh' ? 'EN' : '中' }}</span>
       </button>
       <button
         @click="router.push('/models')"
         class="w-full flex items-center justify-center p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
-        title="模型设置"
+        :title="t('sidebar.modelConfigLink')"
+        :aria-label="t('sidebar.modelConfigLink')"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z" />

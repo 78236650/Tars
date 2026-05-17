@@ -45,7 +45,7 @@ const deleteSession = async (id: string, e: Event) => {
     await chatStore.deleteSession(id)
     toast.success(t('chat.sessionDeleted'))
   } catch {
-    toast.error('Failed')
+    toast.error(t('common.deleteFailed'))
   }
 }
 
@@ -73,33 +73,33 @@ const groupedSessions = computed(() => {
     else olderItems.push(s)
   }
   
-  if (todayItems.length) groups.push({ label: '今天', items: todayItems })
-  if (yesterdayItems.length) groups.push({ label: '昨天', items: yesterdayItems })
-  if (olderItems.length) groups.push({ label: '更早', items: olderItems })
+  if (todayItems.length) groups.push({ label: t('sidebar.today'), items: todayItems })
+  if (yesterdayItems.length) groups.push({ label: t('sidebar.yesterday'), items: yesterdayItems })
+  if (olderItems.length) groups.push({ label: t('sidebar.earlier'), items: olderItems })
   return groups
 })
 
 const sessionCount = computed(() => chatStore.sessions.length)
-const connectionStatus = computed(() => wsStore.isConnected ? '已连接' : '未连接')
+const connectionStatus = computed(() => wsStore.isConnected ? t('chat.connected') : t('chat.disconnected'))
 const unreadCount = computed(() => reminderStore.unreadCount)
 
 const copyConversation = async () => {
   const messages = chatStore.currentSessionId
   if (!messages) {
-    toast.info('当前没有会话')
+    toast.info(t('rightPanel.noCurrentSession'))
     return
   }
-  toast.info('会话记录已复制')
+  toast.info(t('rightPanel.copied'))
 }
 
 const exportConversation = () => {
-  toast.info('导出功能开发中')
+  toast.info(t('rightPanel.exportComingSoon'))
 }
 
 const clearConversation = () => {
-  if (!confirm('确定要清空当前会话吗？')) return
+  if (!confirm(t('rightPanel.clearConfirm'))) return
   chatStore.switchSession(chatStore.sessions[0]?.id || '')
-  toast.success('会话已清空')
+  toast.success(t('rightPanel.cleared'))
 }
 </script>
 
@@ -118,7 +118,7 @@ const clearConversation = () => {
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
-        <span class="text-xs">收起</span>
+        <span class="text-xs">{{ t('rightPanel.collapse') }}</span>
       </button>
       <button
         v-else
@@ -151,7 +151,7 @@ const clearConversation = () => {
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="搜索会话..."
+              :placeholder="t('sidebar.searchSessions')"
               class="w-full pl-8 pr-2 py-1.5 bg-white/[0.04] border border-amber-100/10 rounded-lg text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-400 focus:bg-white/[0.06] transition-colors"
             />
           </div>
@@ -191,56 +191,56 @@ const clearConversation = () => {
       </div>
 
       <div class="border-t border-amber-100/10 p-3 space-y-2">
-        <div class="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">快捷操作</div>
+        <div class="text-[10px] uppercase tracking-wider text-stone-500 mb-1.5">{{ t('rightPanel.quickActions') }}</div>
         <div class="grid grid-cols-2 gap-1.5">
           <button
             @click="copyConversation"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
             <span>📋</span>
-            <span>复制</span>
+            <span>{{ t('rightPanel.copy') }}</span>
           </button>
           <button
             @click="exportConversation"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
             <span>📤</span>
-            <span>导出</span>
+            <span>{{ t('rightPanel.export') }}</span>
           </button>
           <button
             @click="router.push('/memory')"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
             <span>🧠</span>
-            <span>记忆</span>
+            <span>{{ t('rightPanel.memory') }}</span>
           </button>
           <button
             @click="clearConversation"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
             <span>🗑️</span>
-            <span>清空</span>
+            <span>{{ t('rightPanel.clear') }}</span>
           </button>
         </div>
       </div>
 
       <div class="border-t border-amber-100/10 p-3">
         <div class="rounded-xl border border-amber-100/10 bg-white/[0.02] p-3 space-y-2">
-          <div class="text-[10px] uppercase tracking-wider text-stone-500">状态概览</div>
+          <div class="text-[10px] uppercase tracking-wider text-stone-500">{{ t('rightPanel.statusOverview') }}</div>
           <div class="space-y-1.5">
             <div class="flex items-center justify-between text-xs">
-              <span class="text-stone-400">会话数</span>
+              <span class="text-stone-400">{{ t('rightPanel.sessionCount') }}</span>
               <span class="text-stone-200 font-medium">{{ sessionCount }}</span>
             </div>
             <div class="flex items-center justify-between text-xs">
-              <span class="text-stone-400">连接状态</span>
+              <span class="text-stone-400">{{ t('rightPanel.connectionStatus') }}</span>
               <span class="flex items-center gap-1">
                 <span class="w-1.5 h-1.5 rounded-full" :class="wsStore.isConnected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
                 <span class="text-stone-200">{{ connectionStatus }}</span>
               </span>
             </div>
             <div class="flex items-center justify-between text-xs">
-              <span class="text-stone-400">未读提醒</span>
+              <span class="text-stone-400">{{ t('rightPanel.unreadReminders') }}</span>
               <span class="text-stone-200 font-medium">{{ unreadCount }}</span>
             </div>
           </div>
@@ -260,7 +260,7 @@ const clearConversation = () => {
           </svg>
         </button>
         <span class="rotate-90 [writing-mode:vertical-rl] text-[10px] uppercase tracking-widest text-stone-500">
-          会话
+          {{ t('chat.conversation') }}
         </span>
       </div>
     </template>

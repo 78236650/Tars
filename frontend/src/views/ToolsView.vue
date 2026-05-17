@@ -12,6 +12,57 @@ const loading = ref(false)
 const searchQuery = ref('')
 const { t } = useI18n()
 
+const builtinDescriptionKeys: Record<string, string> = {
+  archival_insert: 'tools.builtinDescriptions.archival_insert',
+  bi_generate_chart: 'tools.builtinDescriptions.bi_generate_chart',
+  bi_list_datasources: 'tools.builtinDescriptions.bi_list_datasources',
+  bi_query: 'tools.builtinDescriptions.bi_query',
+  bi_schema_explore: 'tools.builtinDescriptions.bi_schema_explore',
+  calculator: 'tools.builtinDescriptions.calculator',
+  command: 'tools.builtinDescriptions.command',
+  cronjob: 'tools.builtinDescriptions.cronjob',
+  core_memory_append: 'tools.builtinDescriptions.core_memory_append',
+  core_memory_replace: 'tools.builtinDescriptions.core_memory_replace',
+  file: 'tools.builtinDescriptions.file',
+  file_list: 'tools.builtinDescriptions.file_list',
+  file_write: 'tools.builtinDescriptions.file_write',
+  knowledge_search: 'tools.builtinDescriptions.knowledge_search',
+  meeting_recognizer: 'tools.builtinDescriptions.meeting_recognizer',
+  memory: 'tools.builtinDescriptions.memory',
+  network: 'tools.builtinDescriptions.network',
+  process: 'tools.builtinDescriptions.process',
+  python_exec: 'tools.builtinDescriptions.python_exec',
+  shell: 'tools.builtinDescriptions.shell',
+  task_planner: 'tools.builtinDescriptions.task_planner',
+  weather: 'tools.builtinDescriptions.weather',
+  web_fetch: 'tools.builtinDescriptions.web_fetch',
+  web_search: 'tools.builtinDescriptions.web_search',
+}
+
+const normalizeToolName = (value?: string) => value?.trim().toLowerCase() || ''
+
+const localizeBuiltinTool = <T extends Tool>(tool: T): T => {
+  if (tool.type !== 'builtin') {
+    return tool
+  }
+
+  const normalizedName = normalizeToolName(tool.name) || normalizeToolName(tool.id)
+  const descriptionKey = builtinDescriptionKeys[normalizedName]
+  if (!descriptionKey) {
+    return tool
+  }
+
+  const localizedDescription = t(descriptionKey)
+  if (localizedDescription === descriptionKey) {
+    return tool
+  }
+
+  return {
+    ...tool,
+    description: localizedDescription,
+  }
+}
+
 // 内置工具
 const tools = ref<Tool[]>([])
 // 已安装技能
@@ -26,7 +77,6 @@ const installMessage = ref<{ id: string; success: boolean; message: string } | n
 const hubFilter = ref<'all' | 'plugin' | 'prompt'>('all')
 
 // 弹窗
-const selectedTool = ref<any>(null)
 const showAddModal = ref(false)
 
 // ========= 数据加载 =========
@@ -114,10 +164,23 @@ const refreshCatalogStatus = async () => {
 
 // ========= 过滤 =========
 
+const localizedTools = computed(() => tools.value.map(localizeBuiltinTool))
+
+const selectedToolRaw = ref<Tool | SkillItem | null>(null)
+
+const selectedTool = computed(() => {
+  if (!selectedToolRaw.value) {
+    return null
+  }
+  return selectedToolRaw.value.type === 'builtin'
+    ? localizeBuiltinTool(selectedToolRaw.value as Tool)
+    : selectedToolRaw.value
+})
+
 const filteredTools = computed(() => {
-  if (!searchQuery.value) return tools.value
+  if (!searchQuery.value) return localizedTools.value
   const q = searchQuery.value.toLowerCase()
-  return tools.value.filter(item => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q))
+  return localizedTools.value.filter(item => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q))
 })
 
 const filteredSkills = computed(() => {
@@ -136,12 +199,12 @@ const filteredHubResults = computed(() => {
 
 // ========= 操作 =========
 
-const handleToolClick = (tool: any) => {
-  selectedTool.value = tool
+const handleToolClick = (tool: Tool | SkillItem) => {
+  selectedToolRaw.value = tool
 }
 
 const handleCloseDetail = () => {
-  selectedTool.value = null
+  selectedToolRaw.value = null
   loadTools()
   loadSkills()
 }
