@@ -38,6 +38,17 @@ def _relations_to_dict(relations) -> List[Dict[str, Any]]:
     return result
 
 
+def _deep_merge_tables(old: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge new table data into old, preserving user-added keys (e.g. _user_note)."""
+    merged = dict(old)
+    for table, data in new.items():
+        if table in merged and isinstance(merged[table], dict) and isinstance(data, dict):
+            merged[table] = {**merged[table], **data}
+        else:
+            merged[table] = data
+    return merged
+
+
 class ProfilePipeline:
     def __init__(
         self,
@@ -55,7 +66,7 @@ class ProfilePipeline:
         if self.on_progress:
             self.on_progress(phase, current, total, message)
 
-    async def run(self, datasource: DataSource) -> Dict[str, Any]:
+    async def run(self, datasource: DataSource, run_id: Optional[str] = None) -> Dict[str, Any]:
         db_type = datasource.db_type
         profile_mode = self.config.profile_mode_for_db(db_type)
         stats_dialect = self.config.stats_dialect_key(db_type)
@@ -134,7 +145,10 @@ class ProfilePipeline:
             }
 
             merged_schema = dict(datasource.schema_snapshot or {})
-            merged_schema["tables"] = schema.get("tables") or {}
+            merged_schema["tables"] = _deep_merge_tables(
+                merged_schema.get("tables") or {},
+                schema.get("tables") or {},
+            )
             merged_schema["insight"] = {
                 "capability_version": INS_VERSION,
                 "profile_mode": profile_mode,
@@ -162,6 +176,7 @@ class ProfilePipeline:
                     datasource.name,
                     datasource.tenant_id,
                     md,
+                    run_id=run_id,
                 )
 
             self._progress("done", 5, 5, "完成")

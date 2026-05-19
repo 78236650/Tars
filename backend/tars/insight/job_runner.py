@@ -97,7 +97,7 @@ class InsightJobRunner:
         )
 
         try:
-            result = await pipeline.run(ds)
+            result = await pipeline.run(ds, run_id=run_id)
             if not result.get("success"):
                 self.run_store.complete(
                     run_id,
@@ -135,12 +135,15 @@ class InsightJobRunner:
                 snapshot.setdefault("llm_errors", []).append(
                     f"metric_keys_skipped_on_approved: {metric_outcome['skipped']}"
                 )
+            knowledge_doc_id = result.get("knowledge_doc_id")
+            if _knowledge_indexer is not None and knowledge_doc_id is None:
+                snapshot.setdefault("llm_errors", []).append("knowledge_publish_failed")
 
             self.run_store.complete(
                 run_id,
                 tenant_id,
                 insight_snapshot=snapshot,
-                knowledge_doc_id=result.get("knowledge_doc_id"),
+                knowledge_doc_id=knowledge_doc_id,
                 status="completed",
             )
             logger.info(

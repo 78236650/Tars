@@ -1,11 +1,14 @@
 """Publish InsightForge glossary to TARS knowledge base."""
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
 from ..database.base import Database, get_local_now
 from .version import CAPABILITY_NAME, INS_VERSION
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgePublisher:
@@ -27,15 +30,9 @@ class KnowledgePublisher:
         now = get_local_now().isoformat()
         if row:
             if row[1] != tenant_id:
-                cursor.execute(
-                    """
-                    UPDATE document_collections
-                    SET tenant_id = ?, name = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (tenant_id, name, now, collection_id),
+                raise PermissionError(
+                    f"collection {collection_id} belongs to tenant {row[1]!r}, refusing to rewrite to {tenant_id!r}"
                 )
-                conn.commit()
             return
         cursor.execute(
             """
@@ -125,11 +122,13 @@ class KnowledgePublisher:
         datasource_name: str,
         tenant_id: str,
         markdown: str,
+        run_id: Optional[str] = None,
     ) -> Optional[str]:
         coll_id = self.collection_id_for(datasource_id)
         self.ensure_collection(coll_id, f"鉴数-{datasource_name}", tenant_id)
         doc_id = f"insight_{datasource_id}_{uuid.uuid4().hex[:8]}"
-        file_name = f"insightforge_{datasource_name}.md"
+        version_suffix = f"_v{run_id[:8]}" if run_id else ""
+        file_name = f"insightforge_{datasource_name}{version_suffix}.md"
 
         if self.indexer is None:
             return doc_id
@@ -151,6 +150,10 @@ class KnowledgePublisher:
             file_type="md",
             tenant_id=tenant_id,
         )
-        # Attach extra metadata via chunker metadata in future; store doc_id
         _ = meta
-        return doc_id if result.get("status") in ("indexed", "no_chunks") else doc_id
+        if isinstance(result, dict) and result.get("status") in ("indexed", "no_chunks"):
+            return doc_id
+        logger.warning(
+            "[InsightForge] knowledge indexing failed for ds=%s: %s", datasource_id, result
+        )
+        return None
