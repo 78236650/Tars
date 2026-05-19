@@ -17,6 +17,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+def _skill_dir(name: str) -> Path:
+    root = Path(__file__).parent.parent.parent / "skills"
+    global_dir = root / "_global" / name
+    if global_dir.is_dir():
+        return global_dir
+    return root / name
+
+
 class TestVariableEngineQuoteScope:
     """P2-1: shlex.quote 按 tool_name 分类作用"""
 
@@ -145,13 +153,13 @@ class TestSkillsRegistry:
     """P1-3 回归: release_notes 应标记为 has_pdca=False"""
 
     def test_release_notes_no_pdca(self):
-        root = Path(__file__).parent.parent.parent / "skills" / "release_notes"
+        root = _skill_dir("release_notes")
         assert (root / "SKILL.md").exists()
         assert not (root / "pdca.yaml").exists(), \
             "release_notes 不应再依赖 pdca.yaml（v2.5 重设计后改走 SKILL.md 指令）"
 
     def test_deploy_skill_md_no_broken_refs(self):
-        md_path = Path(__file__).parent.parent.parent / "skills" / "deploy" / "SKILL.md"
+        md_path = _skill_dir("deploy") / "SKILL.md"
         content = md_path.read_text(encoding="utf-8")
         # deploy/scripts 目录不存在，SKILL.md 不应再引用
         if "scripts/pre_check.py" in content or "scripts/health_check.py" in content:
