@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -84,7 +84,7 @@ _StarletteRequest.form = _patched_form
 db = Database()
 user_store = UserStore(db)
 
-from tars.api._auth import init_auth
+from tars.api._auth import init_auth, require_admin, Principal
 init_auth(user_store)
 
 permission_manager = PermissionManager()
@@ -1189,12 +1189,12 @@ async def websocket_endpoint_tenant(websocket: WebSocket, tenant_id: str):
 
 @app.get("/api/providers/usage")
 async def get_provider_usage(
-    tenant_id: str = "",
     provider: str = "",
     limit: int = 100,
+    principal: Principal = Depends(require_admin),
 ):
-    """Provider token usage stats (v4.1.0)."""
-    rows, total = db.list_provider_usage(tenant_id=tenant_id, provider=provider, limit=limit)
+    """Provider token usage stats (v4.1.0). Admin only."""
+    rows, total = db.list_provider_usage(tenant_id=principal.tenant_id, provider=provider, limit=limit)
     return {"items": rows, "total": total}
 
 
