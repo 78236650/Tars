@@ -2,7 +2,7 @@
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, HTTPException, Header, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +12,7 @@ from ..knowledge.indexer import KnowledgeIndexer
 from ..knowledge.retriever import KnowledgeRetriever
 from ..reranker import CrossEncoderReranker
 from ..search.query_expansion import QueryExpander
+from ._auth import Principal, require_module
 
 router = APIRouter(prefix="/api/knowledge", tags=["Knowledge Base"])
 
@@ -399,15 +400,15 @@ async def query_collection(
     }
 
 
-def _fetch_ref_snippet(cursor, doc_id: str, limit: int = 400) -> str:
+def _fetch_ref_snippet(cursor, doc_id: str, tenant_id: str, limit: int = 400) -> str:
     cursor.execute(
         """
         SELECT content FROM knowledge_chunks
-        WHERE doc_id = ?
+        WHERE doc_id = ? AND tenant_id = ?
         ORDER BY chunk_index ASC
         LIMIT 1
         """,
-        (doc_id,),
+        (doc_id, tenant_id),
     )
     row = cursor.fetchone()
     if not row or not row[0]:
@@ -421,17 +422,21 @@ def _fetch_ref_snippet(cursor, doc_id: str, limit: int = 400) -> str:
 @router.get("/ref/{doc_id}")
 async def resolve_document_ref(
     doc_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_module("knowledge")),
 ):
     """Resolve a [ref:doc_id] citation to title and preview snippet."""
     if _db is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
+    tenant_id = principal.tenant_id
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, file_name, collection_id FROM document_files WHERE id = ?",
-        (doc_id,),
+        """SELECT df.id, df.file_name, df.collection_id
+           FROM document_files df
+           JOIN document_collections dc ON dc.id = df.collection_id
+           WHERE df.id = ? AND dc.tenant_id = ?""",
+        (doc_id, tenant_id),
     )
     row = cursor.fetchone()
     if row:
@@ -439,7 +444,7 @@ async def resolve_document_ref(
             "doc_id": row[0],
             "title": row[1] or doc_id,
             "collection_id": row[2],
-            "snippet": _fetch_ref_snippet(cursor, doc_id),
+            "snippet": _fetch_ref_snippet(cursor, doc_id, tenant_id),
             "source_type": "document",
         }
 
@@ -447,11 +452,11 @@ async def resolve_document_ref(
         """
         SELECT doc_id, file_name, collection_id, content
         FROM knowledge_chunks
-        WHERE doc_id = ?
+        WHERE doc_id = ? AND tenant_id = ?
         ORDER BY chunk_index ASC
         LIMIT 1
         """,
-        (doc_id,),
+        (doc_id, tenant_id),
     )
     chunk = cursor.fetchone()
     if chunk:
