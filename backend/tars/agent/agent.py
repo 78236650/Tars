@@ -342,7 +342,23 @@ class AgentV2:
         knowledge_context = await self._build_knowledge_context(user_content, tenant_id, channel, session_id)
 
         # 4.9 每轮消息重新路由技能（不可缓存，需实时匹配）
-        matched_skills = self._route_skills_for_message(user_content, tenant_id) or []
+        scene_intent = None
+        scene_keywords: List[str] = []
+        if scoped_wc_manager:
+            try:
+                wc = scoped_wc_manager.get(session_id)
+                if wc:
+                    scene_intent = wc.get("current_intent") or (wc.get("last_scene_snapshot") or {}).get("intent")
+                    scene_keywords = list(wc.get("recall_hints") or [])
+            except Exception:
+                pass
+
+        matched_skills = self._route_skills_for_message(
+            user_content,
+            tenant_id,
+            scene_intent=scene_intent,
+            scene_keywords=scene_keywords,
+        ) or []
         self._current_matched_skills = matched_skills
         skills_payload = [{"id": s.id, "name": s.name} for s, _ in matched_skills]
         if not skills_payload and getattr(self, "_active_skill_id", None):
@@ -819,7 +835,13 @@ class AgentV2:
 
         return sp
 
-    def _route_skills_for_message(self, user_content: str, tenant_id: str = "default"):
+    def _route_skills_for_message(
+        self,
+        user_content: str,
+        tenant_id: str = "default",
+        scene_intent: Optional[str] = None,
+        scene_keywords: Optional[List[str]] = None,
+    ):
         from ..config.skills import skills_config
         if not skills_config.router_enabled:
             if hasattr(self, 'skill_loader'):
@@ -830,7 +852,12 @@ class AgentV2:
             return []
 
         if self.skill_router:
-            return self.skill_router.route_from_content(user_content, tenant_id=tenant_id)
+            return self.skill_router.route_from_content(
+                user_content,
+                tenant_id=tenant_id,
+                scene_intent=scene_intent,
+                scene_keywords=scene_keywords,
+            )
 
         if hasattr(self, 'skill_loader'):
             # Legacy keyword fallback without router

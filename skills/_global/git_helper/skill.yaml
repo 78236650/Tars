@@ -1,0 +1,25 @@
+id: git_helper
+name: Git 助手
+description: Git 工作流、提交信息与冲突解决。
+type: prompt
+version: "1.0.0"
+author: TARS
+tags:
+  - bundled
+prompt_template: |
+  你是 TARS 的「Git 助手」技能。Git 工作流、提交信息与冲突解决。
+  请根据用户问题给出结构化、可执行的回答。
+parameters: []
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["coding.review"]
+  keywords:
+  - git
+  - commit
+  - rebase
+  - merge
+  conditions: "any"
+priority: 35
+lifecycle: "per_turn"
+usage: "安装后由 SkillRouter 按消息语义自动激活。"
+permissions: []

@@ -26,12 +26,23 @@ class SkillRouter:
     def min_score(self) -> float:
         return getattr(self.config, "skill_min_score", None) or 0.25
 
-    def route_from_content(self, user_content: str, tenant_id: Optional[str] = None) -> List[tuple]:
+    def route_from_content(
+        self,
+        user_content: str,
+        tenant_id: Optional[str] = None,
+        scene_intent: Optional[str] = None,
+        scene_keywords: Optional[List[str]] = None,
+    ) -> List[tuple]:
         """Sync route: trigger rules + content keyword matching."""
         if not user_content:
             return []
 
         intent, entities, keywords = extract_signals(user_content)
+        if scene_intent and scene_intent not in ("unknown", "casual", "meta", ""):
+            intent = scene_intent
+        if scene_keywords:
+            keywords = list({*keywords, *[k for k in scene_keywords if k]})
+
         candidates: Dict[str, tuple] = {}
 
         for skill, score in self.route(intent, entities, keywords, tenant_id=tenant_id):

@@ -1,0 +1,25 @@
+id: security_review
+name: 安全审查
+description: 代码安全审查与修复建议。
+type: prompt
+version: "1.0.0"
+author: TARS
+tags:
+  - bundled
+prompt_template: |
+  你是 TARS 的「安全审查」技能。代码安全审查与修复建议。
+  请根据用户问题给出结构化、可执行的回答。
+parameters: []
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["coding.review"]
+  keywords:
+  - 安全
+  - 漏洞
+  - xss
+  - 注入
+  conditions: "any"
+priority: 35
+lifecycle: "per_turn"
+usage: "安装后由 SkillRouter 按消息语义自动激活。"
+permissions: []

@@ -157,6 +157,30 @@ class SkillCurator:
             pass
         return archived
 
+    def get_pending_archive(self, days: int = 30) -> List[dict]:
+        """List skills that would be auto-archived (still active, idle beyond threshold)."""
+        try:
+            cutoff = time.time() - days * 86400
+            conn = self._db._get_conn()
+            rows = conn.execute(
+                "SELECT skill_id, total_calls, last_called, state "
+                "FROM skill_usage WHERE state = 'active' AND last_called > 0 AND last_called < ? "
+                "ORDER BY last_called ASC",
+                (cutoff,),
+            ).fetchall()
+            return [
+                {
+                    "skill_id": r[0],
+                    "total_calls": r[1],
+                    "last_called": r[2],
+                    "state": r[3],
+                    "idle_days": int((time.time() - r[2]) / 86400),
+                }
+                for r in rows
+            ]
+        except Exception:
+            return []
+
 
 # ── Global singleton ────────────────────────────────────────────────
 

@@ -68,6 +68,20 @@ class TestSkillCurator:
         assert stats[1]["skill_id"] == "low"
         assert stats[2]["skill_id"] == "mid"
 
+    def test_get_pending_archive(self, curator_db):
+        import time
+        db, curator = curator_db
+        curator.record_activation("stale_skill")
+        conn = db._get_conn()
+        conn.execute(
+            "UPDATE skill_usage SET last_called = ? WHERE skill_id = ?",
+            (time.time() - 40 * 86400, "stale_skill"),
+        )
+        conn.commit()
+        pending = curator.get_pending_archive(days=30)
+        assert any(p["skill_id"] == "stale_skill" for p in pending)
+        assert pending[0]["idle_days"] >= 30
+
 
 @pytest.fixture
 def curator_db(tmp_path):

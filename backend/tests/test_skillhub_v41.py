@@ -77,6 +77,31 @@ class TestSkillRouterIntegration:
         assert len(matched) >= 1
         assert matched[0][0].id == "pdf"
 
+    def test_route_from_content_uses_scene_intent(self):
+        from tars.skills.router import SkillRouter
+        from tars.skills.registry import SkillRegistry
+        from tars.skills.base import Skill, SkillType
+        from tars.config.skills import SkillsConfig
+
+        reg = SkillRegistry()
+        reg.register(Skill(
+            id="sql_helper",
+            name="SQL 助手",
+            description="SQL queries",
+            type=SkillType.PROMPT,
+            prompt_template="Write SQL.",
+            enabled=True,
+            trigger_intents=["data.analyze"],
+            trigger_keywords=["sql"],
+        ))
+        router = SkillRouter(reg, SkillsConfig())
+        matched = router.route_from_content(
+            "看一下",
+            scene_intent="data.analyze",
+            scene_keywords=["sales"],
+        )
+        assert any(s.id == "sql_helper" for s, _ in matched)
+
 
 class TestSkillReload:
     def test_reload_all(self, tmp_path):

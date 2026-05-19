@@ -1,0 +1,25 @@
+id: api_designer
+name: API 设计
+description: REST API 设计与 OpenAPI 文档助手。
+type: prompt
+version: "1.0.0"
+author: TARS
+tags:
+  - bundled
+prompt_template: |
+  你是 TARS 的「API 设计」技能。REST API 设计与 OpenAPI 文档助手。
+  请根据用户问题给出结构化、可执行的回答。
+parameters: []
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["coding.write"]
+  keywords:
+  - api
+  - rest
+  - 接口
+  - openapi
+  conditions: "any"
+priority: 35
+lifecycle: "per_turn"
+usage: "安装后由 SkillRouter 按消息语义自动激活。"
+permissions: []
