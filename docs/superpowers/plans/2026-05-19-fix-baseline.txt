@@ -1,0 +1,30 @@
+TARS Review-Followup Fix Baseline — 2026-05-19
+================================================
+
+Backend Tests (pytest)
+  Collected: 598
+  Passed:    556
+  Failed:    1 (test_module_loader::TestModuleRegistry::test_list_modules — pre-existing)
+  Skipped:   7
+  Hung:      34 (async tests requiring real LLM API calls — not runnable offline)
+  Duration:  22.29s (excluding hung tests)
+
+Insight Smoke (scripts/insightforge_functional_test.py)
+  Result: 8/8 PASS
+
+Frontend Unit Tests (vitest)
+  Passed: 55/58
+  Failed: 3 (historical, not in scope)
+    - App.spec.ts x2 (authStore.restoreFromCache / Pinia not active)
+    - ToolsView.spec.ts x1
+
+Frontend Type Check (vue-tsc --noEmit)
+  Errors: 4 (historical, not in scope)
+    - PlatformToolsPanel.vue: tenant_id type
+    - KnowledgeCitationPanel.vue: data type x2
+    - roleDisplay.spec.ts: RoleTemplate type
+
+Git State
+  Branch: v4.1.1
+  Working tree: clean
+  Last commit: 0be6485 feat(insight): InsightForge INS-1.0.0
