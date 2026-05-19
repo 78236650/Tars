@@ -12,7 +12,7 @@
 | 🧠 **三层记忆 V3** | Core Memory（4 块固定区块，支持 forget）+ Archival Memory（语义+关键词检索 + Ebbinghaus 衰减）+ 遗忘机制（重要性衰减 + 过期清理） |
 | 🔌 **工具系统** | 统一 ToolRegistry + ToolDispatcher，支持原生 Function Calling + Prompt Fallback |
 | ⚡ **技能插件** | PluginSkill（Python 代码插件）+ PromptSkill（Prompt 模板）+ skill.yaml 标准化格式 |
-| 📦 **SkillHub 市场** | 基于 GitHub Releases 的技能市场，支持搜索、安装、卸载、更新 |
+| 📦 **SkillHub 市场** | 本地 bundled 技能目录 + GitHub，支持 SKILL.md 一键安装（v4.0.5） |
 | 📤 **多模态** | 支持图片和文档上传，多模态模型直接理解图片，非多模态模型自动 OCR 降级 |
 | 🎨 **Markdown 渲染** | marked.js + highlight.js 代码语法高亮 + 代码块一键复制 |
 | ⌨️ **键盘快捷键** | Ctrl+Enter 发送 / Ctrl+/ 命令面板 / Ctrl+L 新会话 |

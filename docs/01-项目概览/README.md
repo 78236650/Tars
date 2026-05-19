@@ -4,7 +4,7 @@
 
 TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模型（Ollama）和云端 API（DeepSeek、阿里通义等）。用户通过技能/插件适配垂直场景，平台提供安全隔离、记忆管理、工具调度等基础能力。
 
-**当前版本: v4.0.0 "Hardened Base"**
+**当前版本: v4.0.5 "Skill Ecosystem Preview"**
 
 ## 核心特性
 
@@ -12,6 +12,17 @@ TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模�
 - 🎭 **可调人格** — honesty / humor / initiative / empathy 四维参数实时调节
 - 🧠 **三层记忆系统** — Core Memory（persona + user_profile + project_context + working_principles）+ Archival Memory（embedding 语义检索 + Ebbinghaus 衰减）+ Reflector 异步反思沉淀
 - ⚡ **流式响应** — WebSocket 实时推送，打字机效果
+- 📚 **知识库主动检索** — Agent 每轮对话前自动检索相关知识并注入上下文（v4.0.5）
+
+### SkillHub 技能生态（v4.0.5）
+- 📦 **本地 bundled 技能** — 10 个精选技能一键安装（PDF、GitHub、Excel 等）
+- ⚡ **装了就能用** — 安装后自动注册，Agent 按消息上下文注入技能指令
+- 🏷️ **精选目录** — featured 筛选 + 安装用法与示例 prompt 展示
+
+### Admin 管理台（v4.0.5）
+- 👥 **用户管理** — 编辑用户名、邮箱、角色、密码
+- 🎭 **角色模板** — 分配角色模板与权限查看
+- 📋 **审计日志** — 用户/会话/技能/工具事件追踪
 
 ### 安全加固（v4.0.0）
 - 🔒 **敏感信息脱敏** — 自动检测并掩码 API Key、手机号、邮箱、银行卡、私钥等
@@ -128,13 +139,15 @@ cd ../frontend && npm run dev
 
 | 文档 | 说明 |
 |------|------|
+| [v4.0.5 发布说明](./v4.0.5-release-notes.md) | v4.0.5 完整变更 |
 | [系统架构](../02-技术方案/architecture/system-overview.md) | 整体架构设计 |
 | [前端设计 v4.0.0](../02-技术方案/v4.0.0-frontend-design.md) | v4 前端适配方案 |
+| [v4.1.0 技术方案](../02-技术方案/v4.1.0-skill-ecosystem-design.md) | 下一版本规划 |
 | [WebSocket 协议](../02-技术方案/api/websocket-protocol.md) | 前后端通信协议 |
 | [部署指南](../04-运维文档/deployment.md) | 内网部署说明 |
 | [Changelog](./changelog.md) | 版本变更记录 |
 
 ---
 
-*文档版本: v4.0.0*
-*更新日期: 2026-05-17*
+*文档版本: v4.0.5*
+*更新日期: 2026-05-19*
