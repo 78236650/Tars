@@ -51,6 +51,29 @@ def get_agent() -> Agent:
     return agent
 
 
+def get_current_model_selection() -> Dict[str, Any]:
+    """Expose Chat's active provider/model for other modules (e.g. InsightForge)."""
+    agent = get_agent()
+    endpoint_name: Optional[str] = None
+    if _current_endpoint_id:
+        ep = get_endpoint_store().get_by_id(_current_endpoint_id)
+        if ep:
+            endpoint_name = ep.name
+    model = agent.current_model or ""
+    label = model
+    if _current_provider == "openai_compatible" and endpoint_name:
+        label = f"{endpoint_name} / {model}"
+    elif _current_provider == "ollama":
+        label = f"Ollama / {model}"
+    return {
+        "provider": _current_provider,
+        "endpoint_id": _current_endpoint_id,
+        "model": model,
+        "endpoint_name": endpoint_name,
+        "label": label,
+    }
+
+
 def _ollama_base_url() -> str:
     return os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 

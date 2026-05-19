@@ -1,0 +1,35 @@
+{
+  "Image": "mysql:8.0.39",
+  "Env": [
+    "MYSQL_ROOT_PASSWORD=root_insight",
+    "MYSQL_DATABASE=insight_demo",
+    "MYSQL_USER=insight",
+    "MYSQL_PASSWORD=insight_pass"
+  ],
+  "Cmd": [
+    "--character-set-server=utf8mb4",
+    "--collation-server=utf8mb4_unicode_ci",
+    "--default-authentication-plugin=mysql_native_password"
+  ],
+  "Labels": {
+    "com.docker.compose.project": "tars-insight-db",
+    "com.docker.compose.service": "mysql"
+  },
+  "ExposedPorts": {"3306/tcp": {}},
+  "HostConfig": {
+    "NetworkMode": "tars-insight-db_default",
+    "PortBindings": {"3306/tcp": [{"HostPort": "3307"}]},
+    "Binds": [
+      "/Users/daobanxiang/myproject/TARS/deploy/insightforge-db/init/mysql:/docker-entrypoint-initdb.d:ro",
+      "tars-insight-db_insight_mysql_data:/var/lib/mysql"
+    ],
+    "RestartPolicy": {"Name": "unless-stopped"}
+  },
+  "Healthcheck": {
+    "Test": ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uinsight", "-pinsight_pass"],
+    "Interval": 5000000000,
+    "Timeout": 5000000000,
+    "Retries": 20,
+    "StartPeriod": 30000000000
+  }
+}

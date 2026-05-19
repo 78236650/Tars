@@ -1,0 +1,106 @@
+# InsightForge 鉴数 — 本地多库测试环境 (INS-1.0.0)
+# 若本机已有 MySQL，见 EXISTING-MYSQL.md，不必启动下方 mysql 服务
+# 用法: docker compose up -d mysql postgres
+#       docker compose --profile full up -d   # 含 doris / oracle
+
+name: tars-insight-db
+
+services:
+  mysql:
+    profiles: ["bundled"]
+    image: mysql:8.0
+    container_name: tars-insight-mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_insight
+      MYSQL_DATABASE: insight_demo
+      MYSQL_USER: insight
+      MYSQL_PASSWORD: insight_pass
+    volumes:
+      - ./init/mysql:/docker-entrypoint-initdb.d:ro
+      - insight_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uinsight", "-pinsight_pass"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tars-insight-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: insight_demo
+      POSTGRES_USER: insight
+      POSTGRES_PASSWORD: insight_pass
+    volumes:
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
+      - insight_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insight -d insight_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: tars-insight-oracle
+    restart: unless-stopped
+    profiles: ["full"]
+    platform: linux/amd64
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: oracle_admin_pass
+      APP_USER: insight
+      APP_USER_PASSWORD: insight_pass
+    volumes:
+      - ./init/oracle:/container-entrypoint-initdb.d:ro
+      - insight_oracle_data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
+  # Apache Doris 单机（MySQL 协议 9030）
+  doris:
+    image: docker.io/dyrnq/doris:3.0.6.2
+    container_name: tars-insight-doris
+    restart: unless-stopped
+    profiles: ["full"]
+    hostname: tars-insight-doris
+    privileged: true
+    ports:
+      - "9030:9030"
+      - "8030:8030"
+    environment:
+      TZ: Asia/Shanghai
+      RUN_MODE: standalone
+    volumes:
+      - insight_doris_meta:/opt/apache-doris/fe/doris-meta
+      - insight_doris_storage:/opt/apache-doris/be/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9030'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+volumes:
+  insight_mysql_data:
+  insight_pg_data:
+  insight_oracle_data:
+  insight_doris_meta:
+  insight_doris_storage:

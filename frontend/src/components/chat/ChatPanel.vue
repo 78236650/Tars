@@ -425,13 +425,16 @@ onMounted(() => {
 </template>
 <style>
 @import "highlight.js/styles/atom-one-dark.css";
-.code-block { position: relative; margin: 1rem 0; border-radius: 0.75rem; overflow: hidden; border: 1px solid rgba(245,158,11,0.15); }
-.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 1rem; background: rgba(20,17,15,0.9); font-size: 0.75rem; }
-.code-block-lang { color: #78716c; }
+.code-block { position: relative; margin: 1rem 0; border-radius: 0.75rem; overflow: hidden; border: 1px solid rgba(245,158,11,0.15); background: rgba(8,7,5,0.95); }
+.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 1rem; background: rgba(20,17,15,0.9); font-size: 0.75rem; border-bottom: 1px solid rgba(245,158,11,0.12); }
+.code-block-lang { color: #78716c; text-transform: lowercase; }
 .code-block-copy { color: #a8a29e; cursor: pointer; background: none; border: none; font-size: 0.75rem; }
 .code-block-copy:hover { color: #e7e5e4; }
-.code-block pre { margin: 0; border-radius: 0; }
-.code-block code { display: block; padding: 1rem; }
+.code-block-pre { margin: 0; border-radius: 0; overflow-x: auto; background: rgba(8,7,5,0.95); }
+.code-block pre { margin: 0; border-radius: 0; overflow-x: auto; }
+.code-block code,
+.code-block pre code { display: block; padding: 1rem 1.125rem; font-size: 0.8125rem; line-height: 1.6; color: #e7e5e4 !important; white-space: pre; word-break: normal; overflow-wrap: normal; }
+.code-block .hljs { color: #e7e5e4; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body--streaming { opacity: 0.95; }
 .markdown-body h1 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 1.5rem 0 0.75rem; }
@@ -455,7 +458,13 @@ onMounted(() => {
 .markdown-body hr { border-color: rgba(245,158,11,0.15); margin: 1rem 0; }
 .markdown-body img { border-radius: 0.5rem; max-width: 100%; margin: 0.75rem 0; }
 /* highlight.js overrides for dark theme */
-.hljs { background: transparent !important; }
+.hljs { background: transparent !important; color: #e7e5e4; }
+.code-block .hljs-keyword { color: #c4b5fd; }
+.code-block .hljs-string { color: #86efac; }
+.code-block .hljs-number { color: #fcd34d; }
+.code-block .hljs-built_in,
+.code-block .hljs-title { color: #7dd3fc; }
+.code-block .hljs-comment { color: #78716c; }
 
 /* v2.6: 处理步骤面板 */
 .thinking-panel {

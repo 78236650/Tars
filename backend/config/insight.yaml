@@ -1,0 +1,34 @@
+# InsightForge 鉴数 — INS-1.0.0
+capability:
+  name: insight-forge
+  version: INS-1.0.0
+
+databases:
+  tier1: [oracle, mysql, postgresql, doris]
+  tier2: [jdbc]
+  tier2_note: "jdbc 使用 GenericStatsDialect 降级 Profile"
+
+profile:
+  max_tables: 80
+  max_columns_per_table: 60
+  sample_rows_per_table: 500
+  core_table_top_n: 20
+  stats_timeout_sec: 15
+  table_timeout_sec: 120
+  parallel_tables: 3
+  llm_batch_tables: 8
+  llm_max_tokens_per_batch: 6000
+  skip_table_patterns: ["^_", "^tmp_", "^bak_"]
+  enable_incremental: true
+  incremental_ttl_hours: 24
+
+metric_qa:
+  max_sql_rows: 1000
+  sql_timeout_sec: 30
+  require_metric_citation: true
+  allow_ad_hoc_sql: true
+
+publish:
+  chunk_size: 400
+  chunk_overlap: 80
+  auto_approve_metrics: false

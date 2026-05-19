@@ -600,6 +600,52 @@ class Database:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bi_datasources_tenant ON bi_datasources(tenant_id)")
 
+        # === InsightForge 鉴数 (INS-1.0.0) ===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS insight_profile_runs (
+                id TEXT PRIMARY KEY,
+                datasource_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                capability_version TEXT NOT NULL DEFAULT 'INS-1.0.0',
+                status TEXT NOT NULL,
+                budget_json TEXT NOT NULL,
+                progress_json TEXT NOT NULL DEFAULT '{}',
+                insight_snapshot_json TEXT,
+                knowledge_doc_id TEXT,
+                error TEXT,
+                started_at TEXT,
+                finished_at TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_insight_runs_ds ON insight_profile_runs(datasource_id, tenant_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_insight_runs_status ON insight_profile_runs(status)"
+        )
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS insight_metrics (
+                id TEXT PRIMARY KEY,
+                datasource_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                metric_key TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                definition TEXT NOT NULL,
+                sql_template TEXT DEFAULT '',
+                tables_json TEXT DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'draft',
+                source TEXT NOT NULL DEFAULT 'profile',
+                confidence REAL DEFAULT 0.0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(datasource_id, tenant_id, metric_key)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_insight_metrics_ds ON insight_metrics(datasource_id, tenant_id)"
+        )
+
         # === Knowledge Base: 文档集合表 ===
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_collections (

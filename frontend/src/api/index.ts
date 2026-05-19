@@ -492,18 +492,62 @@ export interface InsightProfileRunSummary {
   finished_at?: string | null
 }
 
+export interface InsightLlmSettingsPayload {
+  use_chat_default: boolean
+  provider?: 'ollama' | 'openai_compatible'
+  model?: string
+  endpoint_id?: string | null
+}
+
+export interface InsightLlmSettingsResponse {
+  settings: InsightLlmSettingsPayload
+  chat_current: {
+    provider: string
+    endpoint_id?: string | null
+    model: string
+    label?: string
+    endpoint_name?: string | null
+  }
+  effective: {
+    label: string
+    source: string
+    selection: Record<string, unknown>
+  }
+}
+
 export const insightApi = {
   version: async (): Promise<Record<string, unknown>> => {
     const response = await api.get('/insight/version')
     return response.data
   },
 
+  getLlmOptions: async (): Promise<ModelsOverviewResponse> => {
+    const response = await api.get('/insight/llm/options')
+    return response.data
+  },
+
+  getLlmSettings: async (): Promise<InsightLlmSettingsResponse> => {
+    const response = await api.get('/insight/llm/settings')
+    return response.data
+  },
+
+  saveLlmSettings: async (
+    body: InsightLlmSettingsPayload
+  ): Promise<InsightLlmSettingsResponse & { success: boolean }> => {
+    const response = await api.put('/insight/llm/settings', body)
+    return response.data
+  },
+
   startProfile: async (
     datasourceId: string,
-    options?: { force?: boolean }
+    options?: {
+      force?: boolean
+      llm?: InsightLlmSettingsPayload & { persist?: boolean }
+    }
   ): Promise<{ success: boolean; run_id: string; status: string }> => {
     const response = await api.post(`/insight/datasources/${datasourceId}/profile`, {
       force: options?.force ?? false,
+      llm: options?.llm,
     })
     return response.data
   },
@@ -519,6 +563,37 @@ export const insightApi = {
     const response = await api.get(`/insight/profile/runs/${runId}`)
     return response.data
   },
+
+  getDatasourceBrief: async (datasourceId: string): Promise<InsightDatasourceBrief> => {
+    const response = await api.get(`/insight/datasources/${datasourceId}/brief`)
+    return response.data
+  },
+}
+
+export interface InsightDatasourceBrief {
+  datasource: {
+    id: string
+    name: string
+    db_type: string
+    table_count: number
+    annotation_count: number
+  }
+  latest_run: InsightProfileRunSummary | null
+  insight_snapshot: Record<string, unknown>
+  schema_annotations: Record<string, unknown>
+  metrics: Array<{
+    id: string
+    metric_key: string
+    display_name: string
+    definition: string
+    status: string
+    confidence?: number
+  }>
+  open_questions: string[]
+  llm_errors?: string[]
+  llm_status?: string
+  llm_used?: Record<string, unknown>
+  phase: { profile: boolean; metric_qa_in_chat: boolean; workbench: boolean }
 }
 
 // ========= Knowledge Base API =========

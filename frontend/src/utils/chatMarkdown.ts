@@ -135,7 +135,7 @@ export function softenInlineCode(html: string): string {
 export function wrapCodeBlocks(html: string, copyLabel: string): string {
   return html.replace(
     /<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g,
-    (_match, attrs: string) => {
+    (_match, attrs: string, content: string) => {
       const langMatch = attrs.match(/language-([\w-]+)/)
       const lang = langMatch?.[1] || ''
       const langLabel = lang && lang !== 'text' && lang !== 'plaintext' ? lang : ''
@@ -144,10 +144,10 @@ export function wrapCodeBlocks(html: string, copyLabel: string): string {
         '<div class="code-block-header">' +
         `<span class="code-block-lang">${langLabel}</span>` +
         `<button type="button" class="code-block-copy">${copyLabel}</button>` +
-        `</div><pre><code${attrs}>`
+        `</div><pre class="code-block-pre"><code${attrs}>${content}</code></pre></div>`
       )
     },
-  ).replace(/<\/code><\/pre>/g, '</code></pre></div>')
+  )
 }
 
 export function renderChatMarkdown(

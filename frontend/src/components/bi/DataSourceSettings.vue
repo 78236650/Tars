@@ -17,6 +17,17 @@
           <div class="ds-actions">
             <button class="btn-icon" :title="t('bi.testConnection')" @click="testConnection(ds.id)">🔌</button>
             <button class="btn-icon" :title="t('bi.refreshSchema')" @click="refreshSchema(ds.id)">🔄</button>
+            <button
+              class="btn-insight"
+              :title="t('bi.insightProfile')"
+              :disabled="profilingId === ds.id"
+              @click="startInsightProfile(ds.id)"
+            >
+              {{ profilingId === ds.id ? t('bi.insightProfiling') : t('bi.insightProfileShort') }}
+            </button>
+            <button class="btn-insight btn-insight-outline" :title="t('insight.title')" @click="openInsightWorkbench(ds.id)">
+              {{ t('insight.viewWorkbench') }}
+            </button>
             <button class="btn-icon" :title="t('bi.editAnnotations')" @click="editAnnotations(ds)">📝</button>
             <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteDataSource(ds.id)">🗑️</button>
           </div>
@@ -27,6 +38,12 @@
           </div>
           <div v-if="ds.schema_annotations && Object.keys(ds.schema_annotations).length > 0" class="annotations-summary">
             {{ t('bi.annotatedCount', { count: Object.keys(ds.schema_annotations).length }) }}
+          </div>
+          <div v-if="insightRuns[ds.id]" class="insight-summary">
+            <span class="insight-badge">{{ t('bi.insightForge') }}</span>
+            <span :class="['insight-status', insightRuns[ds.id]?.status]">
+              {{ insightStatusLabel(insightRuns[ds.id]) }}
+            </span>
           </div>
         </div>
       </div>
@@ -96,7 +113,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { biApi } from '@/api'
+import { useRouter } from 'vue-router'
+import { biApi, insightApi } from '@/api'
+import type { InsightProfileRunSummary } from '@/api'
 import type { DataSource } from '@/types'
 import { useI18n } from '@/i18n'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
@@ -104,12 +123,15 @@ import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import SchemaAnnotator from './SchemaAnnotator.vue'
 
 const datasources = ref<DataSource[]>([])
+const insightRuns = ref<Record<string, InsightProfileRunSummary>>({})
+const profilingId = ref('')
 const loading = ref(false)
 const showCreateModal = ref(false)
 const showAnnotatorModal = ref(false)
 const creating = ref(false)
 const selectedDataSource = ref<DataSource | null>(null)
 const { t } = useI18n()
+const router = useRouter()
 
 const createForm = ref({
   name: '',
@@ -117,11 +139,32 @@ const createForm = ref({
   connection_url: '',
 })
 
+function insightStatusLabel(run: InsightProfileRunSummary | undefined) {
+  if (!run) return ''
+  const key = `bi.insightStatus.${run.status}` as const
+  const translated = t(key)
+  return translated === key ? run.status : translated
+}
+
+async function loadInsightRunsForDatasource(dsId: string) {
+  try {
+    const res = await insightApi.listProfileRuns(dsId)
+    const latest = res.runs?.[0]
+    if (latest) {
+      insightRuns.value = { ...insightRuns.value, [dsId]: latest }
+    }
+  } catch {
+    // insight 模块未启用或无权时静默
+  }
+}
+
 async function loadDataSources() {
   loading.value = true
   try {
     const res = await biApi.listDataSources()
     datasources.value = res.datasources
+    insightRuns.value = {}
+    await Promise.all(datasources.value.map((ds) => loadInsightRunsForDatasource(ds.id)))
   } catch (e: any) {
     const detail = e.response?.data?.detail
     const status = e.response?.status
@@ -179,6 +222,24 @@ async function refreshSchema(id: string) {
     await loadDataSources()
   } catch (e) {
     alert(t('bi.refreshFailed'))
+  }
+}
+
+function openInsightWorkbench(id: string) {
+  router.push({ path: '/insight', query: { datasource_id: id } })
+}
+
+async function startInsightProfile(id: string) {
+  profilingId.value = id
+  try {
+    const res = await insightApi.startProfile(id)
+    alert(t('bi.insightProfileStarted', { runId: res.run_id }))
+    await loadInsightRunsForDatasource(id)
+    await loadDataSources()
+  } catch (e: any) {
+    alert(e.response?.data?.detail || t('bi.insightProfileFailed'))
+  } finally {
+    profilingId.value = ''
   }
 }
 
@@ -289,7 +350,10 @@ onMounted(loadDataSources)
 
 .ds-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
+  max-width: 55%;
 }
 
 .btn-icon {
@@ -317,6 +381,60 @@ onMounted(loadDataSources)
 .schema-summary,
 .annotations-summary {
   margin-top: 4px;
+}
+
+.insight-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.insight-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.insight-status.completed {
+  color: #86efac;
+}
+
+.insight-status.running,
+.insight-status.pending {
+  color: #fcd34d;
+}
+
+.insight-status.failed {
+  color: #fca5a5;
+}
+
+.btn-insight {
+  border: 1px solid rgba(129, 140, 248, 0.45);
+  background: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-insight:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.28);
+}
+
+.btn-insight:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-insight-outline {
+  background: transparent;
+  border-color: rgba(129, 140, 248, 0.35);
 }
 
 .loading,

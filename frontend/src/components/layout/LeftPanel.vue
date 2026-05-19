@@ -91,16 +91,33 @@ const navItems = [
   { name: 'nav.models', icon: 'cpu', path: '/models' },
   { name: 'nav.tools', icon: 'tools', path: '/tools' },
   { name: 'nav.bi', icon: 'bar-chart', path: '/bi' },
+  { name: 'nav.insight', icon: 'search', path: '/insight' },
   { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
   { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
   { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
   { name: 'nav.settings', icon: 'settings', path: '/settings' }
 ]
 
+const moduleRouteMap: Record<string, string> = {
+  bi: '/bi',
+  insight: '/insight',
+  knowledge: '/knowledge',
+  meeting: '/meeting',
+}
+
 const visibleNavItems = computed(() =>
   navItems.filter(item => {
     if ('adminOnly' in item && (item as any).adminOnly) {
       return authStore.user?.role === 'admin'
+    }
+    const mod = Object.entries(moduleRouteMap).find(([, path]) => item.path === path)
+    if (!mod) return true
+    const globallyEnabled =
+      settingsStore.enabledModules.length === 0 ||
+      settingsStore.enabledModules.includes(mod[0])
+    if (!globallyEnabled) return false
+    if (settingsStore.roleAllowedModules !== null) {
+      return settingsStore.roleAllowedModules.includes(mod[0])
     }
     return true
   })
@@ -114,6 +131,7 @@ const getIconPath = (iconName: string) => {
     'database': 'M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3zm0 5c0 1.657 3.582 3 8 3s8-1.343 8-3m-16 0v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5',
     'tools': 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
     'bar-chart': 'M18 20V10M12 20V4M6 20v-6',
+    'search': 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
     'book': 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
     'mic': 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z',
     'shield': 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'
