@@ -14,7 +14,7 @@ const settingsStore = useSettingsStore()
 const wsStore = useWsStore()
 const reminderStore = useReminderNotificationsStore()
 const toast = useToast()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const collapsed = ref(false)
 const searchQuery = ref('')
@@ -249,17 +249,20 @@ const clearConversation = () => {
     </template>
 
     <template v-else>
-      <div class="flex-1 flex flex-col items-center py-3 gap-2">
+      <div class="flex flex-1 flex-col items-center py-3">
         <button
           @click="newChat"
-          class="p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 flex items-center justify-center"
+          class="flex-none shrink-0 p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 flex items-center justify-center"
           :title="t('chat.newChat')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
         </button>
-        <span class="rotate-90 [writing-mode:vertical-rl] text-[10px] uppercase tracking-widest text-stone-500">
+        <span
+          class="mt-3 inline-block text-[10px] text-stone-500 [writing-mode:vertical-rl] [text-orientation:upright]"
+          :class="locale === 'en' ? 'uppercase tracking-[0.18em]' : 'tracking-[0.35em]'"
+        >
           {{ t('chat.conversation') }}
         </span>
       </div>

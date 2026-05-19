@@ -36,7 +36,10 @@ class LLMMemoryExtractor:
             response = await provider.chat(messages, stream=False, temperature=0.1)
 
             text = response.content if hasattr(response, "content") else str(response)
-            return self._parse_response(text)
+            parsed = self._parse_response(text)
+            if parsed:
+                return parsed
+            return RegexExtractor().extract(conversation)
         except Exception as e:
             print(f"[MemoryExtractor] LLM 提取失败，fallback 到正则: {e}")
             return RegexExtractor().extract(conversation)

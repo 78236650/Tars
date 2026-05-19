@@ -83,6 +83,74 @@ class MemoryManager:
         """手动添加（用于 API / 前端）"""
         return await self.archival.insert(content, category, importance=0.6, source="manual")
 
+    _EXTRACT_CATEGORY_MAP = {
+        "user_preference": "preference",
+        "important_decision": "decision",
+        "project_record": "fact",
+        "general": "fact",
+        "preference": "preference",
+        "decision": "decision",
+        "fact": "fact",
+        "domain_knowledge": "domain_knowledge",
+    }
+
+    async def extract_turn_memories(self, user_msg: str, assistant_msg: str) -> List[dict]:
+        """从单轮对话提取可保存的记忆要点（供前端预览确认）。"""
+        from .extractor import LLMMemoryExtractor
+
+        user_msg = (user_msg or "").strip()
+        assistant_msg = (assistant_msg or "").strip()
+        if not assistant_msg:
+            return []
+
+        conversation = f"User: {user_msg}\nAssistant: {assistant_msg}"
+        raw = await LLMMemoryExtractor().extract(conversation, self.provider)
+        items: List[dict] = []
+        seen = set()
+        for entry in raw:
+            content = str(entry.get("content", "")).strip()
+            if len(content) < 5:
+                continue
+            key = content.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            raw_category = str(entry.get("category", "general"))
+            items.append(
+                {
+                    "content": content,
+                    "category": self._EXTRACT_CATEGORY_MAP.get(raw_category, "fact"),
+                    "importance": float(entry.get("importance", 0.75)),
+                }
+            )
+        return items[:8]
+
+    async def save_turn_memories(self, items: List[dict]) -> dict:
+        """保存用户确认后的记忆要点。"""
+        saved = []
+        skipped = 0
+        allowed = set(self._EXTRACT_CATEGORY_MAP.values())
+        for item in items:
+            content = str(item.get("content", "")).strip()
+            if len(content) < 5:
+                skipped += 1
+                continue
+            category = str(item.get("category", "fact"))
+            if category not in allowed:
+                category = "fact"
+            importance = float(item.get("importance", 0.75))
+            mem = await self.archival.insert(
+                content,
+                category,
+                importance=importance,
+                source="manual_extract",
+            )
+            if mem:
+                saved.append(mem)
+            else:
+                skipped += 1
+        return {"saved": saved, "skipped": skipped}
+
     def search_memories(self, query: str, limit: int = 5):
         return self.search.search(query, limit)
 

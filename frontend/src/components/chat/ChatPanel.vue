@@ -6,8 +6,10 @@ const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRe
 
 import PlanCard from './PlanCard.vue'
 import TaskCard from './TaskCard.vue'
+import RememberMemoryDialog from './RememberMemoryDialog.vue'
 import type { ToolCallEvent } from '@/types'
 import { renderChatMarkdown } from '@/utils/chatMarkdown'
+import { useToast } from '@/composables/useToast'
 
 // v2.6: 扩展 message 类型支持 thinking 步骤
 interface ThinkingStep {
@@ -48,6 +50,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const toast = useToast()
 const quickCards = computed(() => [
   { icon: '📝', label: t('chat.quick.writeCode'), text: t('chat.quick.writeCodePrompt') },
   { icon: '📊', label: t('chat.quick.dataAnalysis'), text: t('chat.quick.dataAnalysisPrompt') },
@@ -57,6 +60,10 @@ const quickCards = computed(() => [
 
 const panelRef = ref<HTMLElement | null>(null)
 const collapsedTools = ref<Set<string>>(new Set())
+const copiedMessageId = ref<string | null>(null)
+const rememberOpen = ref(false)
+const rememberUserContent = ref('')
+const rememberAssistantContent = ref('')
 // v2.6: 处理步骤折叠状态
 const expandedThinking = ref<Set<string>>(new Set())
 
@@ -120,6 +127,68 @@ const formatAssistantContent = (msg: ChatMessage, idx: number) =>
     streaming: isStreamingAssistant(msg, idx),
     copyLabel: t('chat.copy'),
   })
+
+const buildMessageCopyText = (msg: ChatMessage) => {
+  const parts: string[] = []
+  if (msg.content?.trim()) parts.push(msg.content.trim())
+
+  if (msg.toolCalls?.length) {
+    for (const tc of msg.toolCalls) {
+      if (tc.output?.trim()) parts.push(`[${tc.tool}]\n${tc.output.trim()}`)
+      if (tc.error?.trim()) parts.push(`[${tc.tool} error]\n${tc.error.trim()}`)
+    }
+  }
+
+  if (msg.biChart?.data_summary?.trim()) {
+    parts.push(msg.biChart.data_summary.trim())
+  }
+
+  if (msg.thinking?.steps?.length) {
+    const steps = msg.thinking.steps
+      .map((step) => `- ${step.title}${step.detail ? `: ${step.detail}` : ''}`)
+      .join('\n')
+    parts.push(`${t('chat.processingSteps')}\n${steps}`)
+  }
+
+  return parts.join('\n\n')
+}
+
+const canCopyMessage = (msg: ChatMessage) => Boolean(buildMessageCopyText(msg))
+
+const copyMessage = async (msg: ChatMessage) => {
+  const text = buildMessageCopyText(msg)
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedMessageId.value = msg.id
+    setTimeout(() => {
+      if (copiedMessageId.value === msg.id) copiedMessageId.value = null
+    }, 2000)
+  } catch {}
+}
+
+const getPairedUserContent = (assistantIdx: number) => {
+  for (let i = assistantIdx - 1; i >= 0; i--) {
+    const message = props.messages[i]
+    if (message.role === 'user') return message.content || ''
+  }
+  return ''
+}
+
+const openRememberDialog = (msg: ChatMessage, idx: number) => {
+  if (msg.role !== 'assistant' || !msg.content?.trim()) return
+  rememberUserContent.value = getPairedUserContent(idx)
+  rememberAssistantContent.value = msg.content
+  rememberOpen.value = true
+}
+
+const closeRememberDialog = () => {
+  rememberOpen.value = false
+}
+
+const onRememberSaved = (count: number) => {
+  toast.success(t('chat.remember.saved', { count }))
+}
 
 onMounted(() => {
   document.addEventListener('click', (e: Event) => {
@@ -308,9 +377,26 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div class="flex items-center gap-2 mt-2 opacity-0 hover:opacity-100 transition-opacity">
-                <button class="text-xs text-slate-600 hover:text-slate-400" :title="t('chat.copy')">📋</button>
-                <button class="text-xs text-slate-600 hover:text-slate-400" :title="t('chat.quote')">💬</button>
+              <div v-if="msg.role === 'assistant' && canCopyMessage(msg)" class="mt-2 flex items-center gap-1">
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 transition-colors hover:bg-white/[0.04] hover:text-slate-300"
+                  :title="t('chat.copy')"
+                  @click="copyMessage(msg)"
+                >
+                  <span>{{ copiedMessageId === msg.id ? '✓' : '📋' }}</span>
+                  <span>{{ copiedMessageId === msg.id ? t('chat.copied') : t('chat.copy') }}</span>
+                </button>
+                <button
+                  v-if="msg.content?.trim() && !isStreamingAssistant(msg, idx)"
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 transition-colors hover:bg-white/[0.04] hover:text-amber-300"
+                  :title="t('chat.remember')"
+                  @click="openRememberDialog(msg, idx)"
+                >
+                  <span>🧠</span>
+                  <span>{{ t('chat.remember') }}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -327,6 +413,14 @@ onMounted(() => {
         <span class="text-xs text-slate-500">{{ t('chat.thinking') }}</span>
       </div>
     </div>
+
+    <RememberMemoryDialog
+      :open="rememberOpen"
+      :user-content="rememberUserContent"
+      :assistant-content="rememberAssistantContent"
+      @close="closeRememberDialog"
+      @saved="onRememberSaved"
+    />
   </div>
 </template>
 <style>

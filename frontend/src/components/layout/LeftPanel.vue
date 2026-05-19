@@ -3,13 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
+import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
+import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
 
 const router = useRouter()
 const route = useRoute()
 const settingsStore = useSettingsStore()
 const authStore = useAuthStore()
+const reminderStore = useReminderNotificationsStore()
 const toast = useToast()
 const { locale, t, toggleLocale } = useI18n()
 
@@ -122,6 +125,12 @@ const isActive = (path: string) => {
   if (path === '/') return route.path === '/'
   return route.path === path || route.path.startsWith(`${path}/`)
 }
+
+const openReminderNotifications = async () => {
+  try {
+    await reminderStore.openDrawer()
+  } catch {}
+}
 </script>
 
 <template>
@@ -180,6 +189,12 @@ const isActive = (path: string) => {
     </div>
 
     <div class="p-1.5 border-t border-amber-100/10 flex flex-col gap-0.5">
+      <ReminderBellButton
+        data-test="sidebar-reminder-bell"
+        class="!p-2"
+        :unread-count="reminderStore.unreadCount"
+        @open="openReminderNotifications"
+      />
       <button
         @click="toggleLocale"
         class="w-full flex items-center justify-center p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
