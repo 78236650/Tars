@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { MemoryTreeNode } from '@/types'
 import type { FlatTreeRow } from './memoryTreeFlatten'
 
@@ -40,8 +40,14 @@ const onScroll = () => {
 
 watch(
   () => props.rows.length,
-  () => {
-    scrollTop.value = scroller.value?.scrollTop ?? 0
+  async () => {
+    await nextTick()
+    const el = scroller.value
+    if (!el) return
+    const rh = ROW_H()
+    const max = Math.max(0, props.rows.length * rh - el.clientHeight)
+    if (el.scrollTop > max) el.scrollTop = max
+    scrollTop.value = el.scrollTop
   }
 )
 
