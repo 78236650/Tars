@@ -1,4 +1,4 @@
-"""InsightForge module scaffold tests (INS-1.0.0)."""
+"""InsightForge module scaffold tests (INS-2.0.0)."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,7 +11,7 @@ from tars.modules.registry import ModuleRegistry
 
 def test_insight_version_constants():
     assert CAPABILITY_NAME == "insight-forge"
-    assert INS_VERSION == "INS-1.0.0"
+    assert INS_VERSION == "INS-2.0.0"
 
 
 def test_insight_config_tier1_includes_doris():
@@ -19,6 +19,16 @@ def test_insight_config_tier1_includes_doris():
     assert "doris" in cfg.tier1_databases
     assert cfg.profile_mode_for_db("doris") == "full"
     assert cfg.stats_dialect_key("doris") == "mysql"
+
+
+def test_insight_config_ins_2_sections():
+    cfg = load_insight_config()
+    assert cfg.forge.pending_question_ttl_seconds == 1800
+    assert cfg.qa.fewshot_max_items == 5
+    assert cfg.qa.fewshot_max_tokens == 2000
+    assert cfg.adoption.require_review is False
+    assert cfg.feedback.downgrade_ratio_min == 0.30
+    assert cfg.feature_flags.chat_first_enabled is True
 
 
 def test_module_registry_insight_requires():
@@ -73,7 +83,7 @@ def test_insight_version_endpoint(insight_client):
     assert res.status_code == 200
     data = res.json()
     assert data["capability"] == "insight-forge"
-    assert data["version"] == "INS-1.0.0"
+    assert data["version"] == "INS-2.0.0"
     assert "doris" in data["tier1_databases"]
 
 
@@ -105,7 +115,7 @@ def test_insight_brief_endpoint_shape(insight_client):
     assert "datasource" in body
     assert "schema_annotations" in body
     assert "insight_snapshot" in body
-    assert body["phase"]["workbench"] is True
+    assert body["phase"]["workbench"] == "ops_only"
 
 
 def test_schema_explorer_supports_doris():

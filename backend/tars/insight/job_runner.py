@@ -12,6 +12,8 @@ from .knowledge_publisher import KnowledgePublisher
 from .profile_pipeline import ProfilePipeline
 from .store import InsightMetricStore, InsightProfileRunStore
 from .version import INS_VERSION
+from .workflow_events import publish as publish_forge_event
+from .workflow_service import InsightWorkflowService
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class InsightJobRunner:
         self.metric_store = InsightMetricStore(db)
         self.ds_store = DataSourceStore(db)
         self.config = get_insight_config()
+        self.workflow = InsightWorkflowService(db)
 
     async def start_profile(
         self,
@@ -52,16 +55,28 @@ class InsightJobRunner:
             return
 
         def on_progress(phase: str, current: int, total: int, message: str):
+            progress = {
+                "phase": phase,
+                "current": current,
+                "total": total,
+                "message": message,
+            }
             self.run_store.update_progress(
                 run_id,
                 tenant_id,
+                progress,
+                status="running",
+            )
+            percent = int((current / total) * 100) if total else 0
+            publish_forge_event(
+                run_id,
+                "progress",
                 {
+                    "run_id": run_id,
                     "phase": phase,
-                    "current": current,
-                    "total": total,
+                    "percent": percent,
                     "message": message,
                 },
-                status="running",
             )
 
         self.run_store.update_progress(
@@ -69,6 +84,12 @@ class InsightJobRunner:
             tenant_id,
             {"phase": "start", "current": 0, "total": 5, "message": "启动鉴数"},
             status="running",
+        )
+        self.workflow.transition_on_profile_start(datasource_id, tenant_id)
+        publish_forge_event(
+            run_id,
+            "state_change",
+            {"run_id": run_id, "from": "needs_forge", "to": "forging"},
         )
 
         llm_override = (run.budget_json or {}).get("llm")
@@ -99,11 +120,20 @@ class InsightJobRunner:
         try:
             result = await pipeline.run(ds, run_id=run_id)
             if not result.get("success"):
+                err = result.get("error", "profile failed")
                 self.run_store.complete(
                     run_id,
                     tenant_id,
-                    error=result.get("error", "profile failed"),
+                    error=err,
                     status="failed",
+                )
+                self.workflow.transition_on_profile_complete(
+                    datasource_id, tenant_id, error=str(err)
+                )
+                publish_forge_event(
+                    run_id,
+                    "failed",
+                    {"run_id": run_id, "message": str(err), "retriable": True},
                 )
                 return
 
@@ -146,6 +176,29 @@ class InsightJobRunner:
                 knowledge_doc_id=knowledge_doc_id,
                 status="completed",
             )
+            pending = self.workflow.transition_on_profile_complete(
+                datasource_id, tenant_id
+            )
+            if pending and pending.get("text"):
+                await self._auto_ask_pending(
+                    datasource_id,
+                    tenant_id,
+                    pending,
+                )
+            publish_forge_event(
+                run_id,
+                "completed",
+                {
+                    "run_id": run_id,
+                    "doc_id": knowledge_doc_id,
+                    "metrics_count": metric_outcome.get("inserted", 0),
+                },
+            )
+            publish_forge_event(
+                run_id,
+                "state_change",
+                {"run_id": run_id, "from": "forging", "to": "ready"},
+            )
             logger.info(
                 "[InsightForge/%s] profile completed ds=%s tables=%s",
                 INS_VERSION,
@@ -156,4 +209,44 @@ class InsightJobRunner:
             logger.exception("[InsightForge] profile failed: %s", e)
             self.run_store.complete(
                 run_id, tenant_id, error=str(e), status="failed"
+            )
+            self.workflow.transition_on_profile_complete(
+                datasource_id, tenant_id, error=str(e)
+            )
+            publish_forge_event(
+                run_id,
+                "failed",
+                {"run_id": run_id, "message": str(e), "retriable": True},
+            )
+
+    async def _auto_ask_pending(
+        self,
+        datasource_id: str,
+        tenant_id: str,
+        pending: dict,
+    ) -> None:
+        """H5: after profile completes, run one ask for pending_question within TTL."""
+        from .metric_qa_engine import MetricQaEngine
+
+        question = (pending.get("text") or "").strip()
+        if not question:
+            return
+        session_id = pending.get("session_id")
+        engine = MetricQaEngine(self.db)
+        try:
+            await engine.ask(
+                datasource_id,
+                tenant_id,
+                question,
+                user_id="system",
+                session_id=session_id,
+            )
+            logger.info(
+                "[InsightForge/%s] auto-ask pending_question ds=%s",
+                INS_VERSION,
+                datasource_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "[InsightForge] auto-ask pending_question failed: %s", e
             )

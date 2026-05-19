@@ -543,11 +543,31 @@ export const insightApi = {
     options?: {
       force?: boolean
       llm?: InsightLlmSettingsPayload & { persist?: boolean }
+      pending_question?: string
+      session_id?: string
     }
   ): Promise<{ success: boolean; run_id: string; status: string }> => {
     const response = await api.post(`/insight/datasources/${datasourceId}/profile`, {
       force: options?.force ?? false,
       llm: options?.llm,
+      pending_question: options?.pending_question,
+      session_id: options?.session_id,
+    })
+    return response.data
+  },
+
+  startForge: async (
+    datasourceId: string,
+    options?: {
+      force?: boolean
+      pending_question?: string
+      session_id?: string
+    }
+  ): Promise<{ success: boolean; run_id: string; status: string }> => {
+    const response = await api.post(`/insight/datasources/${datasourceId}/forge`, {
+      force: options?.force ?? false,
+      pending_question: options?.pending_question,
+      session_id: options?.session_id,
     })
     return response.data
   },
@@ -568,6 +588,90 @@ export const insightApi = {
     const response = await api.get(`/insight/datasources/${datasourceId}/brief`)
     return response.data
   },
+
+  getWorkflow: async (
+    datasourceId: string,
+    sessionId?: string
+  ): Promise<Record<string, unknown>> => {
+    const response = await api.get(`/insight/datasources/${datasourceId}/workflow`, {
+      params: sessionId ? { session_id: sessionId } : undefined,
+    })
+    return response.data
+  },
+
+  ask: async (
+    datasourceId: string,
+    body: {
+      question: string
+      candidate_metric_keys?: string[]
+      as_of_date?: string
+      session_id?: string
+    }
+  ): Promise<InsightMetricAnswer> => {
+    const response = await api.post(`/insight/datasources/${datasourceId}/ask`, body)
+    return response.data
+  },
+
+  feedback: async (
+    questionLogId: string,
+    score: number
+  ): Promise<{ success: boolean; downgraded?: boolean }> => {
+    const response = await api.post(`/insight/ask/${questionLogId}/feedback`, {
+      feedback: score,
+    })
+    return response.data
+  },
+
+  adoptMetric: async (options: {
+    metric_id?: string
+    question_log_id?: string
+    definition?: string
+    sql_template?: string
+  }): Promise<{ success: boolean; metric?: Record<string, unknown> }> => {
+    const { metric_id, ...rest } = options
+    if (metric_id) {
+      const response = await api.post(`/insight/metrics/${metric_id}/adopt`, rest)
+      return response.data
+    }
+    const response = await api.post('/insight/metrics/adopt', options)
+    return response.data
+  },
+}
+
+export interface InsightWorkflowState {
+  datasource_state: string
+  session_state: string
+  show_workflow_strip: boolean
+  block_reason?: string | null
+  forge_progress?: {
+    phase?: string
+    percent?: number
+    message?: string
+    run_id?: string
+  } | null
+  pending_question?: { text: string; session_id?: string }
+  datasource_id?: string
+  datasource_name?: string
+}
+
+export interface InsightMetricAnswer {
+  value: number | string | null
+  unit?: string
+  caliber_tier: 'official' | 'suggested' | 'adhoc'
+  metric_key?: string
+  definition: string
+  sql: string
+  filters_summary: string
+  as_of?: string
+  lag_seconds?: number
+  confidence: number
+  branch: string
+  reasoning?: string
+  open_questions?: string[]
+  candidates?: string[]
+  error?: { code: string; message: string }
+  question_log_id?: string
+  metric_id?: string
 }
 
 export interface InsightDatasourceBrief {
@@ -593,7 +697,11 @@ export interface InsightDatasourceBrief {
   llm_errors?: string[]
   llm_status?: string
   llm_used?: Record<string, unknown>
-  phase: { profile: boolean; metric_qa_in_chat: boolean; workbench: boolean }
+  phase: {
+    profile: boolean
+    metric_qa_in_chat: boolean
+    workbench: boolean | string
+  }
 }
 
 // ========= Knowledge Base API =========

@@ -257,6 +257,80 @@ class InsightMetricStore:
         conn.commit()
         return {"inserted": inserted, "skipped": skipped}
 
+    def get_by_id(self, metric_id: str, tenant_id: str) -> Optional[InsightMetric]:
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM insight_metrics WHERE id = ? AND tenant_id = ?",
+            (metric_id, tenant_id),
+        )
+        return self._row_to_metric(cursor.fetchone())
+
+    def get_current_by_key(
+        self, datasource_id: str, tenant_id: str, metric_key: str
+    ) -> Optional[InsightMetric]:
+        """Latest non-superseded row for a metric key."""
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM insight_metrics
+            WHERE datasource_id = ? AND tenant_id = ? AND metric_key = ?
+              AND superseded_by IS NULL
+            ORDER BY version DESC
+            LIMIT 1
+            """,
+            (datasource_id, tenant_id, metric_key),
+        )
+        return self._row_to_metric(cursor.fetchone())
+
+    def get_by_key(
+        self, datasource_id: str, tenant_id: str, metric_key: str
+    ) -> Optional[InsightMetric]:
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM insight_metrics
+            WHERE datasource_id = ? AND tenant_id = ? AND metric_key = ?
+            ORDER BY version DESC
+            LIMIT 1
+            """,
+            (datasource_id, tenant_id, metric_key),
+        )
+        return self._row_to_metric(cursor.fetchone())
+
+    def list_approved(
+        self, datasource_id: str, tenant_id: str = "default"
+    ) -> List[InsightMetric]:
+        return [
+            m
+            for m in self.list_by_datasource(datasource_id, tenant_id)
+            if m.status == "approved"
+        ]
+
+    def list_by_keys(
+        self,
+        datasource_id: str,
+        tenant_id: str,
+        metric_keys: List[str],
+    ) -> List[InsightMetric]:
+        if not metric_keys:
+            return []
+        keys = [k for k in metric_keys if k]
+        placeholders = ",".join("?" * len(keys))
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT * FROM insight_metrics
+            WHERE datasource_id = ? AND tenant_id = ?
+              AND metric_key IN ({placeholders})
+            """,
+            (datasource_id, tenant_id, *keys),
+        )
+        return [m for row in cursor.fetchall() if (m := self._row_to_metric(row))]
+
     def list_by_datasource(
         self, datasource_id: str, tenant_id: str = "default"
     ) -> List[InsightMetric]:
@@ -271,6 +345,168 @@ class InsightMetricStore:
             (datasource_id, tenant_id),
         )
         return [m for row in cursor.fetchall() if (m := self._row_to_metric(row))]
+
+    def create_draft_from_log(
+        self,
+        *,
+        datasource_id: str,
+        tenant_id: str,
+        metric_key: str,
+        display_name: str,
+        definition: str,
+        sql_template: str,
+        source: str = "adhoc",
+    ) -> InsightMetric:
+        mid = str(uuid.uuid4())
+        now = self._now()
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO insight_metrics (
+                id, datasource_id, tenant_id, metric_key, display_name, definition,
+                sql_template, tables_json, status, source, confidence, created_at, updated_at,
+                version, superseded_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 'draft', ?, 0.5, ?, ?, 1, NULL)
+            """,
+            (
+                mid,
+                datasource_id,
+                tenant_id,
+                metric_key,
+                display_name,
+                definition,
+                sql_template,
+                source,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        return self.get_by_id(mid, tenant_id)  # type: ignore
+
+    def adopt_metric(
+        self,
+        metric_id: str,
+        tenant_id: str,
+        *,
+        definition: Optional[str] = None,
+        sql_template: Optional[str] = None,
+    ) -> InsightMetric:
+        """Promote draft→approved or bump version when definition changes (row lock)."""
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
+        try:
+            cursor.execute(
+                "SELECT * FROM insight_metrics WHERE id = ? AND tenant_id = ?",
+                (metric_id, tenant_id),
+            )
+            row = cursor.fetchone()
+            metric = self._row_to_metric(row)
+            if not metric:
+                conn.rollback()
+                raise ValueError("metric not found")
+
+            new_def = (definition if definition is not None else metric.definition).strip()
+            new_sql = (
+                sql_template if sql_template is not None else metric.sql_template
+            ).strip()
+            now = self._now()
+
+            if metric.status == "draft":
+                cursor.execute(
+                    """
+                    UPDATE insight_metrics
+                    SET status = 'approved', definition = ?, sql_template = ?,
+                        updated_at = ?, source = CASE WHEN source = 'profile' THEN source ELSE 'adhoc' END
+                    WHERE id = ? AND tenant_id = ?
+                    """,
+                    (new_def, new_sql, now, metric_id, tenant_id),
+                )
+                conn.commit()
+                return self.get_by_id(metric_id, tenant_id)  # type: ignore
+
+            if metric.status != "approved":
+                conn.rollback()
+                raise ValueError(f"cannot adopt status={metric.status}")
+
+            if new_def == metric.definition.strip() and new_sql == (metric.sql_template or "").strip():
+                cursor.execute(
+                    "UPDATE insight_metrics SET updated_at = ? WHERE id = ? AND tenant_id = ?",
+                    (now, metric_id, tenant_id),
+                )
+                conn.commit()
+                return self.get_by_id(metric_id, tenant_id)  # type: ignore
+
+            cursor.execute(
+                """
+                SELECT id FROM insight_metrics
+                WHERE datasource_id = ? AND tenant_id = ? AND metric_key = ?
+                  AND status = 'approved' AND superseded_by IS NULL AND id != ?
+                """,
+                (metric.datasource_id, tenant_id, metric.metric_key, metric_id),
+            )
+            if cursor.fetchone():
+                conn.rollback()
+                raise AdoptionConflictError("concurrent adoption in progress")
+
+            new_id = str(uuid.uuid4())
+            new_version = metric.version + 1
+            cursor.execute(
+                """
+                INSERT INTO insight_metrics (
+                    id, datasource_id, tenant_id, metric_key, display_name, definition,
+                    sql_template, tables_json, status, source, confidence, created_at, updated_at,
+                    version, superseded_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    new_id,
+                    metric.datasource_id,
+                    tenant_id,
+                    metric.metric_key,
+                    metric.display_name,
+                    new_def,
+                    new_sql,
+                    json.dumps(metric.tables_json, ensure_ascii=False),
+                    metric.source,
+                    metric.confidence,
+                    now,
+                    now,
+                    new_version,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE insight_metrics
+                SET superseded_by = ?, updated_at = ?
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (new_id, now, metric_id, tenant_id),
+            )
+            conn.commit()
+            return self.get_by_id(new_id, tenant_id)  # type: ignore
+        except AdoptionConflictError:
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+
+    def deprecate_metric(self, metric_id: str, tenant_id: str) -> bool:
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        now = self._now()
+        cursor.execute(
+            """
+            UPDATE insight_metrics
+            SET status = 'deprecated', updated_at = ?
+            WHERE id = ? AND tenant_id = ? AND status = 'approved' AND superseded_by IS NULL
+            """,
+            (now, metric_id, tenant_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
     def _row_to_metric(self, row) -> Optional[InsightMetric]:
         if not row:
@@ -293,4 +529,10 @@ class InsightMetricStore:
             confidence=float(row[10] or 0),
             created_at=row[11],
             updated_at=row[12],
+            version=int(row[13]) if len(row) > 13 and row[13] is not None else 1,
+            superseded_by=row[14] if len(row) > 14 else None,
         )
+
+
+class AdoptionConflictError(Exception):
+    """Concurrent adoption on the same metric key."""

@@ -94,6 +94,12 @@ const router = createRouter({
           name: 'admin-platform',
           component: () => import('@/components/admin/PlatformToolsPanel.vue')
         },
+        {
+          path: 'insight/llm',
+          name: 'admin-insight-llm',
+          component: () => import('@/views/admin/InsightLlmAdminView.vue'),
+          meta: { module: 'insight' },
+        },
       ]
     },
     {

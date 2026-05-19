@@ -41,3 +41,5 @@ class InsightMetric:
     confidence: float = 0.0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    version: int = 1
+    superseded_by: Optional[str] = None

@@ -7,6 +7,8 @@ const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRe
 import PlanCard from './PlanCard.vue'
 import TaskCard from './TaskCard.vue'
 import RememberMemoryDialog from './RememberMemoryDialog.vue'
+import MetricAnswerCard from '@/components/insight/MetricAnswerCard.vue'
+import type { InsightMetricAnswer } from '@/api'
 import type { ToolCallEvent } from '@/types'
 import { renderChatMarkdown } from '@/utils/chatMarkdown'
 import { useToast } from '@/composables/useToast'
@@ -36,6 +38,8 @@ interface ChatMessage {
   thinking?: ThinkingState
   task?: any
   biChart?: any
+  insightMetricAnswer?: InsightMetricAnswer
+  insightDatasourceId?: string
 }
 
 const props = defineProps<{
@@ -47,6 +51,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   quickStart: [text: string]
   citationClick: [payload: { docId: string; title?: string }]
+  insightClarify: [payload: { question: string; candidate_metric_keys: string[]; datasourceId: string }]
 }>()
 
 const { t } = useI18n()
@@ -309,6 +314,14 @@ onMounted(() => {
                 :class="{ 'markdown-body--streaming': isStreamingAssistant(msg, idx) }"
                 v-html="formatAssistantContent(msg, idx)"
               />
+
+              <div v-if="msg.insightMetricAnswer && msg.insightDatasourceId" class="mt-3">
+                <MetricAnswerCard
+                  :answer="msg.insightMetricAnswer"
+                  :datasource-id="msg.insightDatasourceId"
+                  @clarify="(p) => emit('insightClarify', { ...p, datasourceId: msg.insightDatasourceId! })"
+                />
+              </div>
 
               <!-- BI 图表渲染 -->
               <div v-if="msg.biChart" class="mt-3">

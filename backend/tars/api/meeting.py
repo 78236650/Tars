@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..database import Database
-from ..modules.registry import module_registry
 from ..tools.builtin.meeting_recognizer import MeetingRecognizerTool, SUPPORTED_AUDIO_FORMATS
+from ._auth import require_module
 
 router = APIRouter(prefix="/api/meeting", tags=["会议助手"])
 
@@ -53,32 +53,10 @@ def _resolve_user_id(
 
 
 async def require_meeting_module(
-    x_user_role: Optional[str] = Header(default=None),
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    _principal=Depends(require_module("meeting")),
 ) -> None:
-    if not module_registry.is_enabled("meeting"):
-        raise HTTPException(
-            status_code=503,
-            detail="会议助手模块未启用，请在 backend/config/modules.yaml 中将 meeting.enabled 设为 true 并重启后端",
-        )
-    if x_user_role == "admin":
-        return
-    try:
-        from ..gateway.role_template import role_template_manager
-        from tars.main import user_store
-
-        if role_template_manager is None or user_store is None or not x_api_key:
-            return
-        user = user_store.get_user_by_api_key(x_api_key)
-        if not user:
-            return
-        template_id = getattr(user, "role_template_id", None) or "standard"
-        if not role_template_manager.can_access_module(template_id, "meeting"):
-            raise HTTPException(status_code=403, detail="当前角色无权使用会议助手，请联系管理员分配 meeting 模块权限")
-    except HTTPException:
-        raise
-    except Exception:
-        return
+    """统一通过 require_module 鉴权；保留独立函数以便单独挂依赖。"""
+    return None
 
 
 router.dependencies = [Depends(require_meeting_module)]
