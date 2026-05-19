@@ -204,8 +204,13 @@ class InsightMetricStore:
         datasource_id: str,
         tenant_id: str,
         candidates: List[Dict[str, Any]],
-    ) -> int:
-        """Replace profile-sourced draft metrics for a datasource."""
+    ) -> Dict[str, Any]:
+        """Replace profile-sourced draft metrics for a datasource.
+
+        Returns {"inserted": int, "skipped": [metric_key,...]} so callers
+        can surface candidates that collide with approved rows on the
+        UNIQUE(datasource_id, tenant_id, metric_key) constraint.
+        """
         conn = self.db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -216,7 +221,8 @@ class InsightMetricStore:
             (datasource_id, tenant_id),
         )
         now = self._now()
-        count = 0
+        inserted = 0
+        skipped: List[str] = []
         for m in candidates:
             key = (m.get("key") or m.get("metric_key") or "").strip()
             if not key:
@@ -225,7 +231,7 @@ class InsightMetricStore:
             tables = m.get("tables") or []
             cursor.execute(
                 """
-                INSERT INTO insight_metrics (
+                INSERT OR IGNORE INTO insight_metrics (
                     id, datasource_id, tenant_id, metric_key, display_name, definition,
                     sql_template, tables_json, status, source, confidence, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'profile', ?, ?, ?)
@@ -244,9 +250,12 @@ class InsightMetricStore:
                     now,
                 ),
             )
-            count += 1
+            if cursor.rowcount and cursor.rowcount > 0:
+                inserted += 1
+            else:
+                skipped.append(key)
         conn.commit()
-        return count
+        return {"inserted": inserted, "skipped": skipped}
 
     def list_by_datasource(
         self, datasource_id: str, tenant_id: str = "default"

@@ -122,7 +122,7 @@ class InsightJobRunner:
                 schema_annotations=result.get("schema_annotations") or {},
             )
 
-            self.metric_store.replace_draft_metrics(
+            metric_outcome = self.metric_store.replace_draft_metrics(
                 datasource_id,
                 tenant_id,
                 result.get("metric_candidates") or [],
@@ -131,6 +131,10 @@ class InsightJobRunner:
             snapshot = result.get("insight_snapshot") or {}
             if llm_selection:
                 snapshot["llm_used"] = llm_selection
+            if metric_outcome.get("skipped"):
+                snapshot.setdefault("llm_errors", []).append(
+                    f"metric_keys_skipped_on_approved: {metric_outcome['skipped']}"
+                )
 
             self.run_store.complete(
                 run_id,
