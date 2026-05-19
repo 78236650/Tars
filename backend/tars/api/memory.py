@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..database import Database
@@ -13,6 +13,7 @@ from ..memory.core_memory import BLOCK_NAMES
 from ..memory.manager import MemoryManager
 from ..memory.tree_builder import EntityTreeBuilder
 from ..security.audit import safe_audit, client_ip_from_request
+from ._auth import Principal, require_authenticated_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -300,15 +301,13 @@ async def save_memories_from_turn(
     }
 
 
-def _resolve_tree_tenant(
-    user_id: str,
-    x_tenant_id: Optional[str],
-    x_user_role: Optional[str],
-) -> str:
-    tenant_id = (user_id or x_tenant_id or "default").strip() or "default"
-    if user_id and x_user_role != "admin" and tenant_id != (x_tenant_id or "default"):
-        raise HTTPException(status_code=403, detail="无权查看其他租户记忆树")
-    return tenant_id
+def _resolve_tree_tenant(principal: Principal, user_id: str) -> str:
+    """Admin can view any tenant via user_id param; non-admin always uses own tenant."""
+    if user_id and user_id.strip():
+        if not principal.is_admin:
+            raise HTTPException(status_code=403, detail="无权查看其他租户记忆树")
+        return user_id.strip()
+    return principal.tenant_id
 
 
 @router.get("/tree")
@@ -318,12 +317,11 @@ def get_memory_tree(
     include_core: bool = True,
     include_orphan: bool = True,
     user_id: str = "",
-    x_tenant_id: Optional[str] = Header(default="default"),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     if view not in ("entity", "provenance"):
         raise HTTPException(status_code=400, detail="unsupported view")
-    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    tenant_id = _resolve_tree_tenant(principal, user_id)
     builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id, max_per_bucket=max_per_bucket)
     if view == "provenance":
         return builder.build_provenance()
@@ -336,12 +334,11 @@ def search_memory_tree(
     limit: int = 20,
     view: str = "entity",
     user_id: str = "",
-    x_tenant_id: Optional[str] = Header(default="default"),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     if view not in ("entity", "provenance"):
         raise HTTPException(status_code=400, detail="unsupported view")
-    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    tenant_id = _resolve_tree_tenant(principal, user_id)
     builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
     return builder.search(q, limit=min(max(limit, 1), 50), view=view)
 
@@ -350,10 +347,9 @@ def search_memory_tree(
 def get_memory_tree_graph(
     user_id: str = "",
     max_edges: int = 800,
-    x_tenant_id: Optional[str] = Header(default="default"),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
-    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    tenant_id = _resolve_tree_tenant(principal, user_id)
     builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
     return builder.build_graph(max_edges=min(max(max_edges, 1), 2000))
 
@@ -362,12 +358,11 @@ def get_memory_tree_graph(
 def get_memory_tree_relations(
     entity_id: str,
     user_id: str = "",
-    x_tenant_id: Optional[str] = Header(default="default"),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     if not entity_id.strip():
         raise HTTPException(status_code=400, detail="entity_id required")
-    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    tenant_id = _resolve_tree_tenant(principal, user_id)
     builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
     return builder.get_relations(entity_id.strip())
 
