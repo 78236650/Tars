@@ -54,14 +54,16 @@ def format_citation_results(ranked: List[Dict[str, Any]]) -> str:
     ]
     for i, r in enumerate(ranked, 1):
         cite = r.get("citation") or {}
-        doc_id = cite.get("doc_id", "unknown")
-        doc_title = cite.get("doc_title", "未知文档")
-        source_type = cite.get("source", "document")
+        doc_id = cite.get("doc_id")
+        doc_title = cite.get("doc_title") or "未知文档"
+        source_type = cite.get("source") or "document"
         text = (r.get("text") or "").strip()
         snippet = text[:500] + ("..." if len(text) > 500 else "")
-        lines.append(
-            f"\n[{i}] ref:{doc_id} 来源: {doc_title} ({source_type})\n{snippet}"
-        )
+        if doc_id and doc_id != "unknown":
+            header = f"\n[{i}] ref:{doc_id} 来源: {doc_title} ({source_type})"
+        else:
+            header = f"\n[{i}] 来源: {doc_title} ({source_type})"
+        lines.append(f"{header}\n{snippet}")
     return "\n".join(lines)
 
 def list_collection_targets(
