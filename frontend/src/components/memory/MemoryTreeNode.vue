@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { MemoryTreeNode } from '@/types'
 
+defineOptions({ name: 'MemoryTreeNode' })
+
 const props = defineProps<{
   node: MemoryTreeNode
   depth: number

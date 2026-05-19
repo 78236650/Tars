@@ -591,6 +591,7 @@ class EntityTreeBuilder:
                 "node_count": len(nodes),
                 "edge_count": len(edges),
                 "truncated": truncated,
+                "max_edges": max_edges,
             },
         }
 

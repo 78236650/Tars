@@ -395,7 +395,7 @@ defineExpose({ refresh: refreshAll })
             <span>{{ t('memory.tree.statsEntities') }}: {{ graphData.stats.node_count }}</span>
             <span>{{ t('memory.tree.statsRelations') }}: {{ graphData.stats.edge_count }}</span>
             <span v-if="graphData.stats.truncated" class="text-amber-300/90">
-              {{ t('memory.tree.graphTruncated', { max: 800 }) }}
+              {{ t('memory.tree.graphTruncated', { max: graphData.stats.max_edges ?? graphData.stats.edge_count }) }}
             </span>
           </template>
           <template v-else-if="viewMode === 'entity'">
