@@ -37,11 +37,12 @@ from tars.tools.builtin.python_exec import PythonExecTool
 from tars.memory.archival_insert_tool import ArchivalInsertTool
 from tars.tools.sandbox import WorkspaceSandbox
 from tars.skills import skill_registry, SkillLoader, PipelineLoader, SkillPipelineEngine, SkillPipelineRegistry
-from tars.skillhub import SkillHubClient, SkillInstaller, LocalSkillCatalog
+from tars.skillhub import SkillHubClient, SkillInstaller, LocalSkillCatalog, SkillsShClient
+from tars.config.skills import skills_config
 from tars.files import FileStorage, FileParser
 from tars.orchestration import TaskPlannerTool, TaskExecutor
 from tars.api.tools import router as tools_router
-from tars.api.skills import router as skills_router
+from tars.api.skills import router as skills_router, init_skills_api
 from tars.api.skillhub import router as skillhub_router, init_skillhub_api
 from tars.api.files import router as files_router, init_file_storage
 from tars.api.sessions import router as sessions_router, init_sessions_api
@@ -130,6 +131,11 @@ task_executor = TaskExecutor(tool_registry=tool_registry)
 # ========= 加载本地 Skill 包 =========
 skills_dir = project_dir.parent / "skills"
 skills_dir.mkdir(exist_ok=True)
+from tars.skills.tenant_paths import TenantSkillPaths
+_tenant_skill_paths = TenantSkillPaths(str(skills_dir))
+_migrated = _tenant_skill_paths.migrate_flat_to_global()
+if _migrated:
+    print(f"[Skills] 已迁移 {_migrated} 个技能到 skills/_global/")
 skill_loader = SkillLoader(
     skills_dir=str(skills_dir),
     tool_registry=tool_registry,
@@ -145,10 +151,16 @@ PipelineLoader(str(pipelines_dir), pipeline_registry).load_all()
 
 # ========= 初始化 SkillHub =========
 skillhub_client = SkillHubClient()
+_global_skills_dir = str(_tenant_skill_paths.global_dir) if _tenant_skill_paths.uses_v41_layout else str(skills_dir)
 skillhub_local_catalog = LocalSkillCatalog(
     catalog_path=str(project_dir / "data" / "skillhub_catalog.json"),
     bundle_dir=str(project_dir / "data" / "skillhub" / "skills"),
-    package_dir=str(project_dir.parent / "skills"),
+    package_dir=_global_skills_dir,
+)
+skillhub_skills_sh = SkillsShClient(
+    cache_path=str(project_dir / "data" / "skillhub" / "skills_sh_index.json"),
+    cache_ttl=skills_config.skills_sh_cache_ttl,
+    enabled=skills_config.skills_sh_enabled,
 )
 skillhub_installer = SkillInstaller(
     skills_dir=str(skills_dir),
@@ -163,7 +175,10 @@ init_skillhub_api(
     skill_registry,
     str(project_dir / "data" / "skillhub_catalog.json"),
     local_catalog=skillhub_local_catalog,
+    skills_sh_client=skillhub_skills_sh,
+    user_store=user_store,
 )
+init_skills_api(skill_loader=skill_loader, tool_registry=tool_registry)
 
 # ========= 初始化文件上传 =========
 uploads_dir = project_dir / "uploads"

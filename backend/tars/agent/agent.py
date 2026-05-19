@@ -83,7 +83,8 @@ class AgentV2:
             self.memory_router = None
         if self.mem_config.skill_router_enabled:
             from ..skills.router import SkillRouter
-            self.skill_router = SkillRouter(self.skill_registry, self.mem_config)
+            from ..config.skills import skills_config
+            self.skill_router = SkillRouter(self.skill_registry, skills_config)
         else:
             self.skill_router = None
 
@@ -207,13 +208,42 @@ class AgentV2:
                 except Exception as e:
                     cmd_result.frontend_message = f"❌ 查询失败: {e}"
 
+            elif cmd_result.action == "skill_find":
+                query = cmd_result.action_params.get("query", "")
+                try:
+                    from ..skillhub.local_catalog import LocalSkillCatalog
+                    from pathlib import Path
+                    project_dir = Path(__file__).resolve().parent.parent.parent
+                    catalog = LocalSkillCatalog(
+                        catalog_path=str(project_dir / "data" / "skillhub_catalog.json"),
+                        bundle_dir=str(project_dir / "data" / "skillhub" / "skills"),
+                    )
+                    results = catalog.search(query)[:5]
+                    if not results:
+                        cmd_result.frontend_message = f"未找到与「{query}」相关的技能。请打开 工具→SkillHub 浏览。"
+                    else:
+                        lines = [f"🔍 SkillHub 推荐（{query}）:"]
+                        for pkg in results:
+                            lines.append(f"- **{pkg.name}** (`{pkg.id}`) — {pkg.description[:50]}")
+                        lines.append("\n在 工具→SkillHub 点击安装，或说 `/skill <技能id>` 激活已安装技能。")
+                        cmd_result.frontend_message = "\n".join(lines)
+                except Exception as e:
+                    cmd_result.frontend_message = f"搜索失败: {e}"
+
             elif cmd_result.action == "skill_disable":
                 skill_id = cmd_result.action_params.get("skill_id", "")
-                skill = self.skill_registry.get(skill_id)
-                if skill:
-                    self.skill_registry.disable(skill.id)
+                if skill_id:
+                    skill = self.skill_registry.get(skill_id)
+                    if skill:
+                        self.skill_registry.disable(skill.id)
+                        if self.skill_router:
+                            self.skill_router.force_off(skill.id)
+                    cmd_result.frontend_message = f"🔕 技能 {skill_id} 已关闭"
+                else:
                     self._active_skill_id = None
-                cmd_result.frontend_message = f"🔕 技能 {skill_id} 已关闭"
+                    if self.skill_router:
+                        self.skill_router.clear_sticky()
+                    cmd_result.frontend_message = "🔕 已清除 sticky 技能"
 
             elif cmd_result.action == "skill_revoke":
                 skill_id = cmd_result.action_params.get("skill_id", "")
@@ -237,7 +267,10 @@ class AgentV2:
                             break
                 if skill:
                     self.skill_registry.enable(skill.id)
-                    cmd_result.frontend_message = f"⚡ 技能 {skill.name} 已激活 ✓"
+                    self._active_skill_id = skill.id
+                    if self.skill_router:
+                        self.skill_router.force_sticky(skill.id)
+                    cmd_result.frontend_message = f"⚡ 技能 {skill.name} 已激活（sticky）✓"
                     await channel.send(session_id, {
                         "type": "thinking_step",
                         "session_id": session_id,
@@ -317,7 +350,7 @@ class AgentV2:
                 static_part = prompt_cache.get_or_compute(
                     _static_key,
                     lambda: self._build_static_prompt(
-                        user_content, session_id, cmd_result,
+                        user_content, session_id, cmd_result, tenant_id,
                     ),
                 )
                 dynamic_part = self._build_memory_prompt(memory_context, knowledge_context)
@@ -712,24 +745,27 @@ class AgentV2:
                               scoped_memory_manager, cmd_result,
                               knowledge_context: str = "") -> str:
         """Build the full system prompt for a conversation turn (uncached fallback)."""
-        return self._build_static_prompt(user_content, session_id, cmd_result) + \
+        return self._build_static_prompt(user_content, session_id, cmd_result, tenant_id) + \
                self._build_memory_prompt(memory_context, knowledge_context)
 
-    def _build_static_prompt(self, user_content: str, session_id: str, cmd_result) -> str:
+    def _build_static_prompt(self, user_content: str, session_id: str, cmd_result, tenant_id: str = "default") -> str:
         """Build cacheable static parts: persona + tools + skill list."""
         sp = self.workspace.build_context()
 
-        # 渐进披露技能 + 上下文相关技能注入
+        # 渐进披露 + SkillRouter 按需注入（tenant 过滤）
         if hasattr(self, 'skill_loader') and hasattr(self.skill_loader, 'get_progressive_disclosure'):
-            disclosure = self.skill_loader.get_progressive_disclosure()
+            disclosure = self.skill_loader.get_progressive_disclosure(tenant_id)
             if disclosure:
                 sp += f"\n\n{disclosure}"
 
-            contextual = self.skill_loader.get_contextual_skill_injection(user_content)
-            if contextual:
-                sp += f"\n\n{contextual}"
+            matched = self._route_skills_for_message(user_content, tenant_id)
+            if matched:
+                injection = self._build_skill_injection(matched)
+                if injection:
+                    sp += f"\n\n{injection}"
+                self._record_skill_activations(matched)
             elif hasattr(self, '_active_skill_id') and self._active_skill_id:
-                active_skill = self.skill_registry.get(self._active_skill_id)
+                active_skill = self.skill_registry.get(self._active_skill_id, tenant_id)
                 if active_skill and active_skill.prompt_template:
                     sp += f"\n\n## 已激活技能: {active_skill.name}\n{active_skill.prompt_template}"
         else:
@@ -756,6 +792,51 @@ class AgentV2:
             sp += f"\n\n{cmd_result.prompt_injection}"
 
         return sp
+
+    def _route_skills_for_message(self, user_content: str, tenant_id: str = "default"):
+        from ..config.skills import skills_config
+        if not skills_config.router_enabled:
+            if hasattr(self, 'skill_loader'):
+                text = self.skill_loader.get_contextual_skill_injection(user_content, tenant_id=tenant_id)
+                if not text:
+                    return []
+                # Fallback returns text only — parse not needed, handled below
+            return []
+
+        if self.skill_router:
+            return self.skill_router.route_from_content(user_content, tenant_id=tenant_id)
+
+        if hasattr(self, 'skill_loader'):
+            # Legacy keyword fallback without router
+            skills = self.skill_loader.skill_registry.list_prompt_skills(tenant_id) if self.skill_loader.skill_registry else []
+            content_lower = user_content.lower()
+            scored = []
+            for skill in skills:
+                score = self.skill_loader._score_skill_relevance(skill, content_lower)
+                if score > 0:
+                    scored.append((skill, score))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            return scored[:3]
+        return []
+
+    def _build_skill_injection(self, matched) -> str:
+        if self.skill_router:
+            return self.skill_router.build_injection(matched)
+        sections = []
+        for skill, _ in matched:
+            if skill.prompt_template:
+                sections.append(f"## 已激活技能: {skill.name}\n{skill.prompt_template}")
+        return "\n\n".join(sections)
+
+    def _record_skill_activations(self, matched) -> None:
+        try:
+            from ..skills.curator import skill_curator
+            if not skill_curator:
+                return
+            for skill, _ in matched:
+                skill_curator.record_activation(skill.id)
+        except Exception:
+            pass
 
     def _build_memory_prompt(self, memory_context: str, knowledge_context: str = "") -> str:
         """Build dynamic per-query part: memory + knowledge search results."""

@@ -10,6 +10,9 @@ HELP_TEXT = """## 可用命令
 | `/yolo` | 执行模式：直接动手，快速实现 |
 | `/brainstorm <主题>` | 头脑风暴：发散思维，不限可行性 |
 | `/subagent <name> <任务>` | 委派子代理 (code/writing/data/research) |
+| `/skill list` | 列出已安装技能 |
+| `/skill find <关键词>` | 搜索 SkillHub 推荐技能 |
+| `/skill off` | 关闭当前 sticky 技能 |
 | `/skill <技能名>` | 激活一个 PromptSkill |
 | `/clear` | 清空对话，开启新会话 |
 | `/help` | 显示本帮助"""
@@ -72,12 +75,36 @@ class SubagentCommand(Command):
 
 class SkillCommand(Command):
     def __init__(self):
-        super().__init__("skill", "技能管理：激活/权限/撤销", "/skill [permissions|revoke] <技能名>")
+        super().__init__("skill", "技能管理：列表/搜索/激活", "/skill [list|find|off|permissions|revoke] <技能名>")
 
     def execute(self, args: str) -> CommandResult:
         parts = args.strip().split(maxsplit=1)
         sub = parts[0].lower() if parts else ""
         rest = parts[1] if len(parts) > 1 else ""
+
+        if sub == "list":
+            try:
+                from tars.skills import skill_registry
+                skills = skill_registry.list_all()
+                if not skills:
+                    return CommandResult(frontend_message="暂无已安装技能。前往 工具 → SkillHub 安装。")
+                lines = []
+                for s in skills:
+                    state = "✓" if s.enabled else "✗"
+                    lines.append(f"{state} **{s.id}** — {s.description[:60] if s.description else s.name}")
+                return CommandResult(frontend_message="## 已安装技能\n" + "\n".join(lines))
+            except Exception as e:
+                return CommandResult(frontend_message=f"❌ 列表失败: {e}")
+
+        if sub == "find":
+            query = rest.strip()
+            if not query:
+                return CommandResult(frontend_message="用法: /skill find <关键词>\n例: /skill find pdf")
+            return CommandResult(
+                frontend_message=f"🔍 正在搜索 SkillHub: {query}…",
+                action="skill_find",
+                action_params={"query": query},
+            )
 
         # /skill permissions <id>
         if sub == "permissions":
@@ -94,10 +121,10 @@ class SkillCommand(Command):
                 action="skill_revoke",
                 action_params={"skill_id": rparts[0] if rparts else "", "permission": rparts[1] if len(rparts) > 1 else ""},
             )
-        # /skill off <id>
+        # /skill off [id]
         if sub == "off":
             return CommandResult(
-                frontend_message=f"🔕 技能 {rest} 已关闭",
+                frontend_message=f"🔕 技能 {rest or 'sticky'} 已关闭",
                 action="skill_disable",
                 action_params={"skill_id": rest},
             )
@@ -105,7 +132,9 @@ class SkillCommand(Command):
         # 默认：激活技能
         skill_id = args.strip()
         if not skill_id:
-            return CommandResult(frontend_message="用法: /skill [permissions|revoke] <技能名>\n例: /skill deploy\n    /skill permissions deploy\n    /skill revoke deploy shell")
+            return CommandResult(
+                frontend_message="用法: /skill list | /skill find <词> | /skill <技能名> | /skill off"
+            )
         return CommandResult(
             frontend_message=f"⚡ 技能 {skill_id} 已激活",
             action="activate_skill",

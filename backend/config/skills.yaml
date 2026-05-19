@@ -1,0 +1,17 @@
+# TARS v4.1.0 — 技能系统配置
+
+skillhub:
+  skills_sh_enabled: true
+  skills_sh_cache_ttl: 86400
+  github_topic: tars-skill
+  # github_token: ${GITHUB_TOKEN}
+
+router:
+  enabled: true
+  top_k: 3
+  min_score: 0.25
+  auto_archive_days: 30
+
+install:
+  confirm_dangerous_permissions: true
+  default_scope: tenant   # global | tenant

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
@@ -15,6 +16,7 @@ const chatStore = useChatStore()
 const reminderNotificationsStore = useReminderNotificationsStore()
 const wsStore = useWsStore()
 const { t } = useI18n()
+const route = useRoute()
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[], thinking?: any }[]>([])
 const messagesLoading = ref(false)
 const inputMessage = ref('')
@@ -423,6 +425,11 @@ onMounted(async () => {
   await chatStore.initIfEmpty()
   if (chatStore.currentSessionId) {
     await loadSessionMessages(chatStore.currentSessionId)
+  }
+  const prompt = route.query.prompt
+  if (typeof prompt === 'string' && prompt.trim()) {
+    inputMessage.value = prompt.trim()
+    autoResize()
   }
   try {
     await reminderNotificationsStore.loadList()

@@ -4,7 +4,7 @@ Tracks skill usage statistics and provides archive/activate lifecycle.
 Archived skills are excluded from auto-activation by the skill router.
 """
 import time
-from typing import Optional
+from typing import List, Optional
 
 
 class SkillCurator:
@@ -106,6 +106,20 @@ class SkillCurator:
         except Exception:
             return []
 
+    def record_activation(self, skill_id: str):
+        """Record skill activation (prompt injection), distinct from tool call."""
+        try:
+            now = time.time()
+            conn = self._db._get_conn()
+            conn.execute("""
+                INSERT INTO skill_usage (skill_id, total_calls, last_called, state)
+                VALUES (?, 0, ?, 'active')
+                ON CONFLICT(skill_id) DO UPDATE SET last_called = excluded.last_called
+            """, (skill_id, now))
+            conn.commit()
+        except Exception:
+            pass
+
     def get_skill_stats(self, skill_id: str) -> Optional[dict]:
         """Get stats for a single skill."""
         try:
@@ -125,6 +139,23 @@ class SkillCurator:
         except Exception:
             pass
         return None
+
+    def check_auto_archive(self, days: int = 30) -> List[str]:
+        """Archive skills unused for N days. Returns archived skill ids."""
+        archived = []
+        try:
+            cutoff = time.time() - days * 86400
+            conn = self._db._get_conn()
+            rows = conn.execute(
+                "SELECT skill_id FROM skill_usage WHERE state = 'active' AND last_called > 0 AND last_called < ?",
+                (cutoff,),
+            ).fetchall()
+            for (skill_id,) in rows:
+                self.archive(skill_id)
+                archived.append(skill_id)
+        except Exception:
+            pass
+        return archived
 
 
 # ── Global singleton ────────────────────────────────────────────────
