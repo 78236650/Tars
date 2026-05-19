@@ -113,11 +113,23 @@ onUnmounted(() => {
 })
 
 watch(
-  () => [props.nodes, props.edges, props.selectedId, props.loading],
+  () => [props.nodes, props.edges, props.loading],
   () => {
     if (!props.loading) render()
   },
   { deep: true }
+)
+
+watch(
+  () => props.selectedId,
+  (id) => {
+    if (!chart || !id) return
+    const name = props.nodes.find((n) => n.id === id)?.label
+    if (name) {
+      chart.dispatchAction({ type: 'downplay', seriesIndex: 0 })
+      chart.dispatchAction({ type: 'highlight', seriesIndex: 0, name: name.length > 14 ? `${name.slice(0, 13)}…` : name })
+    }
+  }
 )
 </script>
 
