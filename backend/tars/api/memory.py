@@ -252,6 +252,36 @@ async def merge_memories(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/export")
+async def export_memories(
+    user_id: str = "",
+    x_tenant_id: Optional[str] = Header(default="default"),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    """Export memories for a tenant/user as JSON (admin or own tenant)."""
+    db = _require_db()
+    tenant_id = (user_id or x_tenant_id or "default").strip()
+    if x_user_role != "admin" and tenant_id != (x_tenant_id or "default"):
+        raise HTTPException(status_code=403, detail="无权导出其他租户记忆")
+
+    items, total = db.list_all_memories(page=1, page_size=5000, tenant_id=tenant_id)
+    return {
+        "tenant_id": tenant_id,
+        "total": total,
+        "memories": [
+            {
+                "id": m.id,
+                "content": m.content,
+                "category": m.category,
+                "scope": getattr(m, "scope", "private"),
+                "importance": getattr(m, "importance", 0),
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in items
+        ],
+    }
+
+
 @router.get("/{memory_id}")
 def get_memory_detail(memory_id: str, x_tenant_id: Optional[str] = Header(default="default")):
     db = _require_db()

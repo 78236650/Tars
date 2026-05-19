@@ -272,8 +272,23 @@ python scripts/migrate_providers.py
 # 4. 重启服务
 ```
 
-数据库自动迁移（ALTER TABLE 加 scope 字段等），无需手动操作。
+## 从 v4.0.x 升级到 v4.1.0
+
+```bash
+# 1. 拉取代码
+git pull
+
+# 2. 迁移技能目录 skills/* → skills/_global/*
+python backend/scripts/migrate_v410.py
+
+# 3. （可选）启用 Provider Fallback
+# 编辑 backend/config/providers.yaml → fallback.enabled: true
+
+# 4. 重启 backend + frontend
+```
+
+数据库自动迁移（skills_v3 tenant_id/scope、provider_usage 表等），无需手动 SQL。
 
 ---
 
-*文档版本: v4.0.5 | 更新日期: 2026-05-19*
+*文档版本: v4.1.0 | 更新日期: 2026-05-19*

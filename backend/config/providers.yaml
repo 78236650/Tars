@@ -25,3 +25,11 @@ providers:
   #   default_model: qwen-max
   #   api_key: "${DASHSCOPE_API_KEY}"
   #   display_name: Qwen (阿里云)
+
+# v4.1.0: 主 Provider 失败时按 chain 降级
+fallback:
+  enabled: false
+  chain:
+    - { provider: ollama-local, model: llama3.2 }
+  retry_on: [429, 500, 502, 503, 504, timeout]
+  max_attempts: 3

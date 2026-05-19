@@ -7,7 +7,21 @@ TARS 技能系统支持两种类型的技能：
 - **PluginSkill** — Python 代码插件，加载后注册为可调用的 Tool
 - **PromptSkill** — Prompt 模板，激活后注入 LLM 的 system prompt 增强行为
 
-技能通过 `skill.yaml` 文件定义，存放在 `skills/` 目录下。
+技能通过 `skill.yaml` 或 `SKILL.md` 定义。v4.1.0 起目录布局为：
+
+```
+skills/
+├── _global/              # 全局技能（Admin 安装）
+│   └── calculator/
+└── tenants/{tenant_id}/  # 租户私有技能（SkillHub 默认安装位置）
+    └── demo-skill/
+```
+
+旧版 flat 布局（`skills/calculator/`）在启动时自动迁移到 `_global/`。手动迁移：
+
+```bash
+python backend/scripts/migrate_v410.py
+```
 
 ## 默认技能
 

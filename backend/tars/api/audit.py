@@ -15,6 +15,7 @@ ACTION_GROUPS: dict[str, List[str]] = {
     "bi": ["bi_query"],
     "auth": ["login", "logout"],
     "memory": ["memory:write", "memory:delete", "memory:promote", "memory:purge"],
+    "provider": ["model_fallback"],
 }
 
 

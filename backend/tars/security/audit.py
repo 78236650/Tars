@@ -262,6 +262,27 @@ class AuditLogger:
             client_ip=client_ip,
         )
 
+    def log_model_fallback(
+        self,
+        from_provider: str,
+        to_provider: str,
+        reason: str,
+        tenant_id: str = "default",
+        user_id: str = "default",
+    ):
+        detail = json.dumps(
+            {"from": from_provider, "to": to_provider, "reason": reason[:500]},
+            ensure_ascii=False,
+        )
+        self.log(
+            action="model_fallback",
+            resource_type="provider",
+            resource_id=to_provider,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            detail=detail,
+        )
+
     def list(
         self,
         tenant_id: str = "",

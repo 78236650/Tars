@@ -227,7 +227,12 @@ tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever, db=db)
 
 # ========= 初始化 Agent =========
 # v4.0.0: 从配置加载所有 provider，获取默认实例
+from tars.config.providers_config import load_providers_config
+from tars.models.fallback import wrap_provider_with_fallback
+
 providers = load_providers_from_config()
+_providers_cfg = load_providers_config()
+_default_name = _providers_cfg.get("default_provider", "ollama-local")
 default_provider = providers.get("_default")
 
 # v4.0.0: 加载模块配置 + 技能 Curator
@@ -245,6 +250,18 @@ agent = AgentV2(
     knowledge_retriever=knowledge_retriever,
 )
 agent.skill_loader = skill_loader
+
+if default_provider:
+    wrapped = wrap_provider_with_fallback(
+        default_provider,
+        providers,
+        _providers_cfg.get("fallback", {}),
+        primary_name=_default_name,
+        db=db,
+    )
+    agent.provider = wrapped
+    agent.dispatcher.set_provider(wrapped)
+    memory_manager.set_provider(wrapped)
 
 # v2.5: 初始化权限引擎
 from tars.skills.permission_engine import permission_engine
@@ -1143,6 +1160,17 @@ async def websocket_endpoint_tenant(websocket: WebSocket, tenant_id: str):
     await _serve_websocket(websocket, tenant_id)
 
 # ================ v4.0.0: Provider + Module API ================
+
+@app.get("/api/providers/usage")
+async def get_provider_usage(
+    tenant_id: str = "",
+    provider: str = "",
+    limit: int = 100,
+):
+    """Provider token usage stats (v4.1.0)."""
+    rows, total = db.list_provider_usage(tenant_id=tenant_id, provider=provider, limit=limit)
+    return {"items": rows, "total": total}
+
 
 @app.get("/api/providers")
 async def list_providers():
