@@ -32,7 +32,9 @@ onMounted(async () => {
   </div>
   <RouterView v-else v-slot="{ Component }">
     <DesktopShell v-if="showShell">
-      <component :is="Component" />
+      <KeepAlive include="ChatView">
+        <component :is="Component" />
+      </KeepAlive>
     </DesktopShell>
     <component :is="Component" v-else />
   </RouterView>

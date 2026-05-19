@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { sessionsApi } from '@/api'
 import type { ChatSession } from '@/types'
 import { useAuthStore } from '@/stores/auth'
+import { createChatMessageState, type ChatMessageItem } from '@/stores/chatRealtime'
 
 const SESSION_STORAGE_KEY = 'tars_current_session'
 
@@ -57,7 +58,10 @@ export const useChatStore = defineStore('chat', () => {
   const switchSession = (id: string) => {
     currentSessionId.value = id
     persistSessionId(id)
+    void messageState.loadSessionMessages(id)
   }
+
+  const messageState = createChatMessageState(() => currentSessionId.value, switchSession)
 
   const deleteSession = async (id: string) => {
     await sessionsApi.delete(id)
@@ -88,6 +92,14 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  const appendUserMessage = (sessionId: string, message: ChatMessageItem) => {
+    messageState.appendMessage(sessionId, message)
+  }
+
+  const clearActiveSkills = (sessionId: string) => {
+    messageState.setActiveSkills(sessionId, [])
+  }
+
   return {
     sessions,
     currentSessionId,
@@ -98,5 +110,12 @@ export const useChatStore = defineStore('chat', () => {
     updateTitle,
     initIfEmpty,
     restoreSessionId,
+    currentMessages: messageState.currentMessages,
+    currentActiveSkills: messageState.currentActiveSkills,
+    messagesLoading: messageState.messagesLoading,
+    loadSessionMessages: messageState.loadSessionMessages,
+    initChatRealtime: messageState.initChatRealtime,
+    appendUserMessage,
+    clearActiveSkills,
   }
 })
