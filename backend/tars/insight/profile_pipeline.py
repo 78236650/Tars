@@ -93,7 +93,6 @@ class ProfilePipeline:
                 raise RuntimeError(schema["error"])
 
             tables = collector.filter_tables(schema)
-            total_tables = max(len(tables), 1)
 
             self._progress("stats", 2, 6, f"统计画像 ({len(tables)} 表)")
             table_stats = collector.collect_all(schema, tables)
