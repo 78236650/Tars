@@ -83,6 +83,10 @@ _StarletteRequest.form = _patched_form
 # 初始化组件
 db = Database()
 user_store = UserStore(db)
+
+from tars.api._auth import init_auth
+init_auth(user_store)
+
 permission_manager = PermissionManager()
 evolution_manager = EvolutionManager()
 
