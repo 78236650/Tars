@@ -417,6 +417,12 @@ onMounted(() => {
 
 .step-detail {
   color: #78716c;
+  font-size: 11px;
+  display: block;
+  margin-top: 2px;
+  word-break: break-all;
+  max-height: 60px;
+  overflow: hidden;
 }
 
 :deep(.knowledge-ref) {
@@ -437,12 +443,5 @@ onMounted(() => {
 :deep(.knowledge-ref:hover) {
   background: rgba(59, 130, 246, 0.25);
   color: #bfdbfe;
-}
-  font-size: 11px;
-  display: block;
-  margin-top: 2px;
-  word-break: break-all;
-  max-height: 60px;
-  overflow: hidden;
 }
 </style>
