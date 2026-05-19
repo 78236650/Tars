@@ -67,6 +67,7 @@ import { ref, computed, watch } from 'vue'
 import { biApi } from '@/api'
 import type { DataSource } from '@/types'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
 
 interface Props {
   datasource: DataSource | null
@@ -83,6 +84,7 @@ const editableAnnotations = ref<Record<string, any>>({})
 const dirty = ref(false)
 const saving = ref(false)
 const { t } = useI18n()
+const toast = useToast()
 
 const tables = computed(() => {
   if (!props.datasource?.schema_snapshot?.tables) return []
@@ -135,7 +137,7 @@ async function saveAnnotations() {
     dirty.value = false
     emit('save')
   } catch (e) {
-    alert(t('schemaAnnotator.saveFailed'))
+    toast.error(t('schemaAnnotator.saveFailed'))
   } finally {
     saving.value = false
   }

@@ -132,6 +132,8 @@ import { ref, computed } from 'vue'
 import type { Transcription } from '@/types'
 import { meetingApi } from '@/api'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
+import { getErrorDetail } from '@/utils/errorExtractor'
 import { renderMarkdown } from '@/utils/markdown'
 import {
   extractSummarySections,
@@ -156,6 +158,7 @@ const approving = ref(false)
 const approveSuccess = ref(false)
 const showTranscript = ref(false)
 const { t, locale } = useI18n()
+const toast = useToast()
 
 const normalizedSummary = computed(() =>
   normalizeMeetingSummary(props.transcription?.summary),
@@ -198,7 +201,7 @@ async function generateSummary() {
     await meetingApi.summarize(props.transcription.id)
     emit('refresh')
   } catch (e: any) {
-    alert(e.response?.data?.detail || t('meeting.summaryGenerateFailed'))
+    toast.error(getErrorDetail(e, t('meeting.summaryGenerateFailed')))
   } finally {
     summarizing.value = false
   }
@@ -225,7 +228,7 @@ async function saveEdit(): Promise<boolean> {
     emit('refresh')
     return true
   } catch (e: any) {
-    alert(e.response?.data?.detail || t('meeting.saveSummaryFailed'))
+    toast.error(getErrorDetail(e, t('meeting.saveSummaryFailed')))
     return false
   }
 }
@@ -240,7 +243,7 @@ async function approveToKnowledge() {
       : '')
   const kp = kpRaw.split('\n').map(s => s.trim()).filter(Boolean)
   if (!summary) {
-    alert(t('meeting.summaryRequiredForApprove'))
+    toast.error(t('meeting.summaryRequiredForApprove'))
     return
   }
   if (editing.value) {
@@ -253,7 +256,7 @@ async function approveToKnowledge() {
     approveSuccess.value = true
     emit('refresh')
   } catch (e: any) {
-    alert(e.response?.data?.detail || t('meeting.approveFailed'))
+    toast.error(getErrorDetail(e, t('meeting.approveFailed')))
   } finally {
     approving.value = false
   }

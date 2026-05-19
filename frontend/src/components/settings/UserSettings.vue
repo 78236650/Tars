@@ -7,9 +7,12 @@ import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types'
 import { resolveTemplateId, roleBadgeClass, templateDisplayName } from '@/utils/roleDisplay'
+import { useToast } from '@/composables/useToast'
+import { getErrorDetail } from '@/utils/errorExtractor'
 
 const authStore = useAuthStore()
 const { locale, t } = useI18n()
+const toast = useToast()
 const users = ref<User[]>([])
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
@@ -110,7 +113,7 @@ const createUser = async () => {
     await loadUsers()
     closeCreateModal()
   } catch (error: any) {
-    alert(error.response?.data?.message || t('userSettings.createFailed'))
+    toast.error(getErrorDetail(error, t('userSettings.createFailed')))
   }
 }
 
@@ -120,7 +123,7 @@ const deleteUser = async () => {
     await loadUsers()
     closeDeleteConfirm()
   } catch (error: any) {
-    alert(error.response?.data?.message || t('userSettings.deleteFailed'))
+    toast.error(getErrorDetail(error, t('userSettings.deleteFailed')))
   }
 }
 
