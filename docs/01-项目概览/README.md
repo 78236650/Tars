@@ -4,7 +4,7 @@
 
 TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模型（Ollama）和云端 API（DeepSeek、阿里通义等）。用户通过技能/插件适配垂直场景，平台提供安全隔离、记忆管理、工具调度等基础能力。
 
-**当前版本: v4.0.5 "Skill Ecosystem Preview"**
+**当前版本: v4.1.4 "Memory Entity Tree"**（2026-05-19）
 
 ## 核心特性
 
@@ -139,15 +139,18 @@ cd ../frontend && npm run dev
 
 | 文档 | 说明 |
 |------|------|
-| [v4.0.5 发布说明](./v4.0.5-release-notes.md) | v4.0.5 完整变更 |
+| [v4.1.4 发布说明](./v4.1.4-release-notes.md) | 记忆实体树（当前） |
+| [v4.1.1 发布说明](./v4.1.1-release-notes.md) | 体验层 |
+| [v4.0.5 发布说明](./v4.0.5-release-notes.md) | Skill 生态预览 |
+| [记忆实体树设计](../superpowers/specs/2026-05-19-memory-tree-entity-view-design.md) | v4.1.4 产品与 API |
 | [系统架构](../02-技术方案/architecture/system-overview.md) | 整体架构设计 |
 | [前端设计 v4.0.0](../02-技术方案/v4.0.0-frontend-design.md) | v4 前端适配方案 |
-| [v4.1.0 技术方案](../02-技术方案/v4.1.0-skill-ecosystem-design.md) | 下一版本规划 |
+| [v4.1.0 技术方案](../02-技术方案/v4.1.0-skill-ecosystem-design.md) | 技能生态基线 |
 | [WebSocket 协议](../02-技术方案/api/websocket-protocol.md) | 前后端通信协议 |
 | [部署指南](../04-运维文档/deployment.md) | 内网部署说明 |
 | [Changelog](./changelog.md) | 版本变更记录 |
 
 ---
 
-*文档版本: v4.0.5*
+*文档版本: v4.1.4*
 *更新日期: 2026-05-19*
