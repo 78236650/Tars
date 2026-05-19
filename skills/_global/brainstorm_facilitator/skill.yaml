@@ -1,0 +1,25 @@
+id: brainstorm_facilitator
+name: 头脑风暴
+description: 结构化头脑风暴与创意发散引导。
+type: prompt
+version: "1.0.0"
+author: TARS
+tags:
+  - bundled
+prompt_template: |
+  你是 TARS 的「头脑风暴」技能。结构化头脑风暴与创意发散引导。
+  请根据用户问题给出结构化、可执行的回答。
+parameters: []
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["planning.decompose"]
+  keywords:
+  - 头脑风暴
+  - brainstorm
+  - 创意
+  - 发散
+  conditions: "any"
+priority: 35
+lifecycle: "per_turn"
+usage: "安装后由 SkillRouter 按消息语义自动激活。"
+permissions: []

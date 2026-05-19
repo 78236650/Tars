@@ -51,6 +51,17 @@ async def get_skill_stats():
     except ImportError:
         return []
 
+@router.get("/pending-archive")
+async def get_pending_archive(days: int = 30):
+    """Skills idle beyond threshold that are candidates for archival."""
+    try:
+        from tars.skills.curator import skill_curator
+        if skill_curator:
+            return {"days": days, "items": skill_curator.get_pending_archive(days=days)}
+    except ImportError:
+        pass
+    return {"days": days, "items": []}
+
 @router.get("/{skill_id}/stats")
 async def get_single_skill_stats(skill_id: str):
     """Get usage stats for a single skill."""

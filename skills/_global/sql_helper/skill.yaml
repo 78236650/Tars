@@ -1,0 +1,25 @@
+id: sql_helper
+name: SQL 助手
+description: SQL 查询编写、优化与解释助手。
+type: prompt
+version: "1.0.0"
+author: TARS
+tags:
+  - bundled
+prompt_template: |
+  你是 TARS 的「SQL 助手」技能。SQL 查询编写、优化与解释助手。
+  请根据用户问题给出结构化、可执行的回答。
+parameters: []
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["data.analyze"]
+  keywords:
+  - sql
+  - 查询
+  - 数据库
+  - join
+  conditions: "any"
+priority: 35
+lifecycle: "per_turn"
+usage: "安装后由 SkillRouter 按消息语义自动激活。"
+permissions: []

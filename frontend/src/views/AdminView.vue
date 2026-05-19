@@ -10,6 +10,7 @@ const tabs = [
   { labelKey: 'admin.tabs.users', path: '/admin/users' },
   { labelKey: 'admin.tabs.roles', path: '/admin/roles' },
   { labelKey: 'admin.tabs.audit', path: '/admin/audit' },
+  { labelKey: 'admin.tabs.platform', path: '/admin/platform' },
 ]
 </script>
 

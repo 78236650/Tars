@@ -1233,6 +1233,16 @@ async def startup_event():
     print(f"[Startup] 已注册 {len(tool_registry.list_all())} 个工具: {tool_registry.list_names()}")
     print(f"[Startup] 已加载 {len(skill_registry.list_all())} 个技能")
 
+    try:
+        from tars.skills.curator import skill_curator
+        from tars.config.skills import skills_config
+        if skill_curator and skills_config.auto_archive_days:
+            archived = skill_curator.check_auto_archive(days=skills_config.auto_archive_days)
+            if archived:
+                print(f"[Startup] Curator 自动归档 {len(archived)} 个闲置技能: {archived}")
+    except Exception as e:
+        print(f"[Startup] Curator 自动归档扫描失败: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """关闭事件"""

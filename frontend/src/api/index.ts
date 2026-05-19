@@ -189,6 +189,13 @@ export const memoryApi = {
     })
     return response.data
   },
+
+  exportMemories: async (tenantId?: string) => {
+    const response = await api.get('/memory/export', {
+      params: tenantId ? { user_id: tenantId } : undefined,
+    })
+    return response.data
+  },
 }
 
 export const subagentApi = {
@@ -296,7 +303,7 @@ export const skillsApi = {
   reload: () => api.post('/skills/reload'),
   // v4.0.0: 技能统计
   getStats: () => api.get('/skills/stats'),
-  // v4.0.0: 技能归档/激活
+  getPendingArchive: (days = 30) => api.get('/skills/pending-archive', { params: { days } }),
   archive: (id: string) => api.put(`/skills/${id}/archive`),
   activate: (id: string) => api.put(`/skills/${id}/activate`),
 }
@@ -307,12 +314,13 @@ export const skillhubApi = {
   getDetail: (id: string) => api.get(`/skillhub/detail/${id}`),
   install: (
     skillId: string,
-    options?: { confirmPermissions?: boolean; skipDependencyCheck?: boolean },
+    options?: { confirmPermissions?: boolean; skipDependencyCheck?: boolean; scope?: 'tenant' | 'global' },
   ) =>
     api.post('/skillhub/install', {
       skill_id: skillId,
       confirm_permissions: options?.confirmPermissions ?? true,
       skip_dependency_check: options?.skipDependencyCheck ?? false,
+      scope: options?.scope,
     }),
   uninstall: (skillId: string) => api.post('/skillhub/uninstall', { skill_id: skillId }),
   listInstalled: () => api.get('/skillhub/installed'),
@@ -560,7 +568,10 @@ export const providersApi = {
   test: async (name: string): Promise<{ status: string; models_count?: number; message?: string }> => {
     const response = await api.post(`/providers/${name}/test`)
     return response.data
-  }
+  },
+
+  getUsage: (params?: { tenant_id?: string; provider?: string; limit?: number }) =>
+    api.get('/providers/usage', { params }),
 }
 
 // ========= v4.0.0: Audit API =========

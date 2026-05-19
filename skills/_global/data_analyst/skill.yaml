@@ -1,0 +1,25 @@
+id: data_analyst
+name: 数据分析
+description: 业务数据分析与洞察报告助手。
+type: prompt
+version: "1.0.0"
+author: TARS
+tags:
+  - bundled
+prompt_template: |
+  你是 TARS 的「数据分析」技能。业务数据分析与洞察报告助手。
+  请根据用户问题给出结构化、可执行的回答。
+parameters: []
+tars_version_min: "2.2.0"
+trigger:
+  intents: ["data.analyze"]
+  keywords:
+  - 分析
+  - 指标
+  - 报表
+  - 趋势
+  conditions: "any"
+priority: 35
+lifecycle: "per_turn"
+usage: "安装后由 SkillRouter 按消息语义自动激活。"
+permissions: []

@@ -88,6 +88,11 @@ const router = createRouter({
           name: 'admin-audit',
           component: () => import('@/views/AuditView.vue')
         },
+        {
+          path: 'platform',
+          name: 'admin-platform',
+          component: () => import('@/components/admin/PlatformToolsPanel.vue')
+        },
       ]
     },
     {

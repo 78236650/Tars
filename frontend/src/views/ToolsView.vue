@@ -5,7 +5,9 @@ import ToolDetailModal from '@/components/tools/ToolDetailModal.vue'
 import AddToolModal from '@/components/tools/AddToolModal.vue'
 import TrySkillButton from '@/components/tools/TrySkillButton.vue'
 import SkillInstallWizard, { type InstallWizardState } from '@/components/tools/SkillInstallWizard.vue'
+import PendingArchivePanel from '@/components/tools/PendingArchivePanel.vue'
 import { toolsApi, skillsApi, skillhubApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
 import type { Tool, SkillItem, SkillHubPackage } from '@/types'
 
@@ -13,6 +15,7 @@ const activeTab = ref<'builtin' | 'skills' | 'skillhub'>('builtin')
 const loading = ref(false)
 const searchQuery = ref('')
 const { t } = useI18n()
+const authStore = useAuthStore()
 
 const builtinDescriptionKeys: Record<string, string> = {
   archival_insert: 'tools.builtinDescriptions.archival_insert',
@@ -89,6 +92,7 @@ const installMessage = ref<{ id: string; success: boolean; message: string; exam
 const installWizardOpen = ref(false)
 const installWizardState = ref<InstallWizardState | null>(null)
 const hubFilter = ref<'all' | 'plugin' | 'prompt' | 'featured'>('all')
+const installScope = ref<'tenant' | 'global'>('tenant')
 
 // 弹窗
 const showAddModal = ref(false)
@@ -181,12 +185,13 @@ const pkgNameFor = (skillId: string) => {
 
 const installFromHub = async (
   skillId: string,
-  options?: { confirmPermissions?: boolean; skipDependencyCheck?: boolean },
+  options?: { confirmPermissions?: boolean; skipDependencyCheck?: boolean; scope?: 'tenant' | 'global' },
 ) => {
   installingId.value = skillId
   installMessage.value = null
+  const scope = options?.scope ?? installScope.value
   try {
-    const resp = await skillhubApi.install(skillId, options)
+    const resp = await skillhubApi.install(skillId, { ...options, scope })
     const data = resp.data
     if (data.needs_confirmation) {
       installWizardState.value = {
@@ -420,6 +425,7 @@ onMounted(() => {
 
           <!-- Tab 2: 已安装技能 (v4.0.0: 统计 + 归档) -->
           <div v-if="activeTab === 'skills'">
+            <PendingArchivePanel />
             <div v-if="filteredSkills.length > 0">
               <!-- 表头（桌面端） -->
               <div class="hidden lg:grid grid-cols-12 gap-4 px-4 py-2 mb-2 text-xs font-medium text-stone-400 uppercase tracking-[0.05em]">
@@ -493,6 +499,19 @@ onMounted(() => {
                 :disabled="hubSearching"
                 class="rounded-2xl bg-amber-500 px-5 py-2.5 text-sm font-medium text-stone-950 transition hover:bg-amber-400 disabled:bg-stone-700 disabled:text-stone-300"
               >{{ hubSearching ? t('tools.searching') : t('common.search') }}</button>
+              <label
+                v-if="authStore.user?.role === 'admin'"
+                class="flex items-center gap-2 rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-300"
+              >
+                <span>{{ t('tools.installScope') }}</span>
+                <select
+                  v-model="installScope"
+                  class="rounded-lg border border-amber-100/10 bg-[#171411] px-2 py-1 text-stone-100"
+                >
+                  <option value="tenant">{{ t('tools.scopeTenant') }}</option>
+                  <option value="global">{{ t('tools.scopeGlobal') }}</option>
+                </select>
+              </label>
             </div>
 
             <!-- 分类标签 -->

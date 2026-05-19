@@ -1,5 +1,38 @@
 # Changelog
 
+## v4.1.2 "Skill Ops & Platform UI" (2026-05-19)
+
+v4.1.1 后续：Curator 运维、Admin 平台工具、技能生态扩展。
+
+### Curator 运维
+- ✅ **`GET /api/skills/pending-archive`** — 列出待归档技能
+- ✅ **启动自动归档** — `check_auto_archive` 在 startup 按 `auto_archive_days` 执行
+- ✅ **待归档 UI** — ToolsView 技能 Tab 展示并一键归档
+
+### Admin 平台工具
+- ✅ **Provider 用量表** — Admin → 平台工具
+- ✅ **记忆导出** — 一键下载租户记忆 JSON
+
+### 技能生态
+- ✅ **内置技能扩至 22 个** — 新增邮件/SQL/API/文档等 12 个 prompt 技能
+- ✅ **Scene Analyzer → SkillRouter** — WC `current_intent` 参与路由
+- ✅ **SkillHub 安装 scope** — Admin 可选 tenant / global
+
+---
+
+## v4.1.1 "Experience Layer" (2026-05-19)
+
+> 完整发布说明见 [v4.1.1-release-notes.md](./v4.1.1-release-notes.md)
+
+### 体验层
+- ✅ SkillHub 安装向导（成功页 / 依赖跳过 / Try Skill）
+- ✅ 聊天页「已激活技能」条（`skills_active` WebSocket）
+- ✅ 知识引用 `[ref:doc_id|标题]` + 侧边预览面板
+- ✅ 设置页 v4.1.1 / v4.1.0 / v4.0.0 Changelog
+- ✅ 切页面会话不断（全局 chatRealtime store + KeepAlive）
+
+---
+
 ## v4.1.0 "Skill Ecosystem" (2026-05-19)
 
 技能生态正式版：三源 SkillHub、SkillRouter 激活、多租户隔离、知识引用溯源。
