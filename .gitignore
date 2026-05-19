@@ -83,6 +83,9 @@ Thumbs.db
 *.db-wal
 backend/uploads/
 
+# Local Chroma vector index (runtime; do not commit)
+backend/data/vectorstore/**/data_level0.bin
+
 # Local workspace
 .superpowers/
 .trae/
