@@ -118,14 +118,46 @@ POST   /api/skills/reload        # 重新加载
 
 ## SkillHub 市场
 
-从 GitHub 搜索和安装社区技能：
+从本地 bundled 目录和 GitHub 安装社区技能（v4.0.5 起支持 SKILL.md 格式）：
+
+### 可安装技能（bundled 精选）
+
+| 技能 | 类型 | 说明 |
+|------|------|------|
+| find-skills | Prompt | 技能发现助手 |
+| pdf | Prompt | PDF 处理专家 |
+| github | Prompt | GitHub 协作（gh CLI） |
+| excel-xlsx | Prompt | Excel 表格专家 |
+| agent-browser | Prompt | 浏览器自动化 |
+| meeting_notes | Prompt | 会议纪要助手 |
+| bi_analytics | Plugin | BI 数据分析 |
+
+完整目录见 `backend/data/skillhub_catalog.json`。
+
+### 安装与使用
+
+1. 打开 **工具 → SkillHub** 标签，浏览「精选」技能
+2. 点击 **安装** — 本地 bundled 包秒装，无需 GitHub
+3. 安装成功后按提示在对话中说 example prompt，Agent 会自动注入技能指令
+
+### API
 
 ```
-GET    /api/skillhub/search?q=xxx  # 搜索
-POST   /api/skillhub/install       # 安装
-POST   /api/skillhub/uninstall     # 卸载
-GET    /api/skillhub/updates       # 检查更新
+GET    /api/skillhub/catalog          # 本地技能目录
+GET    /api/skillhub/search?q=xxx     # 搜索（本地优先 + GitHub 补充）
+POST   /api/skillhub/install          # 安装（skill_id 如 bundled/pdf）
+POST   /api/skillhub/uninstall        # 卸载
+GET    /api/skillhub/installed        # 已安装列表
 ```
+
+### 技能格式
+
+支持两种格式：
+
+- **skill.yaml** — TARS 原生格式（Plugin / Prompt）
+- **SKILL.md** — Agent Skills 规范（YAML frontmatter + Markdown body）
+
+安装后技能自动注册到 SkillRegistry，Prompt 型技能由 Agent 按消息上下文匹配注入。
 
 ## 开发自定义技能
 

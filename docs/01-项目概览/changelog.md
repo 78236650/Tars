@@ -1,5 +1,56 @@
 # Changelog
 
+## v4.0.5 "Skill Ecosystem Preview" (2026-05-19)
+
+技能生态预览版：SkillHub 本地可安装、知识库与 Agent 联动、Admin 管理台完善。
+
+> 完整发布说明见 [v4.0.5-release-notes.md](./v4.0.5-release-notes.md)
+
+### SkillHub 技能生态
+
+- ✅ **LocalSkillCatalog** — bundled 本地技能目录，扫描 `data/skillhub/skills/` + `skillhub_catalog.json`
+- ✅ **10 个可安装技能** — PDF、GitHub、Excel、浏览器自动化、技能发现、摘要、天气、会议纪要、BI 等
+- ✅ **SKILL.md 安装支持** — 兼容 Agent Skills 规范，安装后自动注册并启用
+- ✅ **上下文技能注入** — Agent 按用户消息关键词匹配并注入 Prompt 技能全文
+- ✅ **前端精选筛选** — featured 标签、安装用法与 example_prompt 展示
+
+### 知识库
+
+- ✅ **统一检索层** — `knowledge/access.py` 供 API、工具、Agent 共用
+- ✅ **sqlite_store** — 知识库元数据 SQLite 存储
+- ✅ **Agent 主动检索** — 每轮对话前自动 search_knowledge，WebSocket 推送进度
+- ✅ **会议入库** — `POST /api/meeting/{id}/approve-to-knowledge` 转写入库
+
+### 会议助手
+
+- ✅ **摘要 API** — summarize / update_summary / 自定义 Prompt 模板
+- ✅ **Stale 恢复** — 超时转写任务自动标记失败
+- ✅ **前端 meetingSummary** — 结构化摘要 JSON 解析
+
+### Admin 管理台
+
+- ✅ **AdminView 壳** — 用户 / 角色 / 审计 Tab 导航
+- ✅ **UserEditDrawer** — 用户编辑（含密码修改）
+- ✅ **reset_admin.py** — 管理员账号重置脚本
+- ✅ **审计扩展** — 用户/会话/配置/技能事件日志
+
+### 记忆与其他
+
+- ✅ **Memory API** — pin / promote / scope / merge / compress
+- ✅ **SearXNG 部署** — `deploy/searxng/` Docker 私有搜索
+- ✅ **chatMarkdown** — 聊天气泡 Markdown 渲染增强
+- ✅ **roleDisplay** — 角色模板显示工具
+
+### 测试
+
+- 新增 test_skillhub_local、test_knowledge_search_tool、test_meeting_knowledge、test_admin_memory_api 等
+
+### 规划文档（v4.1.0 前瞻，未实现）
+
+- 📋 v4.1.0 建设方案 / 技术方案 / 执行计划
+
+---
+
 ## v4.0.0 "Hardened Base" (2026-05-17)
 
 多用户内网部署底座加固：安全、性能、Provider 插件化、模块化启动。

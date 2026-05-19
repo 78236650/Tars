@@ -241,6 +241,22 @@ tar -xzf tars-backup-20260517.tar.gz
 
 ---
 
+## 从 v4.0.x 升级至 v4.0.5
+
+```bash
+git fetch gitee
+git checkout v4.0.5
+cd backend && pip install -r requirements.txt
+cd ../frontend && npm install && npm run build
+# 重启后端即可
+```
+
+v4.0.5 新增 bundled 技能目录，无需额外配置。可选部署 SearXNG 私有搜索：
+
+```bash
+cd deploy/searxng && ./start.sh
+```
+
 ## 从 v3.x 升级
 
 ```bash
@@ -260,4 +276,4 @@ python scripts/migrate_providers.py
 
 ---
 
-*文档版本: v4.0.0 | 更新日期: 2026-05-17*
+*文档版本: v4.0.5 | 更新日期: 2026-05-19*

@@ -1,6 +1,8 @@
-# TARS AI Agent v3.9.1
+# TARS AI Agent v4.0.5
 
-一个完整的 AI 助手应用，支持多用户权限管理、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理与自动压缩。
+一个完整的 AI 助手应用，支持多用户权限管理、SkillHub 本地技能生态、知识库主动检索、Admin 管理台、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理与自动压缩。
+
+> **当前版本 v4.0.5** — 详见 [发布说明](docs/01-项目概览/v4.0.5-release-notes.md) | [Changelog](docs/01-项目概览/changelog.md)
 
 ## 项目结构
 
