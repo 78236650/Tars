@@ -601,33 +601,49 @@ class EntityTreeBuilder:
         if not q:
             return {"query": query, "view": view, "items": []}
 
-        built = self.build_provenance() if view == "provenance" else self.build()
         items: List[Dict[str, Any]] = []
-        seen: set = set()
+        conn = self.db._get_conn()
+        cur = conn.cursor()
 
-        def walk(nodes: List[Dict[str, Any]], path: List[str]) -> None:
-            if len(items) >= limit:
-                return
-            for node in nodes:
-                nid = node["id"]
-                path_next = path + [nid]
-                haystack = f"{node.get('label', '')} {nid}".lower()
-                if node.get("kind") == "memory":
-                    meta = node.get("meta") or {}
-                    haystack += f" {meta.get('category', '')}"
-                if q in haystack and nid not in seen:
-                    seen.add(nid)
-                    items.append(
-                        {
-                            "node_id": nid,
-                            "kind": node.get("kind"),
-                            "label": node.get("label"),
-                            "path": path_next,
-                        }
-                    )
-                walk(node.get("children") or [], path_next)
+        # Search memories via SQL LIKE
+        cur.execute(
+            """
+            SELECT id, content, category, entity_refs
+            FROM memories
+            WHERE tenant_id = ? AND LOWER(content) LIKE '%' || ? || '%'
+            LIMIT ?
+            """,
+            (self.tenant_id, q, limit),
+        )
+        for mid, content, category, _refs in cur.fetchall():
+            items.append({
+                "node_id": mid,
+                "kind": "memory",
+                "label": (content or "")[:80],
+                "path": [mid],
+            })
 
-        walk(built.get("nodes") or [], [])
+        # Search entities
+        remaining = limit - len(items)
+        if remaining > 0:
+            cur.execute(
+                """
+                SELECT id, name, type
+                FROM entities
+                WHERE LOWER(name) LIKE '%' || ? || '%'
+                   OR LOWER(aliases) LIKE '%' || ? || '%'
+                LIMIT ?
+                """,
+                (q, q, remaining),
+            )
+            for eid, name, etype in cur.fetchall():
+                items.append({
+                    "node_id": eid,
+                    "kind": "entity",
+                    "label": name,
+                    "path": [f"__type:{etype}", eid],
+                })
+
         return {"query": query, "view": view, "items": items[:limit]}
 
     def _count_relations(self) -> int:
