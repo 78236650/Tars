@@ -113,6 +113,21 @@ class MergeRequest(BaseModel):
     preview_only: bool = True
 
 
+class ExtractTurnRequest(BaseModel):
+    user_content: str = Field(default="", max_length=8000)
+    assistant_content: str = Field(min_length=1, max_length=50000)
+
+
+class MemoryDraftItem(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+    category: str = Field(default="fact")
+    importance: float = Field(default=0.75, ge=0.0, le=1.0)
+
+
+class SaveTurnMemoriesRequest(BaseModel):
+    items: List[MemoryDraftItem] = Field(min_length=1, max_length=10)
+
+
 @router.get("/stats")
 def get_memory_stats(x_tenant_id: Optional[str] = Header(default="default")):
     db = _require_db()
@@ -250,6 +265,38 @@ async def merge_memories(
         return await compressor.merge_memories(payload.memory_ids, preview_only=payload.preview_only)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/extract-from-turn")
+async def extract_memories_from_turn(
+    payload: ExtractTurnRequest,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    manager = _tenant_manager(x_tenant_id)
+    items = await manager.extract_turn_memories(payload.user_content, payload.assistant_content)
+    return {"items": items}
+
+
+@router.post("/save-from-turn")
+async def save_memories_from_turn(
+    payload: SaveTurnMemoriesRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    manager = _tenant_manager(x_tenant_id)
+    tenant_id = x_tenant_id or "default"
+    allowed = {"fact", "preference", "decision", "domain_knowledge"}
+    for item in payload.items:
+        if item.category not in allowed:
+            raise HTTPException(status_code=400, detail=f"invalid category: {item.category}")
+
+    result = await manager.save_turn_memories([item.model_dump() for item in payload.items])
+    for memory in result["saved"]:
+        _audit_memory_write("write", memory.id, tenant_id, http_request)
+    return {
+        "saved": [_memory_to_dict(memory) for memory in result["saved"]],
+        "skipped": result["skipped"],
+    }
 
 
 @router.get("/export")

@@ -1,5 +1,24 @@
 # Changelog
 
+## v4.1.3 "Chat Polish & Remember" (2026-05-19)
+
+聊天体验精简与手动「记住要点」能力。
+
+### 聊天 UX
+- ✅ **紧凑顶栏** — ChatView 单行状态栏；移除 Plan Mode / Brainstorm 按钮
+- ✅ **DesktopShell 精简** — 移除 Graphite Amber 徽章、页头模型入口；通知铃移至左侧栏
+- ✅ **Ctrl/⌘+Enter 发送** — Enter 仅换行
+- ✅ **回复复制** — 助手消息一键复制完整原文（含工具输出）
+- ✅ **RightPanel 折叠标签** — 中英文均竖排显示，避免与图标重叠
+
+### 记住要点
+- ✅ **`POST /api/memory/extract-from-turn`** — 从一轮对话提取可保存记忆草稿
+- ✅ **`POST /api/memory/save-from-turn`** — 用户确认后写入 archival 记忆
+- ✅ **RememberMemoryDialog** — 聊天内 🧠「记住要点」预览、编辑、分类保存
+- ✅ **LLM 提取 fallback** — 解析为空时回退 RegexExtractor
+
+---
+
 ## v4.1.2 "Skill Ops & Platform UI" (2026-05-19)
 
 v4.1.1 后续：Curator 运维、Admin 平台工具、技能生态扩展。

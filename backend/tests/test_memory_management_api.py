@@ -13,6 +13,14 @@ class StubLLMProvider:
         return {"content": "压缩后的摘要：保留关键事实与偏好。"}
 
 
+class ExtractStubProvider:
+    async def chat(self, messages, **kwargs):
+        class Response:
+            content = '[{"content":"用户偏好使用 React 开发前端","category":"user_preference"}]'
+
+        return Response()
+
+
 def _seed_memory(
     db,
     *,
@@ -312,3 +320,27 @@ class TestMemoryManagementAPI:
         status = status_resp.json()
         assert status["status"] == "completed"
         assert status["last_report"]["compressed_count"] >= 1
+
+    def test_extract_and_save_from_turn(self, client_and_db):
+        client, _db, manager = client_and_db
+        manager.set_provider(ExtractStubProvider())
+        extract_resp = client.post(
+            "/api/memory/extract-from-turn",
+            json={
+                "user_content": "我喜欢使用 React 开发前端",
+                "assistant_content": "好的，我会记住你偏好 React，并在后续建议中优先考虑。",
+            },
+        )
+        assert extract_resp.status_code == 200
+        items = extract_resp.json()["items"]
+        assert len(items) >= 1
+        assert items[0]["content"]
+
+        save_resp = client.post(
+            "/api/memory/save-from-turn",
+            json={"items": items},
+        )
+        assert save_resp.status_code == 200
+        payload = save_resp.json()
+        assert len(payload["saved"]) >= 1
+        assert payload["saved"][0]["content"]

@@ -159,9 +159,16 @@ const sendMessage = async () => {
 
 const handleKeydown = (e: KeyboardEvent) => {
   const ctrl = e.ctrlKey || e.metaKey
-  if (ctrl && e.key === 'Enter') { e.preventDefault(); sendMessage() }
   if (ctrl && (e.key === '/' || e.key === 'k')) { e.preventDefault(); toggleCommands() }
   if (ctrl && e.key === 'l') { e.preventDefault(); inputMessage.value = '/clear'; sendMessage() }
+}
+
+const handleInputKeydown = (e: KeyboardEvent) => {
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && e.key === 'Enter') {
+    e.preventDefault()
+    sendMessage()
+  }
 }
 
 onMounted(async () => {
@@ -213,38 +220,23 @@ const closeCitation = () => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] bg-[#14110f]/55">
-      <header class="flex items-center justify-between gap-4 border-b border-amber-100/10 px-6 py-4">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-stone-500">
-            <span>{{ t('chat.conversation') }}</span>
-            <span class="h-1 w-1 rounded-full bg-slate-600"></span>
-            <span>{{ chatStore.currentSessionId ? t('chat.liveSession') : t('chat.idleSession') }}</span>
-          </div>
-          <div class="mt-2 flex items-center gap-3">
-            <span class="h-2.5 w-2.5 rounded-full" :class="wsStore.isConnected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
-            <p class="text-sm text-stone-300">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</p>
-            <span class="rounded-full border border-amber-100/10 bg-white/[0.04] px-3 py-1 text-xs text-stone-300">
-              {{ settingsStore.currentModel || t('chat.notSelectedModel') }}
-            </span>
-          </div>
+      <header class="flex shrink-0 items-center gap-2.5 border-b border-amber-100/10 px-4 py-2">
+        <div class="flex min-w-0 items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          <span class="shrink-0">{{ t('chat.conversation') }}</span>
+          <span class="h-1 w-1 shrink-0 rounded-full bg-slate-600"></span>
+          <span class="truncate">{{ chatStore.currentSessionId ? t('chat.liveSession') : t('chat.idleSession') }}</span>
         </div>
-
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
-            @click="quickStart('/plan ')"
-          >
-            {{ t('chat.planMode') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-xs text-stone-200 transition hover:border-amber-300/25 hover:bg-amber-500/10"
-            @click="quickStart('/brainstorm ')"
-          >
-            {{ t('chat.brainstormMode') }}
-          </button>
+        <span class="h-3 w-px shrink-0 bg-amber-100/10" aria-hidden="true"></span>
+        <div class="flex shrink-0 items-center gap-1.5">
+          <span class="h-2 w-2 rounded-full" :class="wsStore.isConnected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
+          <span class="text-xs text-stone-400">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</span>
         </div>
+        <span
+          class="ml-auto max-w-[min(240px,40%)] truncate rounded-full border border-amber-100/10 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-stone-300"
+          :title="settingsStore.currentModel || t('chat.notSelectedModel')"
+        >
+          {{ settingsStore.currentModel || t('chat.notSelectedModel') }}
+        </span>
       </header>
 
       <ActiveSkillsBar :skills="activeSkills" />
@@ -329,7 +321,7 @@ const closeCitation = () => {
             :placeholder="t('chat.placeholder')"
             class="max-h-40 min-h-[48px] flex-1 resize-none rounded-2xl border border-amber-100/10 bg-white/[0.04] px-4 py-3 text-sm text-stone-100 outline-none transition placeholder:text-stone-500 focus:border-amber-300/25"
             @input="autoResize"
-            @keydown.enter.exact.prevent="sendMessage"
+            @keydown="handleInputKeydown"
           />
 
           <button

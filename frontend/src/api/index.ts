@@ -190,6 +190,24 @@ export const memoryApi = {
     return response.data
   },
 
+  extractFromTurn: async (payload: {
+    user_content: string
+    assistant_content: string
+  }): Promise<{ items: Array<{ content: string; category: string; importance: number }> }> => {
+    const response = await api.post<{ items: Array<{ content: string; category: string; importance: number }> }>(
+      '/memory/extract-from-turn',
+      payload,
+    )
+    return response.data
+  },
+
+  saveFromTurn: async (payload: {
+    items: Array<{ content: string; category: string; importance?: number }>
+  }): Promise<{ saved: MemoryItem[]; skipped: number }> => {
+    const response = await api.post<{ saved: MemoryItem[]; skipped: number }>('/memory/save-from-turn', payload)
+    return response.data
+  },
+
   exportMemories: async (tenantId?: string) => {
     const response = await api.get('/memory/export', {
       params: tenantId ? { user_id: tenantId } : undefined,
