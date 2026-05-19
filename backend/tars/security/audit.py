@@ -238,11 +238,36 @@ class AuditLogger:
             client_ip=client_ip,
         )
 
+    def log_bi_query(
+        self,
+        datasource_id: str,
+        tenant_id: str = "default",
+        user_id: str = "default",
+        sql_hash: str = "",
+        row_count: int = 0,
+        success: bool = True,
+        client_ip: str = "",
+    ):
+        detail = json.dumps(
+            {"sql_hash": sql_hash, "row_count": row_count, "success": success},
+            ensure_ascii=False,
+        )
+        self.log(
+            action="bi_query",
+            resource_type="datasource",
+            resource_id=datasource_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            detail=detail,
+            client_ip=client_ip,
+        )
+
     def list(
         self,
         tenant_id: str = "",
         user_id: str = "",
         action: str = "",
+        actions: Optional[list] = None,
         resource_type: str = "",
         page: int = 1,
         page_size: int = 50,
@@ -251,6 +276,7 @@ class AuditLogger:
             tenant_id=tenant_id,
             user_id=user_id,
             action=action,
+            actions=actions,
             resource_type=resource_type,
             page=page,
             page_size=page_size,

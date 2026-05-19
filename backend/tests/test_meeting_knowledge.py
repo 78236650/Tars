@@ -118,3 +118,33 @@ async def test_approve_to_knowledge_uses_tenant_header(meeting_db):
     row = cursor.fetchone()
     assert row[0] == tenant_id
     assert row[1] in ("会议纪要", "meeting_notes_kb")
+
+    cursor.execute(
+        "SELECT knowledge_doc_id, approved_at FROM transcriptions WHERE id = ?",
+        ("tx-1",),
+    )
+    tx_row = cursor.fetchone()
+    assert tx_row[0]
+    assert tx_row[1]
+
+    from tars.knowledge.access import search_knowledge
+
+    class Retriever:
+        vector_store = None
+
+        def __init__(self):
+            self.embedding_provider = DeterministicEmbeddingProvider(dim=64)
+
+        def retrieve(self, **kwargs):
+            return []
+
+    text, hits = search_knowledge(
+        db,
+        Retriever(),
+        "知识库集成",
+        tenant_id=tenant_id,
+        collection_id=data["collection_id"],
+    )
+    assert hits
+    assert "ref:" in text
+    assert any("知识库" in (h.get("text") or "") for h in hits)

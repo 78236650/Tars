@@ -14,6 +14,16 @@ const total = ref(0)
 
 const filterAction = ref('')
 const filterUserId = ref('')
+const filterActionGroup = ref('')
+
+const actionGroups = [
+  { value: '', labelKey: 'audit.groupAll' },
+  { value: 'skill', labelKey: 'audit.groupSkill' },
+  { value: 'tool', labelKey: 'audit.groupTool' },
+  { value: 'bi', labelKey: 'audit.groupBi' },
+  { value: 'auth', labelKey: 'audit.groupAuth' },
+  { value: 'memory', labelKey: 'audit.groupMemory' },
+]
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
 
@@ -27,6 +37,7 @@ const loadLogs = async () => {
     }
     if (filterAction.value) params.action = filterAction.value
     if (filterUserId.value) params.user_id = filterUserId.value
+    if (filterActionGroup.value) params.action_group = filterActionGroup.value
 
     const res = await auditApi.getLogs(params)
     logs.value = res.items || []
@@ -97,6 +108,13 @@ const getActionLabel = (action: string) => {
   return key ? t(key) : action
 }
 
+const skillResourceLink = (log: AuditLogItem) => {
+  if (log.action !== 'skill_install' && log.action !== 'skill_uninstall') return null
+  const skillId = log.resource?.split(':').slice(1).join(':') || log.detail
+  if (!skillId) return '/tools'
+  return `/tools?skill=${encodeURIComponent(skillId)}`
+}
+
 onMounted(() => {
   loadLogs()
 })
@@ -116,6 +134,15 @@ onMounted(() => {
 
         <!-- 筛选条件 -->
         <div class="mt-6 flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-stone-400">{{ t('audit.filterGroup') }}</label>
+            <select
+              v-model="filterActionGroup"
+              class="rounded-xl border border-amber-100/10 bg-white/[0.04] px-3 py-1.5 text-xs text-stone-100 focus:border-amber-300/30 focus:outline-none"
+            >
+              <option v-for="g in actionGroups" :key="g.value" :value="g.value">{{ t(g.labelKey) }}</option>
+            </select>
+          </div>
           <div class="flex items-center gap-2">
             <label class="text-xs text-stone-400">{{ t('audit.filterAction') }}</label>
             <input
@@ -176,7 +203,16 @@ onMounted(() => {
                     {{ getActionLabel(log.action) }}
                   </span>
                 </td>
-                <td class="px-4 py-3 text-xs text-stone-400 max-w-[140px] truncate">{{ log.resource || '-' }}</td>
+                <td class="px-4 py-3 text-xs text-stone-400 max-w-[140px] truncate">
+                  <router-link
+                    v-if="skillResourceLink(log)"
+                    :to="skillResourceLink(log)!"
+                    class="text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
+                  >
+                    {{ log.resource || '-' }}
+                  </router-link>
+                  <span v-else>{{ log.resource || '-' }}</span>
+                </td>
                 <td class="px-4 py-3 text-xs text-stone-400 max-w-[200px] truncate">{{ log.detail || '-' }}</td>
                 <td class="px-4 py-3 text-xs text-stone-500 font-mono">{{ log.ip_address || '-' }}</td>
               </tr>

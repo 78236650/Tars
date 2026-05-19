@@ -2073,6 +2073,7 @@ class Database:
         tenant_id: str = "",
         user_id: str = "",
         action: str = "",
+        actions: Optional[list[str]] = None,
         resource_type: str = "",
         page: int = 1,
         page_size: int = 50,
@@ -2087,7 +2088,11 @@ class Database:
         if user_id:
             conditions.append("user_id = ?")
             params.append(user_id)
-        if action:
+        if actions:
+            placeholders = ",".join("?" * len(actions))
+            conditions.append(f"action IN ({placeholders})")
+            params.extend(actions)
+        elif action:
             conditions.append("action = ?")
             params.append(action)
         if resource_type:

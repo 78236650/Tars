@@ -4,6 +4,66 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 
+def _derive_doc_id(hit: Dict[str, Any]) -> str:
+    source = hit.get("source", {}) or {}
+    meta = hit.get("metadata", {}) or {}
+    chunk_id = hit.get("id") or ""
+    doc_id = meta.get("doc_id") or source.get("doc_id")
+    if doc_id:
+        return str(doc_id)
+    if chunk_id and "_chunk_" in chunk_id:
+        return chunk_id.rsplit("_chunk_", 1)[0]
+    return chunk_id or "unknown"
+
+
+def _derive_source_type(doc_id: str, file_name: str) -> str:
+    lowered = f"{doc_id} {file_name}".lower()
+    if "meeting" in lowered or "会议" in file_name:
+        return "meeting"
+    return "document"
+
+
+def enrich_hit(hit: Dict[str, Any]) -> Dict[str, Any]:
+    """Add citation fields used by agent prompt and frontend [ref:doc_id] cards."""
+    source = dict(hit.get("source", {}) or {})
+    meta = dict(hit.get("metadata", {}) or {})
+    doc_id = _derive_doc_id(hit)
+    file_name = source.get("file_name") or meta.get("file_name") or "未知文档"
+    source_type = _derive_source_type(doc_id, file_name)
+
+    citation = {
+        "doc_id": doc_id,
+        "doc_title": file_name,
+        "source": source_type,
+        "collection_id": source.get("collection_id") or meta.get("collection_id"),
+        "chunk_index": source.get("chunk_index", meta.get("chunk_index")),
+    }
+    source.update({"doc_id": doc_id, "source_type": source_type})
+    meta.update(citation)
+
+    enriched = dict(hit)
+    enriched["source"] = source
+    enriched["metadata"] = meta
+    enriched["citation"] = citation
+    return enriched
+
+
+def format_citation_results(ranked: List[Dict[str, Any]]) -> str:
+    lines = [
+        "共检索到 {n} 条知识库片段（引用时在句末标注 [ref:doc_id]）：".format(n=len(ranked))
+    ]
+    for i, r in enumerate(ranked, 1):
+        cite = r.get("citation") or {}
+        doc_id = cite.get("doc_id", "unknown")
+        doc_title = cite.get("doc_title", "未知文档")
+        source_type = cite.get("source", "document")
+        text = (r.get("text") or "").strip()
+        snippet = text[:500] + ("..." if len(text) > 500 else "")
+        lines.append(
+            f"\n[{i}] ref:{doc_id} 来源: {doc_title} ({source_type})\n{snippet}"
+        )
+    return "\n".join(lines)
+
 def list_collection_targets(
     db,
     tenant_id: str,
@@ -120,13 +180,5 @@ def search_knowledge(
         if key not in deduped or item.get("score", 0) > deduped[key].get("score", 0):
             deduped[key] = item
 
-    ranked = sorted(deduped.values(), key=lambda x: x.get("score", 0), reverse=True)[:top_k]
-    lines = [f"共检索到 {len(ranked)} 条知识库片段（请在回答中引用来源）："]
-    for i, r in enumerate(ranked, 1):
-        source = r.get("source", {})
-        file_name = source.get("file_name", "未知文件")
-        text = (r.get("text") or "").strip()
-        snippet = text[:500] + ("..." if len(text) > 500 else "")
-        lines.append(f"\n[{i}] 来源: {file_name}\n{snippet}")
-
-    return "\n".join(lines), ranked
+    ranked = [enrich_hit(r) for r in sorted(deduped.values(), key=lambda x: x.get("score", 0), reverse=True)[:top_k]]
+    return format_citation_results(ranked), ranked

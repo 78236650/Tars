@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   closeOpenFences,
   renderChatMarkdown,
+  replaceKnowledgeRefs,
   shouldRenderAsInlineCode,
   softenInlineCode,
   unwrapOuterCodeFence,
@@ -33,5 +34,16 @@ describe('chatMarkdown', () => {
     expect(html).toContain('code-block')
     expect(html).toContain('code-block-lang">js')
     expect(html).toContain('hljs')
+  })
+
+  it('renders knowledge ref citations as links', () => {
+    const html = renderChatMarkdown('根据会议纪要 [ref:doc_meeting_1] 可知。')
+    expect(html).toContain('knowledge-ref')
+    expect(html).toContain('doc_meeting_1')
+    expect(html).toContain('/knowledge?doc_id=doc_meeting_1')
+  })
+
+  it('replaceKnowledgeRefs handles doc ids', () => {
+    expect(replaceKnowledgeRefs('[ref:abc-123]')).toContain('data-doc-id="abc-123"')
   })
 })

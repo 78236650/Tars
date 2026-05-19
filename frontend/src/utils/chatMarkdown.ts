@@ -84,9 +84,22 @@ export function shouldRenderAsInlineCode(code: string): boolean {
   return true
 }
 
+/** 将 [ref:doc_id] 转为可点击的知识库引用卡片 */
+export function replaceKnowledgeRefs(text: string): string {
+  return text.replace(/\[ref:([^\]\s]+)\]/g, (_match, docId: string) => {
+    const safe = escapeHtml(docId)
+    const href = `/knowledge?doc_id=${encodeURIComponent(docId)}`
+    return (
+      `<a href="${href}" class="knowledge-ref" data-doc-id="${safe}" title="${safe}">` +
+      `<span class="knowledge-ref-icon">📎</span><span class="knowledge-ref-label">${safe}</span></a>`
+    )
+  })
+}
+
 export function normalizeChatMarkdown(text: string, options?: { streaming?: boolean }): string {
   let normalized = text.replace(/\r\n/g, '\n')
   normalized = unwrapOuterCodeFence(normalized)
+  normalized = replaceKnowledgeRefs(normalized)
   if (options?.streaming) {
     normalized = closeOpenFences(normalized)
   }
