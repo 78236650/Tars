@@ -216,6 +216,35 @@ class TestMemoryTreeAPI:
         assert len(items) >= 1
         assert any("xyzzy" in (it.get("label") or "").lower() for it in items)
 
+    def test_tree_graph(self, client_and_db):
+        client, db = client_and_db
+        from_a = compute_entity_id("person", "GraphA")
+        to_b = compute_entity_id("project", "GraphB")
+        _seed_memory(
+            db,
+            content="A works on B",
+            memory_type="longterm",
+            importance=0.7,
+            entity_refs=[from_a, to_b],
+        )
+        conn = db._get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO relations(from_entity, to_entity, predicate, confidence, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (from_a, to_b, "works_on", 0.85, "2026-05-19T00:00:00+08:00"),
+        )
+        conn.commit()
+        resp = client.get("/api/memory/tree/graph")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["stats"]["node_count"] >= 2
+        assert body["stats"]["edge_count"] >= 1
+        ids = {n["id"] for n in body["nodes"]}
+        assert from_a in ids and to_b in ids
+
     def test_tree_relations(self, client_and_db):
         client, db = client_and_db
         from_a = compute_entity_id("person", "A")

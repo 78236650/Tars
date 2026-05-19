@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { memoryApi } from '@/api'
 import type {
   EntityRelationsResponse,
+  MemoryEntityGraphResponse,
   MemoryItem,
   MemoryTreeNode as TreeNode,
   MemoryTreeResponse,
@@ -12,6 +13,9 @@ import { useI18n } from '@/i18n'
 import MemoryCard from './MemoryCard.vue'
 import MemoryTreeNodeRow from './MemoryTreeNode.vue'
 import EntityRelationMiniGraph from './EntityRelationMiniGraph.vue'
+import MemoryTreeVirtualList from './MemoryTreeVirtualList.vue'
+import MemoryEntityForceGraph from './MemoryEntityForceGraph.vue'
+import { flattenMemoryTree } from './memoryTreeFlatten'
 
 const props = defineProps<{
   adminUserId?: string | null
@@ -26,11 +30,16 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const LARGE_TREE_THRESHOLD = 120
+const VIRTUAL_SCROLL_THRESHOLD = 40
 
-const viewMode = ref<'entity' | 'provenance'>('entity')
+type TreeViewMode = 'entity' | 'provenance' | 'graph'
+
+const viewMode = ref<TreeViewMode>('entity')
 const largeTreeHint = ref(false)
 const loading = ref(false)
 const treeData = ref<MemoryTreeResponse | null>(null)
+const graphData = ref<MemoryEntityGraphResponse | null>(null)
+const graphLoading = ref(false)
 const expandedIds = ref<Set<string>>(new Set())
 const selectedId = ref<string | null>(null)
 const selectedKind = ref<string | null>(null)
@@ -92,11 +101,23 @@ const computeDefaultExpanded = (nodes: TreeNode[], treeNodeCount?: number) => {
   return new Set(all)
 }
 
+const loadGraph = async () => {
+  graphLoading.value = true
+  try {
+    graphData.value = await memoryApi.getTreeGraph(props.adminUserId || undefined)
+  } catch (e) {
+    console.error(e)
+    graphData.value = null
+  } finally {
+    graphLoading.value = false
+  }
+}
+
 const loadTree = async () => {
   loading.value = true
   try {
     treeData.value = await memoryApi.getTree({
-      view: viewMode.value,
+      view: viewMode.value === 'graph' ? 'entity' : viewMode.value,
       user_id: props.adminUserId || undefined,
     })
     expandedIds.value = computeDefaultExpanded(
@@ -111,7 +132,7 @@ const loadTree = async () => {
   }
 }
 
-const setViewMode = (mode: 'entity' | 'provenance') => {
+const setViewMode = (mode: TreeViewMode) => {
   if (viewMode.value === mode) return
   viewMode.value = mode
   selectedId.value = null
@@ -120,7 +141,28 @@ const setViewMode = (mode: 'entity' | 'provenance') => {
   memoryDetail.value = null
   searchQuery.value = ''
   searchHits.value = []
-  void loadTree()
+  if (mode === 'graph') void loadGraph()
+  else void loadTree()
+}
+
+const flatTreeRows = computed(() =>
+  treeData.value ? flattenMemoryTree(treeData.value.nodes, expandedIds.value) : []
+)
+
+const useVirtualTree = computed(() => flatTreeRows.value.length >= VIRTUAL_SCROLL_THRESHOLD)
+
+const loadEntityRelations = async (entityId: string) => {
+  relationsLoading.value = true
+  try {
+    relations.value = await memoryApi.getTreeRelations(
+      entityId,
+      props.adminUserId || undefined
+    )
+  } catch (e) {
+    console.error(e)
+  } finally {
+    relationsLoading.value = false
+  }
 }
 
 const toggleExpand = (id: string) => {
@@ -147,17 +189,7 @@ const selectNode = async (node: TreeNode) => {
   memoryDetail.value = null
 
   if (node.kind === 'entity') {
-    relationsLoading.value = true
-    try {
-      relations.value = await memoryApi.getTreeRelations(
-        node.id,
-        props.adminUserId || undefined
-      )
-    } catch (e) {
-      console.error(e)
-    } finally {
-      relationsLoading.value = false
-    }
+    await loadEntityRelations(node.id)
     return
   }
 
@@ -185,7 +217,7 @@ const runSearch = () => {
     try {
       const res = await memoryApi.searchTree({
         q,
-        view: viewMode.value,
+        view: viewMode.value === 'graph' ? 'entity' : viewMode.value,
         user_id: props.adminUserId || undefined,
       })
       searchHits.value = res.items
@@ -216,13 +248,28 @@ const selectedTreeNode = computed(() => {
   return findNodeById(treeData.value.nodes, selectedId.value)
 })
 
-const subtitleText = computed(() =>
-  viewMode.value === 'provenance' ? t('memory.tree.provenanceSubtitle') : t('memory.tree.subtitle')
-)
+const graphEntityMeta = computed(() => {
+  if (selectedKind.value !== 'entity' || !selectedId.value || !graphData.value) return null
+  return graphData.value.nodes.find((n) => n.id === selectedId.value) ?? null
+})
+
+const subtitleText = computed(() => {
+  if (viewMode.value === 'provenance') return t('memory.tree.provenanceSubtitle')
+  if (viewMode.value === 'graph') return t('memory.tree.graphSubtitle')
+  return t('memory.tree.subtitle')
+})
+
+const focusEntityFromGraph = async (entityId: string) => {
+  selectedId.value = entityId
+  selectedKind.value = 'entity'
+  memoryDetail.value = null
+  await loadEntityRelations(entityId)
+}
 
 const openLongtermForEntity = () => {
-  if (!selectedEntityNode.value) return
-  emit('open-longterm', selectedEntityNode.value.id)
+  const id = selectedEntityNode.value?.id ?? selectedId.value
+  if (!id || selectedKind.value !== 'entity') return
+  emit('open-longterm', id)
 }
 
 const focusEntityInTree = async (entityId: string) => {
@@ -245,7 +292,8 @@ const focusEntityInTree = async (entityId: string) => {
 const onMemoryChanged = async () => {
   emit('changed')
   const keepId = memoryDetail.value?.id
-  await loadTree()
+  if (viewMode.value === 'graph') await loadGraph()
+  else await loadTree()
   if (keepId) {
     try {
       memoryDetail.value = await memoryApi.getMemory(keepId)
@@ -282,7 +330,8 @@ watch(
     selectedId.value = null
     searchQuery.value = ''
     searchHits.value = []
-    void loadTree()
+    if (viewMode.value === 'graph') void loadGraph()
+    else void loadTree()
   }
 )
 
@@ -292,7 +341,12 @@ onMounted(() => {
   void loadTree()
 })
 
-defineExpose({ refresh: loadTree })
+const refreshAll = async () => {
+  if (viewMode.value === 'graph') await loadGraph()
+  else await loadTree()
+}
+
+defineExpose({ refresh: refreshAll })
 </script>
 
 <template>
@@ -318,6 +372,14 @@ defineExpose({ refresh: loadTree })
           >
             {{ t('memory.tree.viewProvenance') }}
           </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-xs font-medium transition"
+            :class="viewMode === 'graph' ? 'bg-amber-600 text-stone-950' : 'text-stone-400 hover:text-stone-200'"
+            @click="setViewMode('graph')"
+          >
+            {{ t('memory.tree.viewGraph') }}
+          </button>
         </div>
         <p
           v-if="adminUserId"
@@ -329,12 +391,19 @@ defineExpose({ refresh: loadTree })
           v-if="treeData"
           class="mt-2 flex flex-wrap gap-3 text-xs text-stone-400"
         >
-          <template v-if="viewMode === 'entity'">
+          <template v-if="viewMode === 'graph' && graphData">
+            <span>{{ t('memory.tree.statsEntities') }}: {{ graphData.stats.node_count }}</span>
+            <span>{{ t('memory.tree.statsRelations') }}: {{ graphData.stats.edge_count }}</span>
+            <span v-if="graphData.stats.truncated" class="text-amber-300/90">
+              {{ t('memory.tree.graphTruncated', { max: 800 }) }}
+            </span>
+          </template>
+          <template v-else-if="viewMode === 'entity'">
             <span>{{ t('memory.tree.statsEntities') }}: {{ treeData.stats.entity_count }}</span>
             <span>{{ t('memory.tree.statsMemories') }}: {{ treeData.stats.memory_count }}</span>
             <span>{{ t('memory.tree.statsOrphan') }}: {{ treeData.stats.orphan_count }}</span>
           </template>
-          <template v-else>
+          <template v-else-if="viewMode === 'provenance'">
             <span>{{ t('memory.tree.viewProvenance') }}: {{ treeData.stats.compressed_count ?? 0 }}</span>
             <span>{{ t('memory.tree.compressedSources') }}: {{ treeData.stats.source_count ?? 0 }}</span>
             <span v-if="(treeData.stats.archived_count ?? 0) > 0">
@@ -348,25 +417,27 @@ defineExpose({ refresh: loadTree })
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-xl border border-amber-100/10 px-3 py-2 text-xs text-stone-300 hover:bg-amber-500/10"
-          @click="expandAll"
-        >
-          {{ t('memory.tree.expandAll') }}
-        </button>
-        <button
-          type="button"
-          class="rounded-xl border border-amber-100/10 px-3 py-2 text-xs text-stone-300 hover:bg-amber-500/10"
-          @click="collapseAll"
-        >
-          {{ t('memory.tree.collapseAll') }}
-        </button>
+        <template v-if="viewMode !== 'graph'">
+          <button
+            type="button"
+            class="rounded-xl border border-amber-100/10 px-3 py-2 text-xs text-stone-300 hover:bg-amber-500/10"
+            @click="expandAll"
+          >
+            {{ t('memory.tree.expandAll') }}
+          </button>
+          <button
+            type="button"
+            class="rounded-xl border border-amber-100/10 px-3 py-2 text-xs text-stone-300 hover:bg-amber-500/10"
+            @click="collapseAll"
+          >
+            {{ t('memory.tree.collapseAll') }}
+          </button>
+        </template>
         <button
           type="button"
           class="rounded-xl bg-amber-600/90 px-3 py-2 text-xs font-medium text-stone-950 hover:bg-amber-500"
-          :disabled="loading"
-          @click="loadTree"
+          :disabled="loading || graphLoading"
+          @click="refreshAll"
         >
           {{ t('memory.tree.refresh') }}
         </button>
@@ -379,8 +450,17 @@ defineExpose({ refresh: loadTree })
     >
       {{ t('memory.tree.largeTreeHint') }}
     </p>
+    <p
+      v-if="useVirtualTree && viewMode !== 'graph'"
+      class="rounded-xl border border-amber-100/10 bg-white/[0.02] px-4 py-2 text-xs text-stone-400"
+    >
+      {{ t('memory.tree.virtualScrollHint') }}
+    </p>
 
-    <div class="relative max-w-md">
+    <div
+      v-if="viewMode !== 'graph'"
+      class="relative max-w-md"
+    >
       <input
         v-model="searchQuery"
         type="search"
@@ -422,7 +502,76 @@ defineExpose({ refresh: loadTree })
     </div>
 
     <div
-      v-if="loading"
+      v-if="viewMode === 'graph'"
+      class="grid min-h-[420px] grid-cols-1 gap-4 lg:grid-cols-5"
+    >
+      <div class="lg:col-span-3">
+        <MemoryEntityForceGraph
+          :nodes="graphData?.nodes ?? []"
+          :edges="graphData?.edges ?? []"
+          :loading="graphLoading"
+          :selected-id="selectedId"
+          @focus-entity="focusEntityFromGraph"
+        />
+      </div>
+      <div
+        class="min-h-[280px] rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-5 lg:col-span-2"
+      >
+        <template v-if="!selectedId || selectedKind !== 'entity'">
+          <p class="text-sm text-stone-400">{{ t('memory.tree.selectHint') }}</p>
+        </template>
+        <template v-else>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="text-base font-semibold text-stone-100">
+                {{ relations?.entity_label || graphEntityMeta?.label || selectedId }}
+              </h3>
+              <p class="mt-1 font-mono text-xs text-stone-500">{{ selectedId }}</p>
+            </div>
+            <button
+              type="button"
+              class="rounded-xl border border-amber-100/15 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-500/20"
+              @click="openLongtermForEntity"
+            >
+              {{ t('memory.tree.openLongterm') }}
+            </button>
+          </div>
+          <p
+            v-if="graphEntityMeta"
+            class="mt-3 text-sm text-stone-300"
+          >
+            {{ t('memory.tree.statsMemories') }}: {{ graphEntityMeta.memory_count }}
+          </p>
+          <p class="mt-4 text-xs font-medium uppercase tracking-wide text-stone-500">
+            {{ t('memory.tree.relations') }}
+          </p>
+          <p
+            v-if="relationsLoading"
+            class="mt-2 text-sm text-stone-400"
+          >
+            {{ t('memory.loading') }}
+          </p>
+          <template v-else-if="relations">
+            <EntityRelationMiniGraph
+              v-if="relations.outgoing.length || relations.incoming.length"
+              :center-label="relations.entity_label"
+              :outgoing="relations.outgoing"
+              :incoming="relations.incoming"
+              @focus-entity="focusEntityFromGraph"
+            />
+            <p
+              v-else
+              class="mt-2 text-sm text-stone-500"
+            >
+              {{ t('memory.tree.noRelations') }}
+            </p>
+          </template>
+        </template>
+      </div>
+    </div>
+
+    <div
+      v-else-if="loading"
       class="flex flex-1 items-center justify-center py-16 text-sm text-stone-400"
     >
       {{ t('memory.loading') }}
@@ -440,7 +589,8 @@ defineExpose({ refresh: loadTree })
       class="grid min-h-[420px] grid-cols-1 gap-4 lg:grid-cols-5"
     >
       <div
-        class="max-h-[560px] overflow-y-auto rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-3 lg:col-span-2"
+        class="max-h-[560px] rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-3 lg:col-span-2"
+        :class="useVirtualTree ? 'overflow-hidden' : 'overflow-y-auto'"
       >
         <p
           v-if="treeData.nodes.length === 0"
@@ -448,6 +598,14 @@ defineExpose({ refresh: loadTree })
         >
           {{ viewMode === 'provenance' ? t('memory.tree.provenanceEmpty') : t('memory.tree.empty') }}
         </p>
+        <MemoryTreeVirtualList
+          v-else-if="useVirtualTree"
+          :rows="flatTreeRows"
+          :expanded-ids="expandedIds"
+          :selected-id="selectedId"
+          @toggle="toggleExpand"
+          @select="selectNode"
+        />
         <ul
           v-else
           class="space-y-0.5"

@@ -263,12 +263,20 @@ gantt
 - ✅ `GET /api/memory/tree/search`、`GET /api/memory/tree/relations`
 - ✅ 记忆页「实体」Tab：左树右详情、搜索、Admin 用户联动
 - ✅ 关系迷你 SVG 图；大树 >120 节点默认折叠顶层
-- 📋 满屏力导向知识图谱（延后 v4.2+）
 
 **文档：**
 - [v4.1.4 发布说明](../01-项目概览/v4.1.4-release-notes.md)
 - [设计说明](../superpowers/specs/2026-05-19-memory-tree-entity-view-design.md)
-- [实施计划](../superpowers/plans/2026-05-19-memory-tree-entity-view-plan.md)
+
+### v4.2.0 "Memory Graph & Virtual Tree" (✅ 完成)
+**发布日期:** 2026-05-19
+
+- ✅ `GET /api/memory/tree/graph` 力导向图数据
+- ✅ 实体 Tab「图谱」视图（ECharts force）
+- ✅ `MemoryTreeVirtualList` 虚拟滚动（≥40 行）
+
+**文档：**
+- [v4.2 设计说明](../superpowers/specs/2026-05-19-memory-tree-v4.2-graph-virtual-scroll-design.md)
 
 ### InsightForge 鉴数 `INS-1.0.0` (✅ Phase 1 Profile 流水线 → Phase 2 指标问答)
 **定位:** 业务场景深入阶段 — 独立能力线（与 TARS v4.x 主版本并行）

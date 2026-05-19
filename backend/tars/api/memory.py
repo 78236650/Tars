@@ -346,6 +346,18 @@ def search_memory_tree(
     return builder.search(q, limit=min(max(limit, 1), 50), view=view)
 
 
+@router.get("/tree/graph")
+def get_memory_tree_graph(
+    user_id: str = "",
+    max_edges: int = 800,
+    x_tenant_id: Optional[str] = Header(default="default"),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
+    return builder.build_graph(max_edges=min(max(max_edges, 1), 2000))
+
+
 @router.get("/tree/relations")
 def get_memory_tree_relations(
     entity_id: str,

@@ -496,6 +496,91 @@ class EntityTreeBuilder:
         core = CoreMemoryManager(self.db, tenant_id=self.tenant_id)
         return sum(1 for name in BLOCK_NAMES if (core.get(name) or "").strip())
 
+    def build_graph(self, max_edges: int = 800) -> Dict[str, Any]:
+        """Tenant-scoped entity relation graph for force-directed UI."""
+        memories = self.db.list_memories_for_tree(self.tenant_id, limit=5000)
+        entity_index: Dict[str, Dict[str, Any]] = defaultdict(
+            lambda: {"memory_count": 0, "type": "concept", "label": ""}
+        )
+
+        for memory in memories:
+            refs = memory.entity_refs or []
+            for ref in refs:
+                eid, etype, hint = normalize_entity_ref(ref)
+                if not eid:
+                    continue
+                row = entity_index[eid]
+                row["type"] = etype
+                if hint and hint != eid:
+                    row["label"] = hint
+            pid = primary_entity_id(refs)
+            if pid and pid in entity_index:
+                entity_index[pid]["memory_count"] += 1
+
+        for eid in list(entity_index.keys()):
+            if not entity_index[eid]["label"]:
+                entity_index[eid]["label"] = self._fallback_label(eid, memories)
+
+        entity_ids = set(entity_index.keys())
+        if not entity_ids:
+            return {
+                "tenant_id": self.tenant_id,
+                "nodes": [],
+                "edges": [],
+                "stats": {"node_count": 0, "edge_count": 0, "truncated": False},
+            }
+
+        labels = self._load_entity_labels_by_ids(entity_ids)
+        for eid, row in entity_index.items():
+            if labels.get(eid):
+                row["label"] = labels[eid]
+
+        conn = self.db._get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT from_entity, to_entity, predicate, confidence
+            FROM relations
+            ORDER BY confidence DESC, created_at DESC
+            """
+        )
+        edges: List[Dict[str, Any]] = []
+        truncated = False
+        for from_e, to_e, pred, conf in cur.fetchall():
+            if from_e not in entity_ids or to_e not in entity_ids:
+                continue
+            if len(edges) >= max_edges:
+                truncated = True
+                break
+            edges.append(
+                {
+                    "from": from_e,
+                    "to": to_e,
+                    "predicate": pred,
+                    "confidence": conf,
+                }
+            )
+
+        nodes = [
+            {
+                "id": eid,
+                "label": row["label"] or eid,
+                "type": row["type"],
+                "memory_count": row["memory_count"],
+            }
+            for eid, row in sorted(entity_index.items(), key=lambda x: (-x[1]["memory_count"], x[0]))
+        ]
+        return {
+            "tenant_id": self.tenant_id,
+            "nodes": nodes,
+            "edges": edges,
+            "stats": {
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "truncated": truncated,
+            },
+        }
+
     def search(self, query: str, limit: int = 20, view: str = "entity") -> Dict[str, Any]:
         q = query.strip().lower()
         if not q:

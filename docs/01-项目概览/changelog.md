@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.2.0 "Memory Graph & Virtual Tree" (2026-05-19)
+
+记忆实体 Tab 增强：满屏力导向图谱 + 大树虚拟滚动。
+
+### 记忆图谱与性能
+- ✅ **`GET /api/memory/tree/graph`** — 租户实体关系图（nodes + edges）
+- ✅ **图谱视图** — 实体 | 谱系 | **图谱** 三分段；ECharts 力导向布局
+- ✅ **虚拟滚动树** — 扁平行 ≥40 时窗口渲染，支撑大规模展开
+
+---
+
 ## v4.1.4 "Memory Entity Tree" (2026-05-19)
 
 记忆管理新增实体树可视化（Phase 1–3）。
