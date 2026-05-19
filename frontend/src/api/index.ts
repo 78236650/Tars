@@ -12,6 +12,9 @@ import type {
   LongtermMemoryResponse,
   MemoryCompressionStatus,
   MemoryMergeResponse,
+  MemoryTreeResponse,
+  MemoryTreeSearchResponse,
+  EntityRelationsResponse,
   SubAgent,
   SubAgentListResponse,
   SubAgentConfig,
@@ -144,6 +147,34 @@ export const memoryApi = {
 
   getLongterm: async (params?: { page?: number; group_by?: string }): Promise<LongtermMemoryResponse> => {
     const response = await api.get<LongtermMemoryResponse>('/memory/longterm', { params })
+    return response.data
+  },
+
+  getTree: async (params?: {
+    view?: 'entity' | 'provenance'
+    max_per_bucket?: number
+    include_core?: boolean
+    include_orphan?: boolean
+    user_id?: string
+  }): Promise<MemoryTreeResponse> => {
+    const response = await api.get<MemoryTreeResponse>('/memory/tree', { params })
+    return response.data
+  },
+
+  getTreeRelations: async (entityId: string, userId?: string): Promise<EntityRelationsResponse> => {
+    const response = await api.get<EntityRelationsResponse>('/memory/tree/relations', {
+      params: { entity_id: entityId, user_id: userId || undefined },
+    })
+    return response.data
+  },
+
+  searchTree: async (params: {
+    q: string
+    limit?: number
+    view?: 'entity' | 'provenance'
+    user_id?: string
+  }): Promise<MemoryTreeSearchResponse> => {
+    const response = await api.get<MemoryTreeSearchResponse>('/memory/tree/search', { params })
     return response.data
   },
 
