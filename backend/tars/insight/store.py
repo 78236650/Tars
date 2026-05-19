@@ -80,14 +80,22 @@ class InsightProfileRunStore:
     ) -> None:
         conn = self.db._get_conn()
         cursor = conn.cursor()
+        now = self._now()
         if status:
             cursor.execute(
                 """
                 UPDATE insight_profile_runs
-                SET progress_json = ?, status = ?
+                SET progress_json = ?, status = ?,
+                    started_at = COALESCE(started_at, ?)
                 WHERE id = ? AND tenant_id = ?
                 """,
-                (json.dumps(progress, ensure_ascii=False), status, run_id, tenant_id),
+                (
+                    json.dumps(progress, ensure_ascii=False),
+                    status,
+                    now if status == "running" else None,
+                    run_id,
+                    tenant_id,
+                ),
             )
         else:
             cursor.execute(
@@ -99,6 +107,22 @@ class InsightProfileRunStore:
                 (json.dumps(progress, ensure_ascii=False), run_id, tenant_id),
             )
         conn.commit()
+
+    def sweep_stuck_runs(self, reason: str = "process restarted") -> int:
+        """On startup: mark any pending/running runs as failed."""
+        now = self._now()
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE insight_profile_runs
+            SET status = 'failed', error = ?, finished_at = ?
+            WHERE status IN ('pending', 'running')
+            """,
+            (reason, now),
+        )
+        conn.commit()
+        return cursor.rowcount or 0
 
     def complete(
         self,
