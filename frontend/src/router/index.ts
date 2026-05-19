@@ -37,7 +37,7 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
-      redirect: '/settings/subagents',
+      redirect: '/settings/personality',
       meta: {
         requiresAuth: true,
         desktopTitleKey: 'desktop.settings.title',
@@ -45,33 +45,49 @@ const router = createRouter({
       },
       children: [
         {
-          path: 'subagents',
-          name: 'settings-subagents',
-          component: () => import('@/components/settings/SubAgentSettings.vue')
-        },
-        {
-          path: 'users',
-          name: 'settings-users',
-          component: () => import('@/components/settings/UserSettings.vue')
-        },
-        {
           path: 'personality',
           name: 'settings-personality',
           component: () => import('@/components/settings/PersonalitySettings.vue')
+        },
+        {
+          path: 'subagents',
+          name: 'settings-subagents',
+          component: () => import('@/components/settings/SubAgentSettings.vue')
         },
         {
           path: 'changelog',
           name: 'settings-changelog',
           component: () => import('@/components/settings/ChangelogView.vue')
         },
+      ]
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('@/views/AdminView.vue'),
+      redirect: '/admin/users',
+      meta: {
+        requiresAuth: true,
+        requiresAdmin: true,
+        desktopTitleKey: 'desktop.admin.title',
+        desktopSubtitleKey: 'desktop.admin.subtitle',
+      },
+      children: [
+        {
+          path: 'users',
+          name: 'admin-users',
+          component: () => import('@/components/settings/UserSettings.vue')
+        },
         {
           path: 'roles',
-          name: 'settings-roles',
-          component: () => import('@/views/RolesView.vue'),
-          meta: {
-            requiresAdmin: true,
-          }
-        }
+          name: 'admin-roles',
+          component: () => import('@/views/RolesView.vue')
+        },
+        {
+          path: 'audit',
+          name: 'admin-audit',
+          component: () => import('@/views/AuditView.vue')
+        },
       ]
     },
     {
@@ -124,17 +140,6 @@ const router = createRouter({
         desktopSubtitleKey: 'desktop.knowledge.subtitle',
       }
     },
-    {
-      path: '/audit',
-      name: 'audit',
-      component: () => import('@/views/AuditView.vue'),
-      meta: {
-        requiresAuth: true,
-        requiresAdmin: true,
-        desktopTitleKey: 'desktop.audit.title',
-        desktopSubtitleKey: 'desktop.audit.subtitle',
-      }
-    }
   ]
 })
 

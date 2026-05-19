@@ -7,27 +7,112 @@ import base64
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File, Header, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..database import Database
+from ..modules.registry import module_registry
 from ..tools.builtin.meeting_recognizer import MeetingRecognizerTool, SUPPORTED_AUDIO_FORMATS
 
 router = APIRouter(prefix="/api/meeting", tags=["会议助手"])
 
+_transcription_tasks: set[asyncio.Task] = set()
+
 _db: Optional[Database] = None
 _meeting_tool: Optional[MeetingRecognizerTool] = None
+_vector_store: Any = None
+_embedding_provider: Any = None
 
 # 文件限制
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 STORAGE_PATH = "storage/meetings"
 
 
-def init_meeting_api(db: Database, tool: Optional[MeetingRecognizerTool] = None) -> None:
-    global _db, _meeting_tool
+def init_meeting_api(
+    db: Database,
+    tool: Optional[MeetingRecognizerTool] = None,
+    vector_store: Any = None,
+    embedding_provider: Any = None,
+) -> None:
+    global _db, _meeting_tool, _vector_store, _embedding_provider
     _db = db
     _meeting_tool = tool
+    _vector_store = vector_store
+    _embedding_provider = embedding_provider
+    _recover_stale_transcriptions()
+
+
+def _resolve_user_id(
+    x_tenant_id: Optional[str] = None,
+    x_user_id: Optional[str] = None,
+) -> str:
+    """与前端 X-Tenant-ID（用户 ID）对齐，用于隔离会议记录。"""
+    uid = (x_tenant_id or x_user_id or "default").strip()
+    return uid or "default"
+
+
+async def require_meeting_module(
+    x_user_role: Optional[str] = Header(default=None),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+) -> None:
+    if not module_registry.is_enabled("meeting"):
+        raise HTTPException(
+            status_code=503,
+            detail="会议助手模块未启用，请在 backend/config/modules.yaml 中将 meeting.enabled 设为 true 并重启后端",
+        )
+    if x_user_role == "admin":
+        return
+    try:
+        from ..gateway.role_template import role_template_manager
+        from tars.main import user_store
+
+        if role_template_manager is None or user_store is None or not x_api_key:
+            return
+        user = user_store.get_user_by_api_key(x_api_key)
+        if not user:
+            return
+        template_id = getattr(user, "role_template_id", None) or "standard"
+        if not role_template_manager.can_access_module(template_id, "meeting"):
+            raise HTTPException(status_code=403, detail="当前角色无权使用会议助手，请联系管理员分配 meeting 模块权限")
+    except HTTPException:
+        raise
+    except Exception:
+        return
+
+
+router.dependencies = [Depends(require_meeting_module)]
+
+
+def _recover_stale_transcriptions(max_age_minutes: int = 180) -> None:
+    """将长时间卡在 pending/processing 的任务标为失败，避免界面一直转圈。"""
+    if _db is None:
+        return
+    try:
+        conn = _db._get_conn()
+        cursor = conn.cursor()
+        cutoff = datetime.now(timezone(timedelta(hours=8))) - timedelta(minutes=max_age_minutes)
+        cutoff_iso = cutoff.isoformat()
+        cursor.execute(
+            """
+            SELECT id FROM transcriptions
+            WHERE status IN ('pending', 'processing') AND created_at < ?
+            """,
+            (cutoff_iso,),
+        )
+        stale = [r[0] for r in cursor.fetchall()]
+        if not stale:
+            return
+        msg = "转写超时或进程中断，请重新上传（开发模式 reload 会中断后台任务）"
+        for tid in stale:
+            cursor.execute(
+                "UPDATE transcriptions SET status = ?, error_message = ? WHERE id = ?",
+                ("failed", msg, tid),
+            )
+        conn.commit()
+        print(f"[MeetingAPI] 已将 {len(stale)} 条超时转写标为 failed")
+    except Exception as e:
+        print(f"[MeetingAPI] 恢复超时转写失败: {e}")
 
 
 def _now() -> str:
@@ -86,6 +171,7 @@ MEETING_PROMPT_TEMPLATES = {
 - [未解决的问题或需要后续跟进的事项]
 
 要求：
+- 使用 Markdown 格式输出（保留标题、列表、表格等结构）
 - 忠实原文，不编造内容
 - 专业术语保留原文表述
 - 时间、数字、人名务必准确
@@ -199,12 +285,22 @@ def _transcription_to_dict(t) -> dict:
     }
 
 
+def _schedule_transcription(transcription_id: str, file_path: str, language: Optional[str] = None) -> None:
+    """调度后台转写（asyncio 任务，比 BackgroundTasks 更不易在 reload 时丢失状态更新）。"""
+    task = asyncio.create_task(_do_transcription(transcription_id, file_path, language))
+    _transcription_tasks.add(task)
+    task.add_done_callback(_transcription_tasks.discard)
+
+
 async def _do_transcription(transcription_id: str, file_path: str, language: Optional[str] = None):
     """后台执行转写任务"""
     if _db is None or _meeting_tool is None:
         return
 
     try:
+        _db.update_transcription(transcription_id, status="processing")
+        print(f"[MeetingAPI] 开始转写 {transcription_id}: {file_path}")
+
         result = await _meeting_tool.execute(
             file_path=file_path,
             action="transcribe",
@@ -222,18 +318,21 @@ async def _do_transcription(transcription_id: str, file_path: str, language: Opt
                 duration=metadata.get("duration"),
                 segments=json.dumps(segments, ensure_ascii=False) if segments else None,
             )
+            print(f"[MeetingAPI] 转写完成 {transcription_id}")
         else:
             _db.update_transcription(
                 transcription_id,
                 status="failed",
                 error_message=result.error or "转写失败",
             )
+            print(f"[MeetingAPI] 转写失败 {transcription_id}: {result.error}")
     except Exception as e:
         _db.update_transcription(
             transcription_id,
             status="failed",
             error_message=str(e),
         )
+        print(f"[MeetingAPI] 转写异常 {transcription_id}: {e}")
 
 
 async def _do_summarization(transcription_id: str, transcript: str, language: Optional[str] = None):
@@ -263,10 +362,10 @@ async def _do_summarization(transcription_id: str, transcript: str, language: Op
 
 @router.post("/upload")
 async def upload_audio(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: Optional[str] = None,
-    x_user_id: Optional[str] = Header(default="default"),
+    x_tenant_id: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
 ):
     """上传音频文件并开始转写"""
     if _db is None:
@@ -294,9 +393,11 @@ async def upload_audio(
             detail=f"文件过大（>{MAX_FILE_SIZE // 1024 // 1024}MB），请压缩后重试",
         )
 
+    user_id = _resolve_user_id(x_tenant_id, x_user_id)
+
     # 保存文件
     storage_dir = _get_storage_dir()
-    user_dir = storage_dir / (x_user_id or "default")
+    user_dir = storage_dir / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = int(datetime.now().timestamp())
@@ -311,7 +412,7 @@ async def upload_audio(
 
     # 创建数据库记录
     transcription = _db.create_transcription(
-        user_id=x_user_id or "default",
+        user_id=user_id,
         file_path=str(file_path),
         file_name=safe_name,
         file_size=len(content),
@@ -319,13 +420,7 @@ async def upload_audio(
         model_used="base",
     )
 
-    # 后台异步转写
-    background_tasks.add_task(
-        _do_transcription,
-        transcription.id,
-        str(file_path),
-        language,
-    )
+    _schedule_transcription(transcription.id, str(file_path), language)
 
     return {
         "success": True,
@@ -451,14 +546,16 @@ async def get_status(transcription_id: str):
 async def list_history(
     limit: int = 50,
     offset: int = 0,
-    x_user_id: Optional[str] = Header(default="default"),
+    x_tenant_id: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
 ):
     """获取转录历史列表"""
     if _db is None:
         raise HTTPException(status_code=500, detail="会议 API 未初始化")
 
+    user_id = _resolve_user_id(x_tenant_id, x_user_id)
     transcriptions = _db.list_transcriptions(
-        user_id=x_user_id or "default",
+        user_id=user_id,
         limit=limit,
         offset=offset,
     )
@@ -571,7 +668,36 @@ async def set_meeting_model(request: MeetingModelRequest):
 
 # ========== 入库知识库 ==========
 
-MEETING_KB_COLLECTION = "meeting_notes_kb"
+MEETING_KB_NAME = "会议纪要"
+MEETING_KB_LEGACY_NAME = "meeting_notes_kb"
+
+
+def _ensure_meeting_collection(cursor, tenant_id: str) -> str:
+    """在当前租户下获取或创建「会议纪要」知识库。"""
+    for name in (MEETING_KB_NAME, MEETING_KB_LEGACY_NAME):
+        cursor.execute(
+            "SELECT id FROM document_collections WHERE name = ? AND tenant_id = ?",
+            (name, tenant_id),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+
+    collection_id = str(uuid.uuid4())
+    now = _now()
+    cursor.execute(
+        "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (collection_id, tenant_id, MEETING_KB_NAME, "会议助手确认入库的纪要", now, now),
+    )
+    return collection_id
+
+
+def _index_failure_detail(result1: dict, result2: dict) -> Optional[str]:
+    if result1.get("status") != "indexed":
+        return result1.get("error") or str(result1.get("status"))
+    if result2.get("status") not in (None, "indexed", "empty"):
+        return result2.get("error") or str(result2.get("status"))
+    return None
 
 
 class ApproveToKnowledgeRequest(BaseModel):
@@ -580,10 +706,19 @@ class ApproveToKnowledgeRequest(BaseModel):
 
 
 @router.post("/{transcription_id}/approve-to-knowledge")
-async def approve_to_knowledge(transcription_id: str, request: ApproveToKnowledgeRequest):
+async def approve_to_knowledge(
+    transcription_id: str,
+    request: ApproveToKnowledgeRequest,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     """确认会议纪要并入库知识库"""
     if _db is None:
         raise HTTPException(status_code=500, detail="会议 API 未初始化")
+
+    tenant_id = (x_tenant_id or "default").strip() or "default"
+    summary = (request.summary or "").strip()
+    if not summary:
+        raise HTTPException(status_code=400, detail="摘要不能为空，请先生成或填写会议纪要摘要")
 
     transcription = _db.get_transcription(transcription_id)
     if not transcription:
@@ -594,54 +729,40 @@ async def approve_to_knowledge(transcription_id: str, request: ApproveToKnowledg
     # 更新摘要和要点
     _db.update_transcription(
         transcription_id,
-        summary=request.summary,
+        summary=summary,
         key_points=json.dumps(request.key_points, ensure_ascii=False),
     )
 
-    # 获取知识库组件
-    from tars.main import vector_store, embedding_provider, db as main_db
+    if _vector_store is None or _embedding_provider is None:
+        raise HTTPException(status_code=500, detail="知识库组件未初始化")
+
     from ..knowledge.indexer import KnowledgeIndexer
 
-    # 确保 collection 存在
-    conn = main_db._get_conn()
+    conn = _db._get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM document_collections WHERE name = ? AND tenant_id = 'default'", (MEETING_KB_COLLECTION,))
-    row = cursor.fetchone()
-    if row:
-        collection_id = row[0]
-    else:
-        collection_id = str(uuid.uuid4())
-        now = _now()
-        cursor.execute(
-            "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (collection_id, "default", MEETING_KB_COLLECTION, "会议纪要自动归档", now, now),
-        )
-        conn.commit()
+    collection_id = _ensure_meeting_collection(cursor, tenant_id)
+    conn.commit()
 
-    # 构造索引文本
     date_str = transcription.created_at.strftime("%Y-%m-%d") if transcription.created_at else ""
     key_points_text = "\n".join(f"- {p}" for p in request.key_points) if request.key_points else ""
-    summary_doc = f"[会议] {transcription.file_name or ''} {date_str}\n\n{request.summary}\n\n要点:\n{key_points_text}"
+    summary_doc = f"[会议] {transcription.file_name or ''} {date_str}\n\n{summary}\n\n要点:\n{key_points_text}"
 
-    # 索引
-    indexer = KnowledgeIndexer(vector_store, embedding_provider)
+    indexer = KnowledgeIndexer(_vector_store, _embedding_provider, db=_db)
     doc_id = str(uuid.uuid4())
 
-    # 生成有意义的文档名：摘要前20字 + 日期
-    doc_title = request.summary[:20].replace('\n', ' ').strip() + f"({date_str})"
+    title_base = summary[:20].replace("\n", " ").strip() or (transcription.file_name or "会议纪要")
+    doc_title = f"{title_base}({date_str})" if date_str else title_base
 
-    # 摘要 chunk（用于语义匹配）
     result1 = indexer.index_document(
         text=summary_doc,
         doc_id=f"{doc_id}_summary",
         collection_id=collection_id,
         file_name=doc_title,
         file_type="meeting_summary",
-        tenant_id="default",
+        tenant_id=tenant_id,
     )
 
-    # 原文 chunks（用于追溯证据）
-    result2 = {"chunk_count": 0}
+    result2: Dict[str, Any] = {"chunk_count": 0, "status": "indexed"}
     if transcription.transcript:
         result2 = indexer.index_document(
             text=transcription.transcript,
@@ -649,20 +770,22 @@ async def approve_to_knowledge(transcription_id: str, request: ApproveToKnowledg
             collection_id=collection_id,
             file_name=doc_title + "_原文",
             file_type="meeting_transcript",
-            tenant_id="default",
+            tenant_id=tenant_id,
         )
 
-    total_chunks = result1.get("chunk_count", 0) + result2.get("chunk_count", 0)
+    err = _index_failure_detail(result1, result2)
+    if err:
+        raise HTTPException(status_code=422, detail=f"知识库索引失败: {err}")
 
-    # 记录文档
+    total_chunks = result1.get("chunk_count", 0) + result2.get("chunk_count", 0)
+    if total_chunks <= 0:
+        raise HTTPException(status_code=422, detail="知识库索引失败: 未生成任何可检索分块")
+
     now = _now()
     cursor.execute(
         "INSERT INTO document_files (id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (doc_id, collection_id, doc_title, "", "meeting", total_chunks, "indexed", now),
     )
-    conn.commit()
-
-    # 标记已入库
     cursor.execute(
         "UPDATE transcriptions SET approved_at = ?, knowledge_doc_id = ? WHERE id = ?",
         (now, doc_id, transcription_id),
@@ -674,6 +797,8 @@ async def approve_to_knowledge(transcription_id: str, request: ApproveToKnowledg
         "message": "会议纪要已入库知识库",
         "knowledge_doc_id": doc_id,
         "collection_id": collection_id,
+        "collection_name": MEETING_KB_NAME,
+        "chunk_count": total_chunks,
     }
 
 

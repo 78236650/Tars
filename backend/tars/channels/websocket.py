@@ -17,12 +17,13 @@ def now_iso():
 class WebSocketChannel(Channel):
     """WebSocket 通道"""
 
-    def __init__(self, websocket: WebSocket, tenant_context=None, manager=None, connection_id: str | None = None):
+    def __init__(self, websocket: WebSocket, tenant_context=None, manager=None, connection_id: str | None = None, request_context: dict | None = None):
         self.websocket = websocket
         self.agent = None
         self.tenant_context = tenant_context
         self.manager = manager
         self.connection_id = connection_id
+        self._request_context = request_context or {"transport": "websocket"}
 
     def set_agent(self, agent):
         """设置 Agent 引用"""
@@ -94,7 +95,7 @@ class WebSocketChannel(Channel):
                     channel=self,
                     file_ids=file_ids,
                     tenant_context=self.tenant_context,
-                    request_context={"transport": "websocket"},
+                    request_context=self._request_context,
                 )
             else:
                 print(f"[WebSocket] Agent 未设置!")
@@ -141,7 +142,7 @@ class ConnectionManager:
         """设置全局 Agent 引用"""
         self.agent = agent
 
-    async def connect(self, connection_id: str, websocket: WebSocket, tenant_context=None) -> WebSocketChannel:
+    async def connect(self, connection_id: str, websocket: WebSocket, tenant_context=None, request_context: dict = None) -> WebSocketChannel:
         """接受连接并返回通道实例"""
         await websocket.accept()
         channel = WebSocketChannel(
@@ -149,6 +150,7 @@ class ConnectionManager:
             tenant_context=tenant_context,
             manager=self,
             connection_id=connection_id,
+            request_context=request_context,
         )
         if self.agent:
             channel.set_agent(self.agent)

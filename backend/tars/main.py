@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -37,7 +37,7 @@ from tars.tools.builtin.python_exec import PythonExecTool
 from tars.memory.archival_insert_tool import ArchivalInsertTool
 from tars.tools.sandbox import WorkspaceSandbox
 from tars.skills import skill_registry, SkillLoader, PipelineLoader, SkillPipelineEngine, SkillPipelineRegistry
-from tars.skillhub import SkillHubClient, SkillInstaller
+from tars.skillhub import SkillHubClient, SkillInstaller, LocalSkillCatalog
 from tars.files import FileStorage, FileParser
 from tars.orchestration import TaskPlannerTool, TaskExecutor
 from tars.api.tools import router as tools_router
@@ -145,12 +145,25 @@ PipelineLoader(str(pipelines_dir), pipeline_registry).load_all()
 
 # ========= 初始化 SkillHub =========
 skillhub_client = SkillHubClient()
+skillhub_local_catalog = LocalSkillCatalog(
+    catalog_path=str(project_dir / "data" / "skillhub_catalog.json"),
+    bundle_dir=str(project_dir / "data" / "skillhub" / "skills"),
+    package_dir=str(project_dir.parent / "skills"),
+)
 skillhub_installer = SkillInstaller(
     skills_dir=str(skills_dir),
     client=skillhub_client,
     skill_loader=skill_loader,
+    skill_registry=skill_registry,
+    local_catalog=skillhub_local_catalog,
 )
-init_skillhub_api(skillhub_client, skillhub_installer, skill_registry, str(project_dir / "data" / "skillhub_catalog.json"))
+init_skillhub_api(
+    skillhub_client,
+    skillhub_installer,
+    skill_registry,
+    str(project_dir / "data" / "skillhub_catalog.json"),
+    local_catalog=skillhub_local_catalog,
+)
 
 # ========= 初始化文件上传 =========
 uploads_dir = project_dir / "uploads"
@@ -195,7 +208,7 @@ for tool in memory_manager.get_tools():
 from tars.tools.builtin.knowledge_search import KnowledgeSearchTool
 from tars.knowledge.retriever import KnowledgeRetriever
 knowledge_retriever = KnowledgeRetriever(vector_store, embedding_provider)
-tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever))
+tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever, db=db))
 
 # ========= 初始化 Agent =========
 # v4.0.0: 从配置加载所有 provider，获取默认实例
@@ -270,10 +283,14 @@ init_sessions_api(db)
 init_tasks_api(db, agent)
 if module_registry.is_enabled("bi"):
     init_bi_api(db)
+else:
+    print("[Startup] BI 分析台模块已禁用 (config/modules.yaml → bi.enabled)")
 if module_registry.is_enabled("knowledge"):
     init_knowledge_api(db, vector_store, embedding_provider)
 if module_registry.is_enabled("meeting"):
-    init_meeting_api(db, meeting_tool)
+    init_meeting_api(db, meeting_tool, vector_store, embedding_provider)
+else:
+    print("[Startup] 会议助手模块已禁用 (config/modules.yaml → meeting.enabled)")
 init_memory_api(db, memory_manager)
 init_audit_api(db)
 init_admin_api(db)
@@ -347,6 +364,7 @@ class UserUpdateRequest(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    password: Optional[str] = None
 
 
 class AuthLoginRequest(BaseModel):
@@ -358,6 +376,7 @@ class UserResponse(BaseModel):
     username: str
     email: str
     role: str
+    role_template_id: Optional[str] = None
     created_at: str
     last_login: Optional[str] = None
 
@@ -377,6 +396,7 @@ def _serialize_user(user) -> Dict[str, Any]:
         "username": user.username,
         "email": user.email,
         "role": user.role.value,
+        "role_template_id": getattr(user, "role_template_id", None),
         "created_at": user.created_at.isoformat(),
         "last_login": user.last_login.isoformat() if user.last_login else None,
     }
@@ -430,18 +450,8 @@ async def get_users():
     """获取所有用户（仅管理员）"""
     users = user_store.get_all_users()
     return {
-        "users": [
-            {
-                "id": u.id,
-                "username": u.username,
-                "email": u.email,
-                "role": u.role.value,
-                "created_at": u.created_at.isoformat(),
-                "last_login": u.last_login.isoformat() if u.last_login else None
-            }
-            for u in users
-        ],
-        "total": len(users)
+        "users": [_serialize_user(u) for u in users],
+        "total": len(users),
     }
 
 @app.get("/api/users/me", response_model=UserResponse)
@@ -458,15 +468,36 @@ async def get_current_user(api_key: Optional[str] = None):
 
 
 @app.post("/api/auth/login", response_model=SkillResponse)
-async def login(request: AuthLoginRequest):
+async def login(body: AuthLoginRequest, http_request: Request):
     """使用账号密码登录并返回现有 API Key"""
-    identifier = request.identifier.strip()
+    from tars.security.audit import safe_audit, client_ip_from_request
+
+    identifier = body.identifier.strip()
     user = _get_user_by_identifier(identifier)
-    if not user or not user_store.verify_password(user.id, request.password):
+    client_ip = client_ip_from_request(http_request)
+    if not user or not user_store.verify_password(user.id, body.password):
+        safe_audit(
+            lambda lg: lg.log_login(
+                user_id=user.id if user else "unknown",
+                tenant_id=user.id if user else "default",
+                success=False,
+                detail=f"identifier={identifier}",
+                client_ip=client_ip,
+            )
+        )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
     user_store.update_last_login(user.id)
     fresh_user = user_store.get_user_by_id(user.id)
+    safe_audit(
+        lambda lg: lg.log_login(
+            user_id=fresh_user.id,
+            tenant_id=fresh_user.id,
+            success=True,
+            detail=fresh_user.username,
+            client_ip=client_ip,
+        )
+    )
     return {
         "success": True,
         "message": "登录成功",
@@ -477,8 +508,14 @@ async def login(request: AuthLoginRequest):
     }
 
 @app.post("/api/users", response_model=SkillResponse)
-async def create_user(request: UserCreateRequest):
+async def create_user(
+    request: UserCreateRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     """创建新用户"""
+    from tars.security.audit import safe_audit, client_ip_from_request
+
     try:
         role = UserRole(request.role) if request.role else UserRole.USER
     except ValueError:
@@ -496,6 +533,17 @@ async def create_user(request: UserCreateRequest):
         role,
         password=request.password,
     )
+    actor_id = x_tenant_id or "default"
+    safe_audit(
+        lambda lg: lg.log_user_event(
+            action="user_create",
+            target_user_id=user.id,
+            actor_id=actor_id,
+            tenant_id=actor_id,
+            detail=f"username={user.username}, role={user.role.value}",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
     return {
         "success": True,
         "message": "用户创建成功",
@@ -509,8 +557,15 @@ async def create_user(request: UserCreateRequest):
     }
 
 @app.put("/api/users/{user_id}", response_model=SkillResponse)
-async def update_user(user_id: str, request: UserUpdateRequest):
+async def update_user(
+    user_id: str,
+    request: UserUpdateRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     """更新用户信息"""
+    from tars.security.audit import safe_audit, client_ip_from_request
+
     update_data = {}
     if request.username:
         update_data['username'] = request.username
@@ -521,10 +576,26 @@ async def update_user(user_id: str, request: UserUpdateRequest):
             update_data['role'] = UserRole(request.role)
         except ValueError:
             raise HTTPException(status_code=400, detail="无效的角色类型")
+    if request.password:
+        _validate_initial_password(request.password)
+        password_hash = user_store._hash_password(request.password)
+        update_data['password_hash'] = password_hash
     
     success = user_store.update_user(user_id, **update_data)
     if success:
         user = user_store.get_user_by_id(user_id)
+        actor_id = x_tenant_id or "default"
+        changed_fields = ",".join(sorted(update_data.keys()))
+        safe_audit(
+            lambda lg: lg.log_user_event(
+                action="user_update",
+                target_user_id=user_id,
+                actor_id=actor_id,
+                tenant_id=actor_id,
+                detail=f"fields={changed_fields}, role={user.role.value}",
+                client_ip=client_ip_from_request(http_request),
+            )
+        )
         return {
             "success": True,
             "message": "用户信息已更新",
@@ -539,10 +610,26 @@ async def update_user(user_id: str, request: UserUpdateRequest):
         raise HTTPException(status_code=404, detail="用户不存在")
 
 @app.delete("/api/users/{user_id}", response_model=SkillResponse)
-async def delete_user(user_id: str):
+async def delete_user(
+    user_id: str,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     """删除用户"""
+    from tars.security.audit import safe_audit, client_ip_from_request
+
     success = user_store.delete_user(user_id)
     if success:
+        actor_id = x_tenant_id or "default"
+        safe_audit(
+            lambda lg: lg.log_user_event(
+                action="user_delete",
+                target_user_id=user_id,
+                actor_id=actor_id,
+                tenant_id=actor_id,
+                client_ip=client_ip_from_request(http_request),
+            )
+        )
         return {"success": True, "message": "用户已删除"}
     else:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -992,12 +1079,20 @@ async def delete_cronjob(job_id: str):
 async def _serve_websocket(websocket: WebSocket, tenant_id: str):
     # v4.0.1: 验证 WebSocket 连接的 tenant 归属
     api_key = websocket.query_params.get("api_key", "")
+    ws_user = None
     if api_key and user_store:
         ws_user = user_store.get_user_by_api_key(api_key)
         if ws_user and tenant_id != "default":
             if getattr(ws_user, "role", "user") != "admin" and ws_user.id != tenant_id:
                 await websocket.close(code=4003, reason="无权访问该租户空间")
                 return
+
+    # v4.0.2: 构建 request_context 传递用户角色
+    ws_request_context = {"transport": "websocket"}
+    if ws_user:
+        role_val = ws_user.role.value if hasattr(ws_user.role, "value") else str(ws_user.role)
+        ws_request_context["user_id"] = ws_user.id
+        ws_request_context["user_role"] = role_val
 
     import uuid
     connection_id = str(uuid.uuid4())
@@ -1006,7 +1101,7 @@ async def _serve_websocket(websocket: WebSocket, tenant_id: str):
         lambda current_tenant: memory_manager.for_tenant(current_tenant),
     )
 
-    await connection_manager.connect(connection_id, websocket, tenant_context=tenant_context)
+    await connection_manager.connect(connection_id, websocket, tenant_context=tenant_context, request_context=ws_request_context)
     try:
         while True:
             data = await websocket.receive_text()

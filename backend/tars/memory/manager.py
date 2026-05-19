@@ -129,10 +129,10 @@ class MemoryManager:
         print("[Migration] background worker started")
 
     def get_tools(self) -> List:
-        """返回需要注册到 ToolRegistry 的工具列表"""
+        """返回需要注册到 ToolRegistry 的工具列表（按 tenant_id 隔离写入）"""
         return [
-            CoreMemoryAppendTool(self.core),
-            CoreMemoryReplaceTool(self.core),
+            CoreMemoryAppendTool(self.db),
+            CoreMemoryReplaceTool(self.db),
         ]
 
     # 兼容老接口（main.py / agent.py 可能还在用）

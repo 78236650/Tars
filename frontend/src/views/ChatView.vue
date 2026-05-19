@@ -16,8 +16,36 @@ const reminderNotificationsStore = useReminderNotificationsStore()
 const wsStore = useWsStore()
 const { t } = useI18n()
 const messages = ref<{ id: string, role: string, content: string, timestamp: string, attachments?: any[], thinking?: any }[]>([])
+const messagesLoading = ref(false)
 const inputMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+const MESSAGE_CACHE_PREFIX = 'tars_chat_messages:'
+
+const messageCacheKey = (sessionId: string) => `${MESSAGE_CACHE_PREFIX}${sessionId}`
+
+const persistMessageCache = (sessionId: string) => {
+  try {
+    sessionStorage.setItem(messageCacheKey(sessionId), JSON.stringify(messages.value))
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+const restoreMessageCache = (sessionId: string) => {
+  try {
+    const raw = sessionStorage.getItem(messageCacheKey(sessionId))
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      messages.value = parsed
+      return true
+    }
+  } catch {
+    /* ignore corrupt cache */
+  }
+  return false
+}
 
 const autoResize = () => {
   const el = inputRef.value
@@ -135,6 +163,9 @@ const setupWsHandler = () => {
       if (lastMsg && lastMsg.id?.startsWith('streaming-')) {
         lastMsg.id = `msg-${Date.now()}`
       }
+      if (chatStore.currentSessionId) {
+        persistMessageCache(chatStore.currentSessionId)
+      }
     } else if (data.type === 'error') {
       wsStore.isGenerating = false
       messages.value.push({
@@ -150,6 +181,9 @@ const setupWsHandler = () => {
       const lastMsg = messages.value[messages.value.length - 1]
       if (lastMsg && lastMsg.id?.startsWith('streaming-')) {
         lastMsg.id = `msg-${Date.now()}`
+      }
+      if (chatStore.currentSessionId) {
+        persistMessageCache(chatStore.currentSessionId)
       }
     } else if (data.type === 'task_created' || data.type === 'task_updated') {
       // v2.6.1: 内嵌任务卡片，替换独立抽屉
@@ -237,7 +271,9 @@ const setupWsHandler = () => {
       })
     } else if (data.type === 'session_changed') {
       if (data.new_session_id) {
-        chatStore.currentSessionId = data.new_session_id
+        chatStore.switchSession(data.new_session_id)
+        messages.value = []
+        void loadSessionMessages(data.new_session_id)
       }
     } else if (data.type === 'confirmation_required') {
       const ok = confirm(t('chat.confirmationRequired', { message: data.message }))
@@ -301,6 +337,8 @@ const removeAttachment = (index: number) => {
 }
 
 const loadSessionMessages = async (sessionId: string) => {
+  messagesLoading.value = true
+  restoreMessageCache(sessionId)
   try {
     const history = await sessionsApi.getMessages(sessionId)
     messages.value = history.map(m => ({
@@ -309,9 +347,14 @@ const loadSessionMessages = async (sessionId: string) => {
       content: m.content,
       timestamp: m.timestamp,
     }))
+    persistMessageCache(sessionId)
   } catch (e) {
     console.error('加载会话历史失败', e)
-    messages.value = []
+    if (!messages.value.length) {
+      messages.value = []
+    }
+  } finally {
+    messagesLoading.value = false
   }
 }
 
@@ -347,6 +390,10 @@ const sendMessage = async () => {
 
   wsStore.send(payload)
 
+  if (chatStore.currentSessionId) {
+    persistMessageCache(chatStore.currentSessionId)
+  }
+
   inputMessage.value = ''
   attachments.value = []
   if (inputRef.value) inputRef.value.style.height = 'auto'
@@ -373,7 +420,6 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  settingsStore.loadModels()
   await chatStore.initIfEmpty()
   if (chatStore.currentSessionId) {
     await loadSessionMessages(chatStore.currentSessionId)
@@ -383,6 +429,13 @@ onMounted(async () => {
   } catch {}
   document.addEventListener('keydown', handleKeydown)
 })
+
+watch(messages, () => {
+  const sessionId = chatStore.currentSessionId
+  if (sessionId && !messagesLoading.value) {
+    persistMessageCache(sessionId)
+  }
+}, { deep: true })
 
 watch(() => chatStore.currentSessionId, async (newId, oldId) => {
   if (newId && newId !== oldId) {
@@ -434,7 +487,12 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <ChatPanel :messages="messages" :is-generating="wsStore.isGenerating" @quick-start="quickStart" />
+      <ChatPanel
+        :messages="messages"
+        :is-generating="wsStore.isGenerating"
+        :loading-history="messagesLoading"
+        @quick-start="quickStart"
+      />
 
       <!-- v4.0.0: 排队状态和权限拒绝提示 -->
       <QueueStatus />

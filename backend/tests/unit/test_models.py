@@ -55,6 +55,9 @@ class TestLLMProvider:
         class ConcreteProvider(LLMProvider):
             async def chat(self, messages, stream=False, model=None, temperature=0.7, max_tokens=None):
                 return ModelResponse(content="Mock response", model="test-model")
+
+            async def list_models(self):
+                return ["test-model"]
         
         provider = ConcreteProvider()
         assert isinstance(provider, LLMProvider)

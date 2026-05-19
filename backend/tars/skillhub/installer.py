@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .client import SkillHubClient
+from .local_catalog import LocalSkillCatalog
 from .models import SkillHubPackage
 
 
@@ -26,15 +27,28 @@ def _parse_version(v: str) -> tuple:
 class SkillInstaller:
     """管理 SkillHub 技能包的安装、卸载、更新"""
 
-    def __init__(self, skills_dir: str, client: SkillHubClient, skill_loader=None, skill_registry=None):
+    def __init__(
+        self,
+        skills_dir: str,
+        client: SkillHubClient,
+        skill_loader=None,
+        skill_registry=None,
+        local_catalog: Optional[LocalSkillCatalog] = None,
+    ):
         self.skills_dir = Path(skills_dir)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.client = client
         self.skill_loader = skill_loader
         self.skill_registry = skill_registry
+        self.local_catalog = local_catalog
 
     async def install(self, repo_full_name: str, confirm_permissions: bool = True) -> Dict[str, Any]:
-        """安装流程：获取详情 → 下载 → 校验 → 解压 → 兼容性检查 → 加载 → 自检"""
+        """安装流程：本地 bundled/package → 或 GitHub 远程下载"""
+        if self.local_catalog:
+            local_source = self.local_catalog.resolve_install_source(repo_full_name)
+            if local_source:
+                return self._install_local(local_source, confirm_permissions)
+
         pkg = await self.client.get_detail(repo_full_name)
         if not pkg:
             return {"success": False, "error": f"找不到仓库: {repo_full_name}"}
@@ -61,13 +75,62 @@ class SkillInstaller:
             except Exception as e:
                 return {"success": False, "error": f"解压失败: {e}"}
 
-            # 找到 skill.yaml
             skill_root = self._find_skill_root(extract_dir)
             if not skill_root:
-                return {"success": False, "error": "包中未找到 skill.yaml"}
+                return {"success": False, "error": "包中未找到 skill.yaml 或 SKILL.md"}
 
-            # 解析并兼容性检查
-            yaml_path = skill_root / "skill.yaml"
+            skill_id = self._detect_skill_id(skill_root) or pkg.name
+            target_dir = self.skills_dir / skill_id
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            shutil.copytree(skill_root, target_dir)
+
+            return self._finalize_install(target_dir, skill_id, confirm_permissions, entry=None)
+
+    def _install_local(self, local_source: Dict[str, Any], confirm_permissions: bool) -> Dict[str, Any]:
+        """从 bundled .md 或 package 目录安装"""
+        entry = local_source.get("entry") or {}
+        source_path: Path = local_source["path"]
+        source_type = local_source["type"]
+
+        if source_type == "bundled":
+            meta = LocalSkillCatalog._parse_md_frontmatter(source_path)
+            skill_id = (
+                entry.get("install_id")
+                or meta.get("slug")
+                or meta.get("name")
+                or source_path.stem
+            )
+            # 目录名安全化
+            skill_id = str(skill_id).replace("/", "-").replace(" ", "-").lower()
+            target_dir = self.skills_dir / skill_id
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            target_dir.mkdir(parents=True)
+            shutil.copy2(source_path, target_dir / "SKILL.md")
+            skill_root = target_dir
+        else:
+            skill_id = entry.get("package_dir") or source_path.name
+            target_dir = self.skills_dir / skill_id
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            shutil.copytree(source_path, target_dir)
+            skill_root = target_dir
+
+        return self._finalize_install(skill_root, skill_id, confirm_permissions, entry=entry)
+
+    def _finalize_install(
+        self,
+        skill_root: Path,
+        fallback_id: str,
+        confirm_permissions: bool,
+        entry: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """复制完成后：兼容性检查 → 加载注册 → 自检"""
+        yaml_path = skill_root / "skill.yaml"
+        md_path = skill_root / "SKILL.md"
+
+        if yaml_path.exists():
             compat_result = self._check_compatibility(yaml_path)
             if not compat_result["compatible"]:
                 return {
@@ -75,45 +138,72 @@ class SkillInstaller:
                     "error": compat_result["error"],
                     "compatibility": compat_result,
                 }
-
-            # 解析权限声明
             permissions = self._read_permissions(yaml_path)
-            if confirm_permissions and self._has_dangerous_permissions(permissions):
-                return {
-                    "success": False,
-                    "needs_confirmation": True,
-                    "permissions": permissions,
-                    "error": "需要权限确认",
-                }
+            skill_id = self._read_skill_id(yaml_path) or fallback_id
+        elif md_path.exists():
+            permissions = self._read_permissions_md(md_path)
+            meta = LocalSkillCatalog._parse_md_frontmatter(md_path)
+            raw_name = meta.get("slug") or meta.get("name") or fallback_id
+            skill_id = str(raw_name).replace("/", "-").replace(" ", "-").lower()
+        else:
+            return {"success": False, "error": "包中未找到 skill.yaml 或 SKILL.md"}
 
-            # 复制到 skills 目录
-            skill_id = self._read_skill_id(yaml_path) or pkg.name
-            target_dir = self.skills_dir / skill_id
-            if target_dir.exists():
-                shutil.rmtree(target_dir)
-            shutil.copytree(skill_root, target_dir)
-
-            # 加载注册
-            skill = None
-            if self.skill_loader:
-                skill = self.skill_loader._load_skill(target_dir / "skill.yaml", target_dir)
-                if skill:
-                    skill.source = "skillhub"
-
-            # 安装后自检
-            verify_result = self._post_install_verify(skill_id, skill)
-
-            result = {
-                "success": True,
-                "skill_id": skill_id,
-                "usage": self._get_usage_text(skill_id, skill, yaml_path),
-                "verified": verify_result["ok"],
+        if confirm_permissions and self._has_dangerous_permissions(permissions):
+            return {
+                "success": False,
+                "needs_confirmation": True,
+                "permissions": permissions,
+                "error": "需要权限确认",
             }
-            if skill:
-                result["skill"] = skill.to_dict()
-            if not verify_result["ok"]:
-                result["warning"] = verify_result["warning"]
-            return result
+
+        skill = self._load_installed_skill(skill_root, yaml_path, md_path)
+        if skill:
+            skill.source = "skillhub"
+            skill.enabled = True
+            if self.skill_registry:
+                self.skill_registry.register(skill)
+
+        self._invalidate_loader_cache()
+        verify_result = self._post_install_verify(skill_id, skill)
+
+        usage = entry.get("usage") if entry else None
+        example_prompt = entry.get("example_prompt") if entry else None
+        if not usage:
+            usage = self._get_usage_text(skill_id, skill, yaml_path if yaml_path.exists() else md_path)
+
+        result = {
+            "success": True,
+            "skill_id": skill_id,
+            "usage": usage,
+            "example_prompt": example_prompt or "",
+            "verified": verify_result["ok"],
+            "ready": True,
+        }
+        if skill:
+            result["skill"] = skill.to_dict()
+        if not verify_result["ok"]:
+            result["warning"] = verify_result["warning"]
+        return result
+
+    def _load_installed_skill(self, skill_root: Path, yaml_path: Path, md_path: Path):
+        if not self.skill_loader:
+            return None
+        if md_path.exists():
+            return self.skill_loader._load_skill_md(md_path, skill_root)
+        if yaml_path.exists():
+            return self.skill_loader._load_skill(yaml_path, skill_root)
+        return None
+
+    def _invalidate_loader_cache(self) -> None:
+        if not self.skill_loader:
+            return
+        try:
+            from ..skills.loader import MANIFEST_FILE
+            MANIFEST_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
+        if hasattr(self.skill_loader, "_disclosure_cache"):
+            del self.skill_loader._disclosure_cache
 
     def uninstall(self, skill_id: str) -> Dict[str, Any]:
         target = self.skills_dir / skill_id
@@ -271,12 +361,37 @@ class SkillInstaller:
 
     @staticmethod
     def _find_skill_root(extracted_dir: Path) -> Optional[Path]:
-        """查找包含 skill.yaml 的目录"""
-        if (extracted_dir / "skill.yaml").exists():
+        """查找包含 skill.yaml 或 SKILL.md 的目录"""
+        if (extracted_dir / "skill.yaml").exists() or (extracted_dir / "SKILL.md").exists():
             return extracted_dir
         for item in extracted_dir.iterdir():
-            if item.is_dir() and (item / "skill.yaml").exists():
+            if item.is_dir() and ((item / "skill.yaml").exists() or (item / "SKILL.md").exists()):
                 return item
+        return None
+
+    @staticmethod
+    def _read_permissions_md(md_path: Path) -> List[str]:
+        try:
+            import yaml
+            content = md_path.read_text(encoding="utf-8")
+            import re
+            m = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+            if not m:
+                return []
+            data = yaml.safe_load(m.group(1)) or {}
+            return data.get("permissions", [])
+        except Exception:
+            return []
+
+    @staticmethod
+    def _detect_skill_id(skill_root: Path) -> Optional[str]:
+        yaml_path = skill_root / "skill.yaml"
+        md_path = skill_root / "SKILL.md"
+        if yaml_path.exists():
+            return SkillInstaller._read_skill_id(yaml_path)
+        if md_path.exists():
+            meta = LocalSkillCatalog._parse_md_frontmatter(md_path)
+            return meta.get("name")
         return None
 
     @staticmethod

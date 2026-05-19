@@ -7,6 +7,7 @@ const { t } = useI18n()
 
 const logs = ref<AuditLogItem[]>([])
 const loading = ref(false)
+const errorMessage = ref('')
 const page = ref(1)
 const pageSize = 50
 const total = ref(0)
@@ -18,6 +19,7 @@ const totalPages = computed(() => Math.ceil(total.value / pageSize))
 
 const loadLogs = async () => {
   loading.value = true
+  errorMessage.value = ''
   try {
     const params: Record<string, string | number> = {
       page: page.value,
@@ -29,7 +31,16 @@ const loadLogs = async () => {
     const res = await auditApi.getLogs(params)
     logs.value = res.items || []
     total.value = res.total || 0
-  } catch (e) {
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number; data?: { detail?: string } } })?.response?.status
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    if (status === 403) {
+      errorMessage.value = detail || t('audit.forbidden')
+    } else {
+      errorMessage.value = detail || t('audit.loadFailed')
+    }
+    logs.value = []
+    total.value = 0
     console.error('加载审计日志失败:', e)
   } finally {
     loading.value = false
@@ -65,9 +76,16 @@ const actionLabels: Record<string, string> = {
   login: 'audit.actionLogin',
   logout: 'audit.actionLogout',
   tool_call: 'audit.actionToolCall',
+  'tool_call:success': 'audit.actionToolCall',
+  'tool_call:failed': 'audit.actionToolCallFailed',
   session_create: 'audit.actionSessionCreate',
-  memory_write: 'audit.actionMemoryWrite',
+  session_delete: 'audit.actionSessionDelete',
+  'memory:write': 'audit.actionMemoryWrite',
+  'memory:delete': 'audit.actionMemoryDelete',
+  'memory:promote': 'audit.actionMemoryPromote',
+  'memory:purge': 'audit.actionMemoryPurge',
   skill_install: 'audit.actionSkillInstall',
+  skill_uninstall: 'audit.actionSkillUninstall',
   permission_denied: 'audit.actionPermDenied',
   config_change: 'audit.actionConfigChange',
   user_create: 'audit.actionUserCreate',
@@ -120,6 +138,13 @@ onMounted(() => {
           >
             {{ t('common.search') }}
           </button>
+        </div>
+
+        <div
+          v-if="errorMessage"
+          class="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+        >
+          {{ errorMessage }}
         </div>
 
         <!-- 日志表格 -->

@@ -7,71 +7,7 @@ const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRe
 import PlanCard from './PlanCard.vue'
 import TaskCard from './TaskCard.vue'
 import type { ToolCallEvent } from '@/types'
-import { marked } from 'marked'
-import { markedHighlight } from 'marked-highlight'
-import hljs from 'highlight.js/lib/core'
-import javascript from 'highlight.js/lib/languages/javascript'
-import typescript from 'highlight.js/lib/languages/typescript'
-import python from 'highlight.js/lib/languages/python'
-import css from 'highlight.js/lib/languages/css'
-import xml from 'highlight.js/lib/languages/xml'        // HTML
-import json from 'highlight.js/lib/languages/json'
-import bash from 'highlight.js/lib/languages/bash'
-import sql from 'highlight.js/lib/languages/sql'
-import yaml from 'highlight.js/lib/languages/yaml'
-import markdown from 'highlight.js/lib/languages/markdown'
-import diff from 'highlight.js/lib/languages/diff'
-import plaintext from 'highlight.js/lib/languages/plaintext'
-
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('js', javascript)
-hljs.registerLanguage('typescript', typescript)
-hljs.registerLanguage('ts', typescript)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('py', python)
-hljs.registerLanguage('css', css)
-hljs.registerLanguage('html', xml)
-hljs.registerLanguage('xml', xml)
-hljs.registerLanguage('json', json)
-hljs.registerLanguage('bash', bash)
-hljs.registerLanguage('sh', bash)
-hljs.registerLanguage('shell', bash)
-hljs.registerLanguage('sql', sql)
-hljs.registerLanguage('yaml', yaml)
-hljs.registerLanguage('yml', yaml)
-hljs.registerLanguage('markdown', markdown)
-hljs.registerLanguage('md', markdown)
-hljs.registerLanguage('diff', diff)
-hljs.registerLanguage('plaintext', plaintext)
-hljs.registerLanguage('text', plaintext)
-
-// 配置 marked + highlight.js
-marked.use(markedHighlight({
-  langPrefix: 'hljs language-',
-  highlight(code: string, lang: string) {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value
-    }
-    return hljs.highlightAuto(code).value
-  },
-}))
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
-
-// Markdown 渲染 + 代码块包裹
-function renderMarkdown(text: string): string {
-  if (!text) return ''
-  let html = marked.parse(text) as string
-  html = html.split('<pre><code').join(
-    '<div class="code-block"><div class="code-block-header">' +
-    '<span class="code-block-lang"></span>' +
-    `<button class="code-block-copy">${t('chat.copy')}</button></div><pre><code`
-  )
-  html = html.split('</code></pre>').join('</code></pre></div>')
-  return html
-}
+import { renderChatMarkdown } from '@/utils/chatMarkdown'
 
 // v2.6: 扩展 message 类型支持 thinking 步骤
 interface ThinkingStep {
@@ -103,6 +39,7 @@ interface ChatMessage {
 const props = defineProps<{
   messages: ChatMessage[]
   isGenerating?: boolean
+  loadingHistory?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -169,6 +106,20 @@ const toggleToolCard = (id: string) => {
   else collapsedTools.value.add(id)
 }
 
+const isStreamingAssistant = (msg: ChatMessage, idx: number) =>
+  Boolean(
+    props.isGenerating &&
+      idx === props.messages.length - 1 &&
+      msg.role === 'assistant' &&
+      msg.id?.startsWith('streaming-'),
+  )
+
+const formatAssistantContent = (msg: ChatMessage, idx: number) =>
+  renderChatMarkdown(msg.content, {
+    streaming: isStreamingAssistant(msg, idx),
+    copyLabel: t('chat.copy'),
+  })
+
 onMounted(() => {
   document.addEventListener('click', (e: Event) => {
     const btn = (e.target as HTMLElement).closest('.code-block-copy')
@@ -187,7 +138,12 @@ onMounted(() => {
 
 <template>
   <div ref="panelRef" class="flex-1 overflow-y-auto scroll-smooth">
-    <div v-if="messages.length === 0" class="flex flex-col items-center justify-center h-full px-6">
+    <div v-if="messages.length === 0 && loadingHistory" class="flex flex-col items-center justify-center h-full px-6 py-12">
+      <div class="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <p class="text-sm text-slate-400">{{ t('chat.restoringHistory') }}</p>
+    </div>
+
+    <div v-else-if="messages.length === 0" class="flex flex-col items-center justify-center h-full px-6">
       <div class="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-2xl flex items-center justify-center mb-4 ring-1 ring-blue-500/20">
         <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
@@ -268,7 +224,12 @@ onMounted(() => {
                 <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.2s" />
                 <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.4s" />
               </div>
-              <div v-if="msg.content" class="markdown-body text-sm text-slate-300 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
+              <div
+                v-if="msg.content"
+                class="markdown-body text-sm text-slate-300 leading-relaxed"
+                :class="{ 'markdown-body--streaming': isStreamingAssistant(msg, idx) }"
+                v-html="formatAssistantContent(msg, idx)"
+              />
 
               <!-- BI 图表渲染 -->
               <div v-if="msg.biChart" class="mt-3">
@@ -367,7 +328,10 @@ onMounted(() => {
 .code-block-copy:hover { color: #e7e5e4; }
 .code-block pre { margin: 0; border-radius: 0; }
 .code-block code { display: block; padding: 1rem; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body--streaming { opacity: 0.95; }
 .markdown-body h1 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 1.5rem 0 0.75rem; }
+.markdown-body h1:first-child { margin-top: 0; }
 .markdown-body h2 { font-size: 1.1rem; font-weight: 600; color: #f1f5f9; margin: 1.25rem 0 0.5rem; }
 .markdown-body h3 { font-size: 1rem; font-weight: 500; color: #e2e8f0; margin: 1rem 0 0.5rem; }
 .markdown-body p { margin-bottom: 0.75rem; line-height: 1.65; }
@@ -376,10 +340,11 @@ onMounted(() => {
 .markdown-body li { margin-bottom: 0.25rem; }
 .markdown-body a { color: #fbbf24; text-decoration: underline; }
 .markdown-body strong { color: #f1f5f9; font-weight: 600; }
-.markdown-body code { background: rgba(20,17,15,0.9); color: #fbbf24; font-size: 0.8rem; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: "SF Mono","Fira Code",monospace; border: 1px solid rgba(245,158,11,0.15); }
-.markdown-body pre { background: rgba(8,7,5,0.8); border: 1px solid rgba(245,158,11,0.15); border-radius: 0.75rem; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
-.markdown-body pre code { background: transparent; color: #d6d3d1; padding: 0; font-size: 0.8rem; line-height: 1.5; }
-.markdown-body table { width: 100%; font-size: 0.75rem; border-collapse: collapse; margin: 0.75rem 0; }
+.markdown-body code { background: rgba(20,17,15,0.9); color: #fbbf24; font-size: 0.8rem; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: "SF Mono","Fira Code",monospace; border: 1px solid rgba(245,158,11,0.15); word-break: break-word; }
+.markdown-body pre { background: rgba(8,7,5,0.8); border: 1px solid rgba(245,158,11,0.15); border-radius: 0.75rem; padding: 0; margin: 1rem 0; overflow-x: auto; }
+.markdown-body pre code { background: transparent; color: #d6d3d1; padding: 0; font-size: 0.8rem; line-height: 1.5; border: none; }
+.markdown-body .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+.markdown-body table { width: 100%; font-size: 0.75rem; border-collapse: collapse; margin: 0; }
 .markdown-body th { background: rgba(20,17,15,0.9); color: #e7e5e4; padding: 0.5rem 0.75rem; text-align: left; font-weight: 500; border: 1px solid rgba(245,158,11,0.15); }
 .markdown-body td { padding: 0.5rem 0.75rem; border: 1px solid rgba(245,158,11,0.1); color: #a8a29e; }
 .markdown-body blockquote { border-left: 3px solid rgba(217,119,6,0.4); padding-left: 1rem; margin: 0.75rem 0; color: #a8a29e; font-style: italic; }

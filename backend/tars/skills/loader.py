@@ -194,6 +194,60 @@ class SkillLoader:
             print(f"[SkillLoader] 加载 SKILL.md {md_path} 失败: {e}")
             return None
 
+    def get_contextual_skill_injection(self, user_content: str, top_k: int = 3) -> str:
+        """根据用户消息匹配相关 PromptSkill，注入完整 prompt_template。"""
+        if not user_content or not self.skill_registry:
+            return ""
+
+        skills = self.skill_registry.list_prompt_skills()
+        if not skills:
+            return ""
+
+        scored = []
+        content_lower = user_content.lower()
+        for skill in skills:
+            score = self._score_skill_relevance(skill, content_lower)
+            if score > 0:
+                scored.append((skill, score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        sections = []
+        for skill, _ in scored[:top_k]:
+            if skill.prompt_template:
+                sections.append(f"## 已激活技能: {skill.name}\n{skill.prompt_template}")
+
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _score_skill_relevance(skill, content_lower: str) -> float:
+        score = 0.0
+        name = (skill.name or "").lower()
+        desc = (getattr(skill, "description", "") or "").lower()
+        skill_id = (skill.id or "").lower()
+
+        if name and name in content_lower:
+            score += 1.0
+        if skill_id and skill_id.replace("_", " ") in content_lower:
+            score += 0.8
+        if skill_id and skill_id.replace("_", "-") in content_lower:
+            score += 0.8
+
+        for tag in getattr(skill, "tags", []) or []:
+            if tag.lower() in content_lower:
+                score += 0.5
+
+        for kw in getattr(skill, "trigger_keywords", []) or []:
+            if kw.lower() in content_lower:
+                score += 0.7
+
+        # 描述中的关键词片段（>=2 字的词）
+        for token in desc.replace("，", " ").replace("、", " ").split():
+            token = token.strip().lower()
+            if len(token) >= 2 and token in content_lower:
+                score += 0.3
+
+        return score
+
     def get_progressive_disclosure(self) -> str:
         """返回渐进披露文本——所有已启用技能的 name + description 列表。
 

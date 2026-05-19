@@ -14,6 +14,8 @@
       </div>
     </div>
 
+    <div v-if="loadError" class="bi-banner-error">{{ loadError }}</div>
+
     <div class="bi-content">
       <DataSourceSettings v-if="currentTab === 'datasources'" />
 
@@ -91,15 +93,23 @@ const executing = ref(false)
 const charting = ref(false)
 const queryResult = ref<BIQueryResult | null>(null)
 const queryError = ref('')
+const loadError = ref('')
 const chartResult = ref<BIChartResult | null>(null)
 
 const canExecute = computed(() => selectedDataSourceId.value && sqlInput.value.trim())
 
 async function loadDataSources() {
+  loadError.value = ''
   try {
     const res = await biApi.listDataSources()
     datasources.value = res.datasources
-  } catch (e) {
+  } catch (e: any) {
+    const status = e.response?.status
+    if (status === 404 || status === 503) {
+      loadError.value = t('bi.moduleDisabled')
+    } else {
+      loadError.value = e.response?.data?.detail || t('bi.loadFailed')
+    }
     console.error('加载数据源失败', e)
   }
 }
@@ -167,6 +177,17 @@ onMounted(loadDataSources)
   font-weight: 600;
   color: #f5f0e8;
   margin: 0 0 12px 0;
+}
+
+.bi-banner-error {
+  margin: 0 16px 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .tabs {

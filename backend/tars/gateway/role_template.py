@@ -59,8 +59,12 @@ BUILTIN_TEMPLATES = [
     RoleTemplate(
         id="standard", name="普通用户", description="基础工具，默认角色",
         is_builtin=True,
-        allowed_tools=["weather", "web_search", "web_fetch", "file", "file_list", "memory", "knowledge_search"],
-        allowed_modules=["knowledge", "skillhub"],
+        allowed_tools=[
+            "weather", "web_search", "web_fetch", "file", "file_list", "memory",
+            "knowledge_search", "meeting_recognizer",
+            "bi_query", "bi_list_datasources", "bi_generate_chart", "bi_schema_explore",
+        ],
+        allowed_modules=["knowledge", "skillhub", "meeting", "bi"],
         workspace_restriction=True, max_concurrent=1,
     ),
     RoleTemplate(
@@ -114,6 +118,31 @@ class RoleTemplateManager:
                  json.dumps(t.allowed_modules, ensure_ascii=False),
                  json.dumps(t.resource_permissions, ensure_ascii=False),
                  int(t.workspace_restriction), t.max_concurrent, now, now),
+            )
+        conn.commit()
+        self._sync_builtin_modules()
+
+    def _sync_builtin_modules(self):
+        """Keep builtin template module/tool lists in sync with code (INSERT OR IGNORE won't update)."""
+        conn = self._db._get_conn()
+        cursor = conn.cursor()
+        now = _now()
+        for t in BUILTIN_TEMPLATES:
+            if not t.is_builtin:
+                continue
+            cursor.execute(
+                """
+                UPDATE role_templates
+                SET allowed_tools = ?, denied_tools = ?, allowed_modules = ?, updated_at = ?
+                WHERE id = ? AND is_builtin = 1
+                """,
+                (
+                    json.dumps(t.allowed_tools, ensure_ascii=False),
+                    json.dumps(t.denied_tools, ensure_ascii=False),
+                    json.dumps(t.allowed_modules, ensure_ascii=False),
+                    now,
+                    t.id,
+                ),
             )
         conn.commit()
 

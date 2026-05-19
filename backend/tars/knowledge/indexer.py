@@ -59,18 +59,61 @@ class KnowledgeIndexer:
         metadatas = [c["metadata"] for c in chunks]
         ids = [f"{doc_id}_chunk_{c['chunk_index']}" for c in chunks]
 
-        try:
-            self.vector_store.add_documents(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids,
-                tenant_id=tenant_id,
-                collection_name=f"knowledge_{collection_id}",
-            )
+        chroma_ok = bool(
+            self.vector_store
+            and getattr(self.vector_store, "is_available", False)
+        )
+        if chroma_ok:
+            try:
+                self.vector_store.add_documents(
+                    documents=documents,
+                    metadatas=metadatas,
+                    ids=ids,
+                    tenant_id=tenant_id,
+                    collection_name=f"knowledge_{collection_id}",
+                )
+                return {
+                    "doc_id": doc_id,
+                    "chunk_count": len(chunks),
+                    "status": "indexed",
+                    "backend": "chroma",
+                }
+            except Exception as e:
+                print(f"[KnowledgeIndexer] Chroma index failed, fallback to SQLite: {e}")
+
+        if self.db is None:
             return {
                 "doc_id": doc_id,
-                "chunk_count": len(chunks),
+                "chunk_count": 0,
+                "status": "error",
+                "error": "向量库不可用且未配置 SQLite 回退",
+            }
+
+        try:
+            from .sqlite_store import store_chunks
+
+            stored = store_chunks(
+                self.db,
+                self.embedding_provider,
+                chunks=chunks,
+                doc_id=doc_id,
+                collection_id=collection_id,
+                tenant_id=tenant_id,
+                file_name=file_name,
+            )
+            if stored <= 0:
+                return {
+                    "doc_id": doc_id,
+                    "chunk_count": 0,
+                    "status": "error",
+                    "error": "未能写入任何文档分块",
+                }
+            print(f"[KnowledgeIndexer] Indexed {stored} chunks via SQLite (tenant={tenant_id})")
+            return {
+                "doc_id": doc_id,
+                "chunk_count": stored,
                 "status": "indexed",
+                "backend": "sqlite",
             }
         except Exception as e:
             import traceback
@@ -100,20 +143,30 @@ class KnowledgeIndexer:
             chunk_count = int(doc.get("chunk_count") or 0)
             chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(chunk_count)]
 
-            if chunk_ids:
+            if chunk_ids and self.vector_store and getattr(self.vector_store, "is_available", False):
                 collection_name = f"knowledge_{collection_id}"
-                if hasattr(self.vector_store, "delete"):
-                    self.vector_store.delete(
-                        ids=chunk_ids,
-                        tenant_id=tenant_id,
-                        collection_name=collection_name,
-                    )
-                elif hasattr(self.vector_store, "get_collection"):
-                    collection = self.vector_store.get_collection(
-                        collection_name=collection_name,
-                        tenant_id=tenant_id,
-                    )
-                    collection.delete(ids=chunk_ids)
+                try:
+                    if hasattr(self.vector_store, "delete"):
+                        self.vector_store.delete(
+                            ids=chunk_ids,
+                            tenant_id=tenant_id,
+                            collection_name=collection_name,
+                        )
+                    elif hasattr(self.vector_store, "get_collection"):
+                        collection = self.vector_store.get_collection(
+                            collection_name=collection_name,
+                            tenant_id=tenant_id,
+                        )
+                        collection.delete(ids=chunk_ids)
+                except Exception as e:
+                    print(f"[KnowledgeIndexer] Chroma delete failed: {e}")
+
+            if self.db is not None:
+                try:
+                    from .sqlite_store import delete_chunks
+                    delete_chunks(self.db, doc_id)
+                except Exception as e:
+                    print(f"[KnowledgeIndexer] SQLite chunk delete failed: {e}")
 
             self.db.delete_document_file(doc_id)
             return True

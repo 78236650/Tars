@@ -45,13 +45,9 @@ class ProcessTool(BaseTool):
 
     async def _list_processes(self, name_filter: Optional[str] = None) -> ToolResult:
         try:
-            proc = await asyncio.create_subprocess_shell(
-                "ps aux",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-            output = stdout.decode("utf-8", errors="replace")
+            output = await self._run_ps_command("ps aux")
+            if not output.strip():
+                output = await self._run_ps_command("ps -A -o pid=,comm=")
 
             if name_filter:
                 lines = output.split("\n")
@@ -61,9 +57,23 @@ class ProcessTool(BaseTool):
             else:
                 output = "\n".join(output.split("\n")[:30])
 
+            if not output.strip():
+                return ToolResult(
+                    success=True,
+                    output="USER       PID  COMMAND\n(当前环境无法列出进程，可能受沙箱限制)",
+                )
             return ToolResult(success=True, output=output)
         except Exception as e:
             return ToolResult(success=False, output="", error=f"列出进程失败: {e}")
+
+    async def _run_ps_command(self, command: str) -> str:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        return stdout.decode("utf-8", errors="replace")
 
     async def _start(self, command: Optional[str], cwd: Optional[str]) -> ToolResult:
         if not command:

@@ -5,11 +5,32 @@ tool calls, memory access, config changes, permission denials, etc.
 """
 import json
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Callable, Optional
 
 
 def _now() -> str:
     return datetime.now(timezone(timedelta(hours=8))).isoformat()
+
+
+def client_ip_from_request(request) -> str:
+    if request is None:
+        return ""
+    forwarded = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    client = getattr(request, "client", None)
+    if client and getattr(client, "host", None):
+        return client.host
+    return ""
+
+
+def safe_audit(callback: Callable[["AuditLogger"], None]) -> None:
+    """Run an audit callback when the global logger is available."""
+    try:
+        if audit_logger:
+            callback(audit_logger)
+    except Exception:
+        pass
 
 
 class AuditLogger:
@@ -54,13 +75,19 @@ class AuditLogger:
         success: bool = True,
         client_ip: str = "",
     ):
+        detail = json.dumps(arguments or {}, ensure_ascii=False, default=str)
+        try:
+            from .sanitizer import sanitizer
+            detail = sanitizer.sanitize(detail)
+        except Exception:
+            pass
         self.log(
             action=f"tool_call:{'success' if success else 'failed'}",
             resource_type="tool",
             resource_id=tool_name,
             tenant_id=tenant_id,
             user_id=user_id,
-            detail=json.dumps(arguments or {}, ensure_ascii=False, default=str),
+            detail=detail,
             client_ip=client_ip,
         )
 
@@ -118,9 +145,102 @@ class AuditLogger:
             client_ip=client_ip,
         )
 
+    def log_login(
+        self,
+        user_id: str = "default",
+        tenant_id: str = "default",
+        success: bool = True,
+        detail: str = "",
+        client_ip: str = "",
+    ):
+        self.log(
+            action="login" if success else "login:failed",
+            resource_type="auth",
+            resource_id=user_id or "unknown",
+            tenant_id=tenant_id or user_id or "default",
+            user_id=user_id or "unknown",
+            detail=detail,
+            client_ip=client_ip,
+        )
+
+    def log_user_event(
+        self,
+        action: str,
+        target_user_id: str,
+        actor_id: str = "default",
+        tenant_id: str = "default",
+        detail: str = "",
+        client_ip: str = "",
+    ):
+        self.log(
+            action=action,
+            resource_type="user",
+            resource_id=target_user_id,
+            tenant_id=tenant_id,
+            user_id=actor_id,
+            detail=detail,
+            client_ip=client_ip,
+        )
+
+    def log_session_event(
+        self,
+        action: str,
+        session_id: str,
+        tenant_id: str = "default",
+        user_id: str = "default",
+        detail: str = "",
+        client_ip: str = "",
+    ):
+        self.log(
+            action=action,
+            resource_type="session",
+            resource_id=session_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            detail=detail,
+            client_ip=client_ip,
+        )
+
+    def log_config_change(
+        self,
+        resource_id: str,
+        tenant_id: str = "default",
+        user_id: str = "default",
+        detail: str = "",
+        client_ip: str = "",
+    ):
+        self.log(
+            action="config_change",
+            resource_type="config",
+            resource_id=resource_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            detail=detail,
+            client_ip=client_ip,
+        )
+
+    def log_skill_event(
+        self,
+        action: str,
+        skill_id: str,
+        tenant_id: str = "default",
+        user_id: str = "default",
+        detail: str = "",
+        client_ip: str = "",
+    ):
+        self.log(
+            action=action,
+            resource_type="skill",
+            resource_id=skill_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            detail=detail,
+            client_ip=client_ip,
+        )
+
     def list(
         self,
-        tenant_id: str = "default",
+        tenant_id: str = "",
         user_id: str = "",
         action: str = "",
         resource_type: str = "",

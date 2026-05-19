@@ -305,6 +305,9 @@ class AgentV2:
         else:
             memory_context = scoped_memory_manager.get_context_for_query(user_content)
 
+        # 4.5 自动检索知识库（不依赖模型是否主动调用 knowledge_search）
+        knowledge_context = await self._build_knowledge_context(user_content, tenant_id, channel, session_id)
+
         # 5. 构建 system prompt（含人格 + 记忆 + 渐进披露技能 + 命令提示词）
         # v4.0.0: cache static parts (persona + tools + skills), rebuild memory per query
         try:
@@ -317,17 +320,19 @@ class AgentV2:
                         user_content, session_id, cmd_result,
                     ),
                 )
-                dynamic_part = self._build_memory_prompt(memory_context)
+                dynamic_part = self._build_memory_prompt(memory_context, knowledge_context)
                 system_prompt = static_part + dynamic_part
             else:
                 system_prompt = self._build_system_prompt(
                     user_content, session_id, tenant_id,
                     memory_context, scoped_memory_manager, cmd_result,
+                    knowledge_context=knowledge_context,
                 )
         except Exception:
             system_prompt = self._build_system_prompt(
                 user_content, session_id, tenant_id,
                 memory_context, scoped_memory_manager, cmd_result,
+                knowledge_context=knowledge_context,
             )
 
         # 6. 构建消息列表
@@ -704,21 +709,26 @@ class AgentV2:
 
     def _build_system_prompt(self, user_content: str, session_id: str,
                               tenant_id: str, memory_context: str,
-                              scoped_memory_manager, cmd_result) -> str:
+                              scoped_memory_manager, cmd_result,
+                              knowledge_context: str = "") -> str:
         """Build the full system prompt for a conversation turn (uncached fallback)."""
         return self._build_static_prompt(user_content, session_id, cmd_result) + \
-               self._build_memory_prompt(memory_context)
+               self._build_memory_prompt(memory_context, knowledge_context)
 
     def _build_static_prompt(self, user_content: str, session_id: str, cmd_result) -> str:
         """Build cacheable static parts: persona + tools + skill list."""
         sp = self.workspace.build_context()
 
-        # 渐进披露技能
+        # 渐进披露技能 + 上下文相关技能注入
         if hasattr(self, 'skill_loader') and hasattr(self.skill_loader, 'get_progressive_disclosure'):
             disclosure = self.skill_loader.get_progressive_disclosure()
             if disclosure:
                 sp += f"\n\n{disclosure}"
-            if hasattr(self, '_active_skill_id') and self._active_skill_id:
+
+            contextual = self.skill_loader.get_contextual_skill_injection(user_content)
+            if contextual:
+                sp += f"\n\n{contextual}"
+            elif hasattr(self, '_active_skill_id') and self._active_skill_id:
                 active_skill = self.skill_registry.get(self._active_skill_id)
                 if active_skill and active_skill.prompt_template:
                     sp += f"\n\n## 已激活技能: {active_skill.name}\n{active_skill.prompt_template}"
@@ -747,11 +757,51 @@ class AgentV2:
 
         return sp
 
-    def _build_memory_prompt(self, memory_context: str) -> str:
-        """Build dynamic per-query part: memory search results."""
+    def _build_memory_prompt(self, memory_context: str, knowledge_context: str = "") -> str:
+        """Build dynamic per-query part: memory + knowledge search results."""
+        parts = []
+        if knowledge_context:
+            parts.append(f"## 知识库检索结果\n{knowledge_context}")
         if memory_context:
-            return f"\n\n{memory_context}"
-        return ""
+            parts.append(memory_context)
+        if not parts:
+            return ""
+        return "\n\n" + "\n\n".join(parts)
+
+    async def _build_knowledge_context(
+        self,
+        user_content: str,
+        tenant_id: str,
+        channel: Channel,
+        session_id: str,
+    ) -> str:
+        """Proactively retrieve knowledge base snippets for the user message."""
+        if not self.knowledge_retriever or not self.db:
+            return ""
+        try:
+            from ..knowledge.access import search_knowledge
+
+            await channel.send(session_id, {
+                "type": "thinking_step",
+                "session_id": session_id,
+                "step": "📚",
+                "title": "检索知识库",
+                "detail": user_content[:30] + ("..." if len(user_content) > 30 else ""),
+                "timestamp": now_iso(),
+            })
+            text, results = search_knowledge(
+                self.db,
+                self.knowledge_retriever,
+                query=user_content,
+                tenant_id=tenant_id,
+                top_k=5,
+            )
+            if results:
+                return text
+            return ""
+        except Exception as e:
+            print(f"[Agent] 知识库自动检索失败: {e}")
+            return ""
 
     # ========= 模式权限控制 =========
 

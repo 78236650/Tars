@@ -45,6 +45,17 @@ api.interceptors.request.use((config) => {
   if (apiKey) {
     config.headers['X-API-Key'] = apiKey
   }
+  // v4.0.2: 发送用户 ID 作为 tenant_id 实现多租户隔离
+  const userJson = localStorage.getItem('auth_user')
+  if (userJson) {
+    try {
+      const user = JSON.parse(userJson)
+      if (user?.id) {
+        config.headers['X-Tenant-ID'] = user.id
+        config.headers['X-User-Role'] = user.role || 'user'
+      }
+    } catch {}
+  }
   return config
 })
 
@@ -294,7 +305,8 @@ export const skillhubApi = {
   getCatalog: () => api.get('/skillhub/catalog'),
   search: (query: string) => api.get('/skillhub/search', { params: { q: query } }),
   getDetail: (id: string) => api.get(`/skillhub/detail/${id}`),
-  install: (skillId: string) => api.post('/skillhub/install', { skill_id: skillId }),
+  install: (skillId: string, confirmPermissions = true) =>
+    api.post('/skillhub/install', { skill_id: skillId, confirm_permissions: confirmPermissions }),
   uninstall: (skillId: string) => api.post('/skillhub/uninstall', { skill_id: skillId }),
   listInstalled: () => api.get('/skillhub/installed'),
   checkUpdates: () => api.get('/skillhub/updates'),
@@ -425,7 +437,14 @@ export const knowledgeApi = {
     const response = await api.post(`/knowledge/collections/${collectionId}/documents`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    return response.data
+    const data = response.data
+    if (!data?.success || data.document?.status !== 'indexed') {
+      const detail = data?.document?.status || 'index_failed'
+      throw Object.assign(new Error(String(detail)), {
+        response: { data: { detail: `文档解析或索引失败: ${detail}` } },
+      })
+    }
+    return data
   },
 
   deleteDocument: async (collectionId: string, docId: string): Promise<{ success: boolean; message: string }> => {
@@ -555,11 +574,35 @@ export const auditApi = {
   getLogs: async (params?: {
     action?: string
     user_id?: string
+    tenant_id?: string
     page?: number
     page_size?: number
   }): Promise<AuditLogResponse> => {
-    const response = await api.get<AuditLogResponse>('/audit/logs', { params })
-    return response.data
+    const response = await api.get<{
+      items: Array<Record<string, string | null | undefined>>
+      page: number
+      page_size: number
+      total: number
+    }>('/audit/logs', { params })
+    const data = response.data
+    return {
+      page: data.page,
+      page_size: data.page_size,
+      total: data.total,
+      items: (data.items || []).map((item) => ({
+        id: String(item.id ?? ''),
+        timestamp: String(item.timestamp ?? item.created_at ?? ''),
+        user_id: String(item.user_id ?? ''),
+        action: String(item.action ?? ''),
+        resource: String(
+          item.resource ??
+            [item.resource_type, item.resource_id].filter(Boolean).join(':') ??
+            ''
+        ),
+        detail: String(item.detail ?? ''),
+        ip_address: String(item.ip_address ?? item.client_ip ?? ''),
+      })),
+    }
   }
 }
 
@@ -647,12 +690,12 @@ export const rolesApi = {
   },
 
   assignRole: async (userId: string, roleTemplateId: string): Promise<{ success: boolean }> => {
-    const response = await api.post(`/users/${userId}/role`, { role_template_id: roleTemplateId })
+    const response = await api.post(`/roles/users/${userId}/role`, { role_template_id: roleTemplateId })
     return response.data
   },
 
   getUserPermissions: async (userId: string): Promise<{ allowed_tools: string[]; allowed_modules: string[]; role_template_id: string }> => {
-    const response = await api.get(`/users/${userId}/permissions`)
+    const response = await api.get(`/roles/users/${userId}/permissions`)
     return response.data
   }
 }

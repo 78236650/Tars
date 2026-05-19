@@ -273,7 +273,8 @@ class UserStore:
                 role=UserRole(row[3]),
                 api_key=row[4],
                 created_at=datetime.fromisoformat(row[5]),
-                last_login=datetime.fromisoformat(row[6]) if row[6] else None
+                last_login=datetime.fromisoformat(row[6]) if row[6] else None,
+                role_template_id=row[8] if len(row) > 8 else None,
             ))
         return users
     
@@ -306,6 +307,9 @@ class UserStore:
         if 'role_template_id' in kwargs:
             updates.append("role_template_id = ?")
             params.append(kwargs['role_template_id'])
+        if 'password_hash' in kwargs:
+            updates.append("password_hash = ?")
+            params.append(kwargs['password_hash'])
         
         if not updates:
             return False

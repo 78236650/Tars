@@ -154,21 +154,25 @@ class CoreMemoryAppendTool(BaseTool):
         "required": ["block", "content"],
     }
 
-    def __init__(self, manager: CoreMemoryManager):
-        self.manager = manager
+    def __init__(self, db):
+        self.db = db
+
+    def _manager(self, tenant_id: str) -> CoreMemoryManager:
+        return CoreMemoryManager(self.db, tenant_id=tenant_id or "default")
 
     async def execute(self, **kwargs) -> ToolResult:
+        tenant_id = str(kwargs.get("tenant_id") or "default")
         block = kwargs.get("block", "")
         content = kwargs.get("content", "").strip()
+        manager = self._manager(tenant_id)
         if block not in BLOCK_NAMES:
             return ToolResult(success=False, output="", error=f"无效的区块名: {block}")
         if not content:
             return ToolResult(success=False, output="", error="content 不能为空")
-        # 先检查是否重复
-        current = self.manager.get(block)
-        if self.manager._is_duplicate_line(current, content):
+        current = manager.get(block)
+        if manager._is_duplicate_line(current, content):
             return ToolResult(success=True, output=f"(已存在，跳过) {block}: {content[:50]}")
-        ok = self.manager.append(block, content)
+        ok = manager.append(block, content)
         if ok:
             return ToolResult(success=True, output=f"已追加到 {block}: {content[:50]}")
         return ToolResult(success=False, output="", error="追加失败（可能达到上限）")
@@ -190,16 +194,21 @@ class CoreMemoryReplaceTool(BaseTool):
         "required": ["block", "old", "new"],
     }
 
-    def __init__(self, manager: CoreMemoryManager):
-        self.manager = manager
+    def __init__(self, db):
+        self.db = db
+
+    def _manager(self, tenant_id: str) -> CoreMemoryManager:
+        return CoreMemoryManager(self.db, tenant_id=tenant_id or "default")
 
     async def execute(self, **kwargs) -> ToolResult:
+        tenant_id = str(kwargs.get("tenant_id") or "default")
         block = kwargs.get("block", "")
         old = kwargs.get("old", "")
         new = kwargs.get("new", "")
+        manager = self._manager(tenant_id)
         if block not in BLOCK_NAMES:
             return ToolResult(success=False, output="", error=f"无效的区块名: {block}")
-        ok = self.manager.replace(block, old, new)
+        ok = manager.replace(block, old, new)
         if ok:
             return ToolResult(success=True, output=f"已更新 {block}")
         return ToolResult(success=False, output="", error="替换失败")

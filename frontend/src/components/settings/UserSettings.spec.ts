@@ -11,6 +11,11 @@ vi.mock('@/api', () => ({
     createUser: vi.fn(),
     deleteUser: vi.fn(),
   },
+  rolesApi: {
+    list: vi.fn().mockResolvedValue([
+      { id: 'developer', name: '开发者', description: '', allowed_tools: [], allowed_modules: [], max_concurrent: 1 },
+    ]),
+  },
 }))
 
 describe('UserSettings', () => {
@@ -48,6 +53,27 @@ describe('UserSettings', () => {
     expect(wrapper.html()).toContain('type="password"')
   })
 
+  it('shows the assigned role template in the role column', async () => {
+    vi.mocked(authApi.getUsers).mockResolvedValue({
+      users: [
+        {
+          id: 'user-1',
+          username: 'bob',
+          email: 'bob@example.com',
+          role: 'user',
+          role_template_id: 'developer',
+          created_at: '2026-05-16T10:00:00Z',
+        },
+      ],
+      total: 1,
+    })
+
+    const wrapper = mount(UserSettings)
+    await vi.waitFor(() => expect(wrapper.text()).toContain('开发者'))
+
+    expect(wrapper.text()).not.toContain('userSettings.roles.user')
+  })
+
   it('passes the initial password when creating a user', async () => {
     vi.mocked(authApi.createUser).mockResolvedValue({
       success: true,
@@ -60,9 +86,10 @@ describe('UserSettings', () => {
     await wrapper.find('input').setValue('alice')
     await wrapper.find('input[type="email"]').setValue('alice@example.com')
     await wrapper.find('input[type="password"]').setValue('TempPass123!')
-    await wrapper.find('select').setValue('admin')
+    await vi.waitFor(() => expect(wrapper.find('select option').exists()).toBe(true))
+    await wrapper.find('select').setValue('developer')
     await wrapper.findAll('button').at(-1)?.trigger('click')
 
-    expect(authApi.createUser).toHaveBeenCalledWith('alice', 'alice@example.com', 'TempPass123!', 'admin')
+    expect(authApi.createUser).toHaveBeenCalledWith('alice', 'alice@example.com', 'TempPass123!', 'developer')
   })
 })

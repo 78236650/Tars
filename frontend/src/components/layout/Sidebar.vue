@@ -106,7 +106,7 @@ const navItems = [
   { name: 'nav.bi', icon: 'bar-chart', path: '/bi' },
   { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
   { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
-  { name: 'nav.audit', icon: 'shield', path: '/audit', adminOnly: true },
+  { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
   { name: 'nav.settings', icon: 'settings', path: '/settings' }
 ]
 
@@ -455,7 +455,7 @@ const groupedSessions = computed(() => {
 
     <!-- v4.0.0: Version -->
     <div class="border-t border-amber-100/10 px-3 py-2.5 shrink-0">
-      <p class="text-[10px] text-stone-500 text-center tracking-[0.18em] select-none">TARS v4.0.0</p>
+      <p class="text-[10px] text-stone-500 text-center tracking-[0.18em] select-none">{{ t('sidebar.version') }}</p>
     </div>
   </aside>
 

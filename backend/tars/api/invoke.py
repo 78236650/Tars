@@ -180,6 +180,7 @@ async def invoke(
                         "transport": "rest",
                         "authorization": authorization,
                         "user_id": getattr(user, "id", None),
+                        "user_role": getattr(user, "role", "user").value if hasattr(getattr(user, "role", None), "value") else "user",
                         "stream": True,
                     },
                 )
@@ -206,6 +207,7 @@ async def invoke(
             "transport": "rest",
             "authorization": authorization,
             "user_id": getattr(user, "id", None),
+            "user_role": getattr(user, "role", "user").value if hasattr(getattr(user, "role", None), "value") else "user",
             "stream": payload.stream,
         },
     )

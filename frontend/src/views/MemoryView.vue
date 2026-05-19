@@ -199,7 +199,7 @@ onMounted(() => {
             :key="tab.key"
             class="rounded-2xl px-4 py-3 text-sm font-medium transition"
             :class="activeTab === tab.key ? 'bg-amber-600 text-stone-950' : 'border border-amber-100/10 bg-[#171310] text-stone-300 hover:bg-amber-500/10'"
-            @click="selectTab(tab.key as 'personality' | 'recent' | 'longterm' | 'all')"
+            @click="selectTab(tab.key as typeof activeTab)"
           >
             {{ tab.label }}
           </button>

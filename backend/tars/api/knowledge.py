@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..database import Database
+from ..knowledge.access import search_knowledge
 from ..knowledge.indexer import KnowledgeIndexer
 from ..knowledge.retriever import KnowledgeRetriever
 from ..reranker import CrossEncoderReranker
@@ -192,6 +193,13 @@ async def upload_document(
         )
         conn.commit()
 
+        if result.get("status") != "indexed":
+            detail = result.get("error") or result.get("status") or "unknown"
+            raise HTTPException(
+                status_code=422,
+                detail=f"文档解析或索引失败: {detail}",
+            )
+
         return {
             "success": True,
             "document": {
@@ -346,23 +354,19 @@ async def search_knowledge(
     if _retriever is None:
         raise HTTPException(status_code=500, detail="知识库检索器未初始化")
 
-    collection_ids = request.collection_ids or []
-    if not collection_ids:
-        # 如果没有指定，搜索所有集合
-        conn = _db._get_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id FROM document_collections WHERE tenant_id = ?",
-            (x_tenant_id or "default",),
+    tenant_id = x_tenant_id or "default"
+    if request.collection_ids:
+        results = []
+        for coll_id in request.collection_ids:
+            _, hits = search_knowledge(
+                _db, _retriever, request.query, tenant_id=tenant_id,
+                collection_id=coll_id, top_k=request.top_k,
+            )
+            results.extend(hits)
+    else:
+        _, results = search_knowledge(
+            _db, _retriever, request.query, tenant_id=tenant_id, top_k=request.top_k,
         )
-        collection_ids = [r[0] for r in cursor.fetchall()]
-
-    results = _retriever.retrieve(
-        query=request.query,
-        collection_ids=collection_ids,
-        top_k=request.top_k,
-        tenant_id=x_tenant_id or "default",
-    )
 
     return {
         "query": request.query,

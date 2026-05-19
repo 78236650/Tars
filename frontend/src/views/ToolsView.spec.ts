@@ -7,6 +7,7 @@ import ToolsView from './ToolsView.vue'
 const apiMocks = vi.hoisted(() => ({
   listTools: vi.fn(),
   listSkills: vi.fn(),
+  getStats: vi.fn(),
   getCatalog: vi.fn(),
   searchCatalog: vi.fn(),
   install: vi.fn(),
@@ -14,6 +15,8 @@ const apiMocks = vi.hoisted(() => ({
   deleteSkill: vi.fn(),
   enableSkill: vi.fn(),
   disableSkill: vi.fn(),
+  archive: vi.fn(),
+  activate: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
@@ -22,10 +25,13 @@ vi.mock('@/api', () => ({
   },
   skillsApi: {
     listSkills: apiMocks.listSkills,
+    getStats: apiMocks.getStats,
     createPromptSkill: apiMocks.createPromptSkill,
     deleteSkill: apiMocks.deleteSkill,
     enableSkill: apiMocks.enableSkill,
     disableSkill: apiMocks.disableSkill,
+    archive: apiMocks.archive,
+    activate: apiMocks.activate,
   },
   skillhubApi: {
     getCatalog: apiMocks.getCatalog,
@@ -69,6 +75,7 @@ describe('ToolsView', () => {
       },
     })
     apiMocks.listSkills.mockResolvedValue({ data: { skills: [] } })
+    apiMocks.getStats.mockResolvedValue({ data: { items: [] } })
     apiMocks.getCatalog.mockResolvedValue({ data: { results: [] } })
     apiMocks.searchCatalog.mockResolvedValue({ data: { results: [] } })
     apiMocks.install.mockResolvedValue({ data: {} })

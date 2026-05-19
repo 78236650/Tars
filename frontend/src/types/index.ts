@@ -228,6 +228,9 @@ export interface SkillHubPackage {
   installed?: boolean
   tars_version_min?: string
   usage?: string
+  example_prompt?: string
+  featured?: boolean
+  source?: string
 }
 
 export interface BIChartData {

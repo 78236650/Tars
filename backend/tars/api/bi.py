@@ -1,5 +1,5 @@
 """BI Analytics API 路由"""
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
@@ -8,8 +8,41 @@ from ..database.bi_store import DataSourceStore
 from ..bi.schema_explorer import SchemaExplorer
 from ..bi.sql_agent import SQLAgent
 from ..bi.chart_generator import ChartGenerator
+from ..modules.registry import module_registry
 
 router = APIRouter(prefix="/api/datasources", tags=["BI Analytics"])
+
+
+async def require_bi_module(
+    x_user_role: Optional[str] = Header(default=None),
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+) -> None:
+    if not module_registry.is_enabled("bi"):
+        raise HTTPException(
+            status_code=503,
+            detail="BI 分析台未启用，请在 backend/config/modules.yaml 中将 bi.enabled 设为 true 并重启后端",
+        )
+    if x_user_role == "admin":
+        return
+    try:
+        from ..gateway.role_template import role_template_manager
+        from tars.main import user_store
+
+        if role_template_manager is None or user_store is None or not x_api_key:
+            return
+        user = user_store.get_user_by_api_key(x_api_key)
+        if not user:
+            return
+        template_id = getattr(user, "role_template_id", None) or "standard"
+        if not role_template_manager.can_access_module(template_id, "bi"):
+            raise HTTPException(status_code=403, detail="当前角色无权使用 BI 分析台")
+    except HTTPException:
+        raise
+    except Exception:
+        return
+
+
+router.dependencies = [Depends(require_bi_module)]
 
 _db: Optional[Database] = None
 _store: Optional[DataSourceStore] = None

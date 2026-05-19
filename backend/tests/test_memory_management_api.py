@@ -90,6 +90,26 @@ class TestMemoryManagementAPI:
         assert resp.json()["block"] == "persona"
         assert manager.core.get("persona") == "新的 TARS 自我认知"
 
+    def test_core_memory_respects_tenant_header(self, client_and_db):
+        client, _db, manager = client_and_db
+        headers = {"X-Tenant-ID": "tenant-user-a"}
+
+        resp = client.put(
+            "/api/memory/core/user_profile",
+            json={"content": "用户 A 的画像"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["tenant_id"] == "tenant-user-a"
+
+        scoped = manager.for_tenant("tenant-user-a")
+        assert scoped.core.get("user_profile") == "用户 A 的画像"
+        assert manager.core.get("user_profile") != "用户 A 的画像"
+
+        loaded = client.get("/api/memory/core", headers=headers)
+        assert loaded.json()["blocks"]["user_profile"] == "用户 A 的画像"
+        assert loaded.json()["tenant_id"] == "tenant-user-a"
+
     def test_recent_endpoint_filters_by_days_and_category(self, client_and_db):
         client, db, _manager = client_and_db
 
