@@ -218,6 +218,7 @@ export interface MemoryEntityGraphResponse {
     node_count: number
     edge_count: number
     truncated: boolean
+    max_edges?: number
   }
 }
 

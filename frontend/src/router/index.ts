@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -121,6 +122,7 @@ const router = createRouter({
       component: () => import('@/views/BiAnalyticsView.vue'),
       meta: {
         requiresAuth: true,
+        module: 'bi',
         desktopTitleKey: 'desktop.bi.title',
         desktopSubtitleKey: 'desktop.bi.subtitle',
       }
@@ -131,6 +133,7 @@ const router = createRouter({
       component: () => import('@/views/InsightView.vue'),
       meta: {
         requiresAuth: true,
+        module: 'insight',
         desktopTitleKey: 'desktop.insight.title',
         desktopSubtitleKey: 'desktop.insight.subtitle',
       }
@@ -141,6 +144,7 @@ const router = createRouter({
       component: () => import('@/views/MeetingView.vue'),
       meta: {
         requiresAuth: true,
+        module: 'meeting',
         desktopTitleKey: 'desktop.meeting.title',
         desktopSubtitleKey: 'desktop.meeting.subtitle',
       }
@@ -151,6 +155,7 @@ const router = createRouter({
       component: () => import('@/views/KnowledgeView.vue'),
       meta: {
         requiresAuth: true,
+        module: 'knowledge',
         desktopTitleKey: 'desktop.knowledge.title',
         desktopSubtitleKey: 'desktop.knowledge.subtitle',
       }
@@ -171,6 +176,14 @@ router.beforeEach((to) => {
 
   if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
     return '/'
+  }
+
+  if (to.meta.module && authStore.isAuthenticated && authStore.user?.role !== 'admin') {
+    const settings = useSettingsStore()
+    const enabled = settings.enabledModules
+    if (enabled.length && !enabled.includes(to.meta.module as string)) {
+      return '/'
+    }
   }
 
   return true
