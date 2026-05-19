@@ -11,10 +11,11 @@ class ModuleRegistry:
     """Reads config/modules.yaml and exposes enable/disable checks."""
 
     CORE_MODULES = ("auth", "chat", "memory", "skills", "tools", "knowledge")
-    OPTIONAL_MODULES = ("bi", "meeting", "admin", "cron")
+    OPTIONAL_MODULES = ("bi", "meeting", "admin", "cron", "insight")
 
     def __init__(self):
         self._modules: dict[str, bool] = {}
+        self._requires: dict[str, tuple[str, ...]] = {}
         self._default_enabled = True
 
     def _read_optional_enabled(self, config: dict, module_name: str) -> bool | None:
@@ -36,6 +37,17 @@ class ModuleRegistry:
                 return entry
         return None
 
+    def _read_optional_meta(self, config: dict, module_name: str) -> dict:
+        modules = config.get("modules") or {}
+        if not isinstance(modules, dict):
+            return {}
+        optional = modules.get("optional")
+        if isinstance(optional, dict):
+            entry = optional.get(module_name)
+            if isinstance(entry, dict):
+                return entry
+        return {}
+
     def load(self, config_path: str = None):
         """Load module switches from modules.yaml."""
         if config_path is None:
@@ -55,6 +67,10 @@ class ModuleRegistry:
                     self._modules[m] = (
                         enabled if enabled is not None else self._default_enabled
                     )
+                    meta = self._read_optional_meta(config, m)
+                    req = meta.get("requires")
+                    if isinstance(req, list):
+                        self._requires[m] = tuple(str(x) for x in req)
             except Exception:
                 # On parse error, enable all optional modules
                 for m in self.OPTIONAL_MODULES:
@@ -63,6 +79,18 @@ class ModuleRegistry:
     def is_enabled(self, module_name: str) -> bool:
         """Return True if the module is enabled."""
         return self._modules.get(module_name, self._default_enabled)
+
+    def get_requires(self, module_name: str) -> tuple[str, ...]:
+        return self._requires.get(module_name, ())
+
+    def check_dependencies(self, module_name: str) -> tuple[bool, str]:
+        """Return (ok, message) for optional module dependencies."""
+        if not self.is_enabled(module_name):
+            return False, f"模块 '{module_name}' 未启用"
+        for dep in self.get_requires(module_name):
+            if not self.is_enabled(dep):
+                return False, f"模块 '{module_name}' 依赖 '{dep}' 未启用"
+        return True, ""
 
     def list_modules(self) -> list[dict]:
         """List all modules with their enabled status."""

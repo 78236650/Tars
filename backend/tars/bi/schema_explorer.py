@@ -9,7 +9,9 @@ from sqlalchemy.engine import Engine
 class SchemaExplorer:
     """使用 SQLAlchemy 抓取数据库 Schema"""
 
-    SUPPORTED_TYPES = {"mysql", "postgresql", "oracle", "sqlserver", "clickhouse", "sqlite"}
+    SUPPORTED_TYPES = {
+        "mysql", "postgresql", "oracle", "sqlserver", "clickhouse", "sqlite", "doris", "jdbc",
+    }
 
     def __init__(self, connection_url: str):
         self.connection_url = connection_url

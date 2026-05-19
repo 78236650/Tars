@@ -34,6 +34,14 @@ describe('chatMarkdown', () => {
     expect(html).toContain('code-block')
     expect(html).toContain('code-block-lang">js')
     expect(html).toContain('hljs')
+    expect(html.replace(/<[^>]+>/g, '')).toContain('console.log(1)')
+  })
+
+  it('preserves SQL body inside code block wrapper', () => {
+    const sql = 'SELECT SUM(amount) FROM orders WHERE status = 1'
+    const html = renderChatMarkdown(`\`\`\`sql\n${sql}\n\`\`\``, { copyLabel: '复制' })
+    expect(html).toContain('code-block-pre')
+    expect(html.replace(/<[^>]+>/g, '')).toContain(sql)
   })
 
   it('renders knowledge ref citations with optional title', () => {

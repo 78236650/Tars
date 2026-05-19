@@ -58,7 +58,10 @@ def init_bi_api(db: Database) -> None:
 
 class CreateDataSourceRequest(BaseModel):
     name: str
-    db_type: str = Field(..., pattern="^(mysql|postgresql|oracle|sqlserver|clickhouse|sqlite)$")
+    db_type: str = Field(
+        ...,
+        pattern="^(mysql|postgresql|oracle|sqlserver|clickhouse|sqlite|doris|jdbc)$",
+    )
     connection_url: str
 
 

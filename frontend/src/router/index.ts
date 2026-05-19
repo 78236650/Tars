@@ -126,6 +126,16 @@ const router = createRouter({
       }
     },
     {
+      path: '/insight',
+      name: 'insight',
+      component: () => import('@/views/InsightView.vue'),
+      meta: {
+        requiresAuth: true,
+        desktopTitleKey: 'desktop.insight.title',
+        desktopSubtitleKey: 'desktop.insight.subtitle',
+      }
+    },
+    {
       path: '/meeting',
       name: 'meeting',
       component: () => import('@/views/MeetingView.vue'),

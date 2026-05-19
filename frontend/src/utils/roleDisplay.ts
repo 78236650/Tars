@@ -25,6 +25,7 @@ export const ROLE_BADGE_CLASSES: Record<string, string> = {
   admin: 'bg-red-900/50 text-red-400',
   developer: 'bg-violet-900/50 text-violet-300',
   analyst: 'bg-sky-900/50 text-sky-300',
+  insight_analyst: 'bg-indigo-900/50 text-indigo-300',
   operator: 'bg-orange-900/50 text-orange-300',
   standard: 'bg-blue-900/50 text-blue-400',
   readonly: 'bg-gray-900/50 text-gray-400',
