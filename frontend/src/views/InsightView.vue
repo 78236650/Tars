@@ -190,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   biApi,
@@ -201,8 +201,11 @@ import {
 } from '@/api'
 import type { DataSource, Endpoint } from '@/types'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
+import { getErrorDetail } from '@/utils/errorExtractor'
 
 const { t } = useI18n()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
@@ -235,11 +238,7 @@ const modelChoices = computed(() => {
   return ollamaModels.value
 })
 
-const examples = [
-  '鉴数Demo 已支付订单的 GMV 是多少？',
-  'orders 和 order_items 怎么关联？',
-  '哪些表是事实表？',
-]
+const examples = computed(() => [t('insight.example1'), t('insight.example2'), t('insight.example3')])
 
 const runStatusLabel = computed(() => {
   const st = brief.value?.latest_run?.status
@@ -323,10 +322,16 @@ async function buildBrief(datasourceId: string): Promise<InsightDatasourceBrief>
   }
 }
 
+let pollingAbort: AbortController | null = null
+
 async function waitForProfileRun(runId: string, maxWaitMs = 600_000): Promise<void> {
+  pollingAbort?.abort()
+  pollingAbort = new AbortController()
+  const signal = pollingAbort.signal
   const deadline = Date.now() + maxWaitMs
-  while (Date.now() < deadline) {
+  while (!signal.aborted && Date.now() < deadline) {
     const run = await insightApi.getProfileRun(runId)
+    if (signal.aborted) return
     const progress = run.progress as { message?: string; phase?: string } | undefined
     const msg = progress?.message || run.status || ''
     profilingMessage.value = t('insight.profilingProgress', { message: msg })
@@ -347,15 +352,13 @@ async function loadDatasources() {
     if (fromQuery && datasources.value.some((d) => d.id === fromQuery)) {
       selectedId.value = fromQuery
     } else if (!selectedId.value && datasources.value.length) {
-      const preferred = datasources.value.find((d) => d.name.includes('鉴数Demo')) || datasources.value[0]
-      selectedId.value = preferred.id
+      selectedId.value = datasources.value[0].id
     }
     if (selectedId.value) {
       await loadBrief()
     }
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    loadError.value = err.response?.data?.detail || t('insight.loadFailed')
+    loadError.value = getErrorDetail(e, t('insight.loadFailed'))
   } finally {
     pageLoading.value = false
   }
@@ -384,8 +387,7 @@ async function loadBrief() {
     }
   } catch (e: unknown) {
     brief.value = null
-    const err = e as { response?: { data?: { detail?: string } } }
-    loadError.value = err.response?.data?.detail || t('insight.loadFailed')
+    loadError.value = getErrorDetail(e, t('insight.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -438,10 +440,9 @@ async function saveLlmSettings() {
     const res = await insightApi.saveLlmSettings(llmForm.value)
     effectiveLabel.value = res.effective?.label || ''
     chatCurrentLabel.value = res.chat_current?.label || res.chat_current?.model || ''
-    alert(t('insight.llmSavedNeedProfile'))
+    toast.success(t('insight.llmSavedNeedProfile'))
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    alert(err.response?.data?.detail || t('insight.llmSaveFailed'))
+    toast.error(getErrorDetail(e, t('insight.llmSaveFailed')))
   } finally {
     llmSaving.value = false
   }
@@ -463,8 +464,7 @@ async function runProfile() {
       document.querySelector('.profile-status-bar')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     })
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    alert(err.response?.data?.detail || t('bi.insightProfileFailed'))
+    loadError.value = getErrorDetail(e, t('bi.insightProfileFailed'))
   } finally {
     profiling.value = false
     profilingMessage.value = ''
@@ -473,6 +473,10 @@ async function runProfile() {
 
 onMounted(async () => {
   await Promise.all([loadDatasources(), loadLlmSettings()])
+})
+
+onBeforeUnmount(() => {
+  pollingAbort?.abort()
 })
 </script>
 
