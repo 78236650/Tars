@@ -23,10 +23,10 @@ modules:
       routes: ["/api/bi"]
     insight:
       enabled: true
-      description: "InsightForge 鉴数 — 业务冷启动与指标问答 INS-1.0.0"
+      description: "InsightForge 鉴数 — 对话优先 Copilot INS-2.0.0"
       requires: [bi, knowledge]
       capability_tag: insight-forge
-      version: INS-1.0.0
+      version: INS-2.0.0
       routes: ["/api/insight"]
     knowledge:
       enabled: true

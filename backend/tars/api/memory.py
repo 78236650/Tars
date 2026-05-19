@@ -370,14 +370,14 @@ def get_memory_tree_relations(
 @router.get("/export")
 async def export_memories(
     user_id: str = "",
-    x_tenant_id: Optional[str] = Header(default="default"),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """Export memories for a tenant/user as JSON (admin or own tenant)."""
     db = _require_db()
-    tenant_id = (user_id or x_tenant_id or "default").strip()
-    if x_user_role != "admin" and tenant_id != (x_tenant_id or "default"):
+    requested = (user_id or principal.tenant_id or "default").strip()
+    if not principal.is_admin and requested != principal.tenant_id:
         raise HTTPException(status_code=403, detail="无权导出其他租户记忆")
+    tenant_id = requested
 
     items, total = db.list_all_memories(page=1, page_size=5000, tenant_id=tenant_id)
     return {
@@ -472,10 +472,10 @@ def update_memory_scope(
     payload: ScopeUpdateRequest,
     http_request: Request,
     x_tenant_id: Optional[str] = Header(default="default"),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """Update memory scope (admin only)."""
-    if x_user_role != "admin":
+    if not principal.is_admin:
         raise HTTPException(status_code=403, detail="仅管理员可修改记忆 scope")
     db = _require_db()
     tenant_id = x_tenant_id or "default"

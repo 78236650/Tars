@@ -3,7 +3,7 @@
     <header class="insight-header">
       <div>
         <h1>{{ t('insight.title') }}</h1>
-        <p class="subtitle">{{ t('insight.subtitle') }}</p>
+        <p class="subtitle">{{ t('insight.opsSubtitle') }}</p>
       </div>
       <div class="header-actions">
         <select v-model="selectedId" class="ds-select" @change="loadBrief">
@@ -17,6 +17,12 @@
         </button>
         <button class="btn-secondary" :disabled="!selectedId" @click="goBi">
           {{ t('insight.openBi') }}
+        </button>
+        <button class="btn-secondary" :disabled="!brief" @click="schemaDrawerOpen = true">
+          {{ t('insight.schemaPreview.open') }}
+        </button>
+        <button class="btn-primary" :disabled="!selectedId || profiling" @click="runForge">
+          {{ profiling ? t('bi.insightProfiling') : t('insight.workflow.startForge') }}
         </button>
       </div>
     </header>
@@ -40,54 +46,6 @@
     </div>
 
     <div class="insight-body">
-      <details v-if="!pageLoading" class="llm-panel panel" :open="llmPanelOpen">
-        <summary class="llm-panel-summary">
-          <span>{{ t('insight.llmTitle') }}</span>
-          <span class="llm-summary-meta muted">{{ effectiveLabel }}</span>
-        </summary>
-        <p class="muted llm-hint">{{ t('insight.llmHint') }}</p>
-        <label class="llm-radio">
-          <input v-model="llmForm.use_chat_default" type="radio" :value="true" />
-          {{ t('insight.llmUseChat') }}
-          <span v-if="chatCurrentLabel" class="chat-current">（{{ chatCurrentLabel }}）</span>
-        </label>
-        <label class="llm-radio">
-          <input v-model="llmForm.use_chat_default" type="radio" :value="false" />
-          {{ t('insight.llmCustom') }}
-        </label>
-        <div v-if="!llmForm.use_chat_default" class="llm-custom">
-          <div class="llm-row">
-            <label>{{ t('insight.llmProvider') }}</label>
-            <select v-model="llmForm.provider" class="ds-select" @change="onProviderChange">
-              <option value="ollama">Ollama</option>
-              <option value="openai_compatible">{{ t('insight.llmRemote') }}</option>
-            </select>
-          </div>
-          <div v-if="llmForm.provider === 'openai_compatible'" class="llm-row">
-            <label>{{ t('insight.llmEndpoint') }}</label>
-            <select v-model="llmForm.endpoint_id" class="ds-select" @change="onEndpointChange">
-              <option value="">{{ t('insight.llmPickEndpoint') }}</option>
-              <option v-for="ep in endpoints" :key="ep.id" :value="ep.id">{{ ep.name }}</option>
-            </select>
-          </div>
-          <div class="llm-row">
-            <label>{{ t('insight.llmModel') }}</label>
-            <select v-model="llmForm.model" class="ds-select">
-              <option value="">{{ t('insight.llmPickModel') }}</option>
-              <option v-for="m in modelChoices" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="llm-effective">{{ t('insight.llmEffective') }}：<strong>{{ effectiveLabel }}</strong></div>
-        <div class="llm-actions">
-          <button class="btn-secondary" :disabled="llmSaving || profiling" @click="saveLlmSettings">
-            {{ llmSaving ? t('insight.llmSaving') : t('insight.llmSave') }}
-          </button>
-          <button class="btn-primary" :disabled="!selectedId || profiling" @click="runProfile">
-            {{ profiling ? t('bi.insightProfiling') : t('insight.runProfile') }}
-          </button>
-        </div>
-      </details>
 
       <div v-if="loadError" class="banner banner-error">
         {{ loadError }}
@@ -106,7 +64,10 @@
       </div>
 
       <template v-else-if="brief">
-        <div class="banner banner-info">{{ t('insight.phaseHint') }}</div>
+        <div class="banner banner-info">
+          {{ t('insight.opsMigration') }}
+          <button type="button" class="btn-inline" @click="goAdminLlm">{{ t('insight.openAdminLlm') }}</button>
+        </div>
 
         <section class="cards">
           <div class="stat-card">
@@ -149,34 +110,8 @@
           </ul>
         </section>
 
-        <section class="panel">
-          <h2>{{ t('insight.relations') }}</h2>
-          <div v-if="relations.length === 0" class="muted">{{ t('insight.noRelations') }}</div>
-          <ul v-else class="list">
-            <li v-for="(rel, i) in relations" :key="i">
-              <code>{{ rel.from_ref }}</code> → <code>{{ rel.to_ref }}</code>
-              <span v-if="rel.confidence" class="muted">({{ rel.confidence }})</span>
-            </li>
-          </ul>
-        </section>
-
-        <section class="panel">
-          <h2>{{ t('insight.tableAnnotations') }}</h2>
-          <div v-if="annotationTables.length === 0" class="muted">{{ t('insight.noAnnotations') }}</div>
-          <div v-else class="table-grid">
-            <div v-for="name in annotationTables" :key="name" class="table-card">
-              <div class="table-name">{{ name }}</div>
-              <div class="table-desc">{{ tableDescription(name) }}</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <h2>{{ t('insight.chatGuide') }}</h2>
+        <section class="panel panel-compact">
           <p class="muted">{{ t('insight.chatGuideBody') }}</p>
-          <ul class="examples">
-            <li v-for="ex in examples" :key="ex">{{ ex }}</li>
-          </ul>
           <button class="btn-primary" @click="goChat">{{ t('insight.goChat') }}</button>
         </section>
       </template>
@@ -186,26 +121,26 @@
         <button class="btn-primary" @click="loadBrief">{{ t('insight.retry') }}</button>
       </div>
     </div>
+
+    <SchemaPreviewDrawer :open="schemaDrawerOpen" :brief="brief" @close="schemaDrawerOpen = false" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   biApi,
   insightApi,
   type InsightDatasourceBrief,
-  type InsightLlmSettingsPayload,
   type InsightProfileRunSummary,
 } from '@/api'
-import type { DataSource, Endpoint } from '@/types'
+import type { DataSource } from '@/types'
+import SchemaPreviewDrawer from '@/components/insight/SchemaPreviewDrawer.vue'
 import { useI18n } from '@/i18n'
-import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
 
 const { t } = useI18n()
-const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
@@ -217,28 +152,7 @@ const loading = ref(false)
 const loadError = ref('')
 const profiling = ref(false)
 const profilingMessage = ref('')
-const llmPanelOpen = ref(true)
-const llmSaving = ref(false)
-const ollamaModels = ref<string[]>([])
-const endpoints = ref<Endpoint[]>([])
-const chatCurrentLabel = ref('')
-const effectiveLabel = ref('')
-const llmForm = ref<InsightLlmSettingsPayload>({
-  use_chat_default: true,
-  provider: 'ollama',
-  model: '',
-  endpoint_id: null,
-})
-
-const modelChoices = computed(() => {
-  if (llmForm.value.provider === 'openai_compatible') {
-    const ep = endpoints.value.find((e) => e.id === llmForm.value.endpoint_id)
-    return ep?.models || []
-  }
-  return ollamaModels.value
-})
-
-const examples = computed(() => [t('insight.example1'), t('insight.example2'), t('insight.example3')])
+const schemaDrawerOpen = ref(false)
 
 const runStatusLabel = computed(() => {
   const st = brief.value?.latest_run?.status
@@ -261,29 +175,6 @@ const statusBarClass = computed(() => {
   if (st === 'failed') return 'is-fail'
   return ''
 })
-
-watch(profiling, (running) => {
-  if (running) llmPanelOpen.value = false
-})
-
-watch(
-  () => brief.value?.latest_run?.status,
-  (st) => {
-    if (st === 'completed' || st === 'failed') llmPanelOpen.value = false
-  }
-)
-
-const relations = computed(() => {
-  const snap = brief.value?.insight_snapshot as { relations?: Array<Record<string, unknown>> } | undefined
-  return (snap?.relations || []) as Array<{ from_ref?: string; to_ref?: string; confidence?: number }>
-})
-
-const annotationTables = computed(() => Object.keys(brief.value?.schema_annotations || {}))
-
-function tableDescription(name: string): string {
-  const ann = (brief.value?.schema_annotations || {})[name] as { description?: string; business_name?: string } | undefined
-  return ann?.description || ann?.business_name || '—'
-}
 
 function pickBestRun(runs: InsightProfileRunSummary[]): InsightProfileRunSummary | undefined {
   return runs.find((r) => r.status === 'completed') || runs[0]
@@ -318,7 +209,7 @@ async function buildBrief(datasourceId: string): Promise<InsightDatasourceBrief>
     llm_errors: (snapshot.llm_errors as string[]) || [],
     llm_status: (snapshot.llm_status as string) || '',
     llm_used: snapshot.llm_used as Record<string, unknown> | undefined,
-    phase: { profile: true, metric_qa_in_chat: false, workbench: true },
+    phase: { profile: true, metric_qa_in_chat: true, workbench: 'ops_only' },
   }
 }
 
@@ -401,63 +292,16 @@ function goChat() {
   router.push('/')
 }
 
-function onProviderChange() {
-  llmForm.value.endpoint_id = null
-  llmForm.value.model = ''
+function goAdminLlm() {
+  router.push('/admin/insight/llm')
 }
 
-function onEndpointChange() {
-  llmForm.value.model = ''
-  const ep = endpoints.value.find((e) => e.id === llmForm.value.endpoint_id)
-  if (ep?.models?.length) {
-    llmForm.value.model = ep.models[0]
-  }
-}
-
-async function loadLlmSettings() {
-  try {
-    const [options, settingsRes] = await Promise.all([
-      insightApi.getLlmOptions(),
-      insightApi.getLlmSettings(),
-    ])
-    ollamaModels.value = options.ollama_models || []
-    endpoints.value = options.endpoints || []
-    chatCurrentLabel.value = settingsRes.chat_current?.label || settingsRes.chat_current?.model || ''
-    effectiveLabel.value = settingsRes.effective?.label || ''
-    llmForm.value = {
-      use_chat_default: settingsRes.settings.use_chat_default,
-      provider: (settingsRes.settings.provider as 'ollama' | 'openai_compatible') || 'ollama',
-      model: settingsRes.settings.model || '',
-      endpoint_id: settingsRes.settings.endpoint_id ?? null,
-    }
-  } catch {
-  }
-}
-
-async function saveLlmSettings() {
-  llmSaving.value = true
-  try {
-    const res = await insightApi.saveLlmSettings(llmForm.value)
-    effectiveLabel.value = res.effective?.label || ''
-    chatCurrentLabel.value = res.chat_current?.label || res.chat_current?.model || ''
-    toast.success(t('insight.llmSavedNeedProfile'))
-  } catch (e: unknown) {
-    toast.error(getErrorDetail(e, t('insight.llmSaveFailed')))
-  } finally {
-    llmSaving.value = false
-  }
-}
-
-async function runProfile() {
+async function runForge() {
   if (!selectedId.value) return
   profiling.value = true
-  llmPanelOpen.value = false
   profilingMessage.value = t('insight.profilingProgress', { message: '…' })
   try {
-    const res = await insightApi.startProfile(selectedId.value, {
-      force: true,
-      llm: { ...llmForm.value, persist: true },
-    })
+    const res = await insightApi.startForge(selectedId.value, { force: true })
     await waitForProfileRun(res.run_id)
     await loadBrief()
     requestAnimationFrame(() => {
@@ -472,7 +316,7 @@ async function runProfile() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadDatasources(), loadLlmSettings()])
+  await loadDatasources()
 })
 
 onBeforeUnmount(() => {

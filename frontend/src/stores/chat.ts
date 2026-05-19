@@ -116,6 +116,7 @@ export const useChatStore = defineStore('chat', () => {
     loadSessionMessages: messageState.loadSessionMessages,
     initChatRealtime: messageState.initChatRealtime,
     appendUserMessage,
+    appendMessage: messageState.appendMessage,
     clearActiveSkills,
   }
 })

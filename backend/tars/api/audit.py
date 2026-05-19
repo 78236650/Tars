@@ -1,9 +1,10 @@
 """Audit log query REST API — v4.0.0 Phase 1 Task 4."""
 from typing import List, Optional
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..database import Database
 from ..security.audit import init_audit_logger, audit_logger as _audit_logger
+from ._auth import Principal, require_admin
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -47,11 +48,9 @@ def list_audit_logs(
     tenant_id: str = Query(""),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    x_user_role: Optional[str] = Header(default="user"),
+    principal: Principal = Depends(require_admin),
 ):
     """Query audit log entries. Requires admin role."""
-    if x_user_role != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可查询审计日志")
     db = _require_db()
 
     actions_filter: Optional[List[str]] = None

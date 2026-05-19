@@ -332,7 +332,16 @@ class AgentV2:
             })
             wc = scoped_wc_manager.get(session_id)
             ctx = scoped_memory_router.retrieve(user_content, wc)
-            memory_context = scoped_memory_router.build_injection(ctx)
+            router_injection = scoped_memory_router.build_injection(ctx)
+            # v4.1.5: MemoryRouter 不读 core_memory（persona/user_profile/...），
+            # 单独问"我是谁"这类问题需要它，因此始终把 core 块拼到前面。
+            core_render = ""
+            try:
+                if scoped_memory_manager and getattr(scoped_memory_manager, "core", None):
+                    core_render = scoped_memory_manager.core.render_for_prompt().strip()
+            except Exception:
+                core_render = ""
+            memory_context = "\n\n".join(p for p in [core_render, router_injection] if p)
             if wc:
                 memory_context = f"## 当前意图: {wc.get('current_intent','unknown')}\n\n{memory_context}"
         else:
@@ -555,10 +564,25 @@ class AgentV2:
                     "model": self.current_model,
                 })
         except Exception as e:
+            err_text = str(e)
+            try:
+                import httpx as _httpx
+                if isinstance(e, _httpx.HTTPStatusError) and e.response is not None:
+                    body_excerpt = ""
+                    try:
+                        body_excerpt = (e.response.text or "")[:300]
+                    except Exception:
+                        pass
+                    err_text = (
+                        f"上游 LLM 返回 {e.response.status_code} "
+                        f"({e.response.reason_phrase}) — url={e.request.url}; body={body_excerpt}"
+                    )
+            except Exception:
+                pass
             await channel.send(session_id, {
                 "type": "error",
                 "session_id": session_id,
-                "message": f"处理失败: {e}",
+                "message": f"处理失败: {err_text}",
                 "code": "agent_error",
                 "timestamp": now_iso(),
             })

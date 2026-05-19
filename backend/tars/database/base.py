@@ -31,6 +31,7 @@ class Session:
     created_at: datetime = None
     updated_at: datetime = None
     summary: Optional[str] = None
+    metadata_json: Optional[dict] = None
 
 
 @dataclass
@@ -652,6 +653,10 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_insight_metrics_ds ON insight_metrics(datasource_id, tenant_id)"
         )
 
+        from tars.insight.migrations import run_insight_ins2_migrations
+
+        run_insight_ins2_migrations(cursor)
+
         # === Knowledge Base: 文档集合表 ===
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_collections (
@@ -786,17 +791,34 @@ class Database:
     def get_session(self, session_id: str, tenant_id: str = "default") -> Optional[Session]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary
-            FROM sessions
-            WHERE id = ? AND tenant_id = ?
-            """,
-            (session_id, tenant_id),
-        )
+        cols = {r[1] for r in cursor.execute("PRAGMA table_info(sessions)").fetchall()}
+        if "metadata_json" in cols:
+            cursor.execute(
+                """
+                SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary, metadata_json
+                FROM sessions
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (session_id, tenant_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary
+                FROM sessions
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (session_id, tenant_id),
+            )
         row = cursor.fetchone()
 
         if row:
+            meta = None
+            if len(row) > 8 and row[8]:
+                try:
+                    meta = json.loads(row[8])
+                except json.JSONDecodeError:
+                    meta = {}
             return Session(
                 id=row[0],
                 agent_id=row[1],
@@ -806,8 +828,30 @@ class Database:
                 created_at=_parse_db_datetime(row[5]),
                 updated_at=_parse_db_datetime(row[6]),
                 summary=row[7],
+                metadata_json=meta,
             )
         return None
+
+    def get_session_metadata(self, session_id: str, tenant_id: str = "default") -> dict:
+        session = self.get_session(session_id, tenant_id)
+        if not session:
+            return {}
+        return dict(session.metadata_json or {})
+
+    def set_session_metadata(
+        self, session_id: str, tenant_id: str, metadata: dict
+    ) -> None:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        now = get_local_now()
+        cursor.execute(
+            """
+            UPDATE sessions SET metadata_json = ?, updated_at = ?
+            WHERE id = ? AND tenant_id = ?
+            """,
+            (json.dumps(metadata or {}, ensure_ascii=False), now, session_id, tenant_id),
+        )
+        conn.commit()
 
     def add_message(self, session_id: str, role: str, content: str) -> Message:
         message_id = str(uuid.uuid4())

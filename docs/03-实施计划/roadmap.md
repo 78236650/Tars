@@ -278,6 +278,18 @@ gantt
 **文档：**
 - [v4.2 设计说明](../superpowers/specs/2026-05-19-memory-tree-v4.2-graph-virtual-scroll-design.md)
 
+### InsightForge 鉴数 `INS-2.0.0` (✅ GA — Chat-First Copilot)
+**Tag:** `INS-2.0.0` · Git tag 建议 `insight-v2.0.0`
+
+- ✅ M1–M4：Workflow、Metric QA、WorkflowStrip、Adoption、insight_analyst 工具
+- ✅ M5：Admin `/admin/insight/llm`、运维台瘦身、`chat_first_enabled` 默认 true
+- ✅ 评测：`pytest -m insight_eval`（≥80%）
+
+**文档：**
+- [INS-2.0 产品设计](../superpowers/specs/2026-05-20-insightforge-ins-2-redesign.md)
+- [实施计划](./insightforge-ins-v2-implementation-plan.md)
+- [GA 验收清单](./insightforge-ins-2-ga-checklist.md)
+
 ### InsightForge 鉴数 `INS-1.0.0` (✅ Phase 1 Profile 流水线 → Phase 2 指标问答)
 **定位:** 业务场景深入阶段 — 独立能力线（与 TARS v4.x 主版本并行）
 **Tag:** `@insight-forge` · Git `insight-v1.0.0`

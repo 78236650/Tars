@@ -1,11 +1,12 @@
 """角色模板 REST API — v4.0.2."""
 from typing import Optional
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..gateway import role_template as _rt_module
 from ..gateway.role_template import RoleTemplate as RoleTemplateModel
 from ..security.audit import safe_audit, client_ip_from_request
+from ._auth import Principal, require_admin
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
 
@@ -15,11 +16,6 @@ def _mgr():
     if not m:
         raise HTTPException(status_code=503, detail="Role template manager not initialized")
     return m
-
-
-def _require_admin(role: str):
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可操作")
 
 
 def _template_to_dict(t: RoleTemplateModel) -> dict:
@@ -61,10 +57,8 @@ class CreateRoleRequest(BaseModel):
 def create_role(
     body: CreateRoleRequest,
     http_request: Request,
-    x_user_role: Optional[str] = Header(default="user"),
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_admin),
 ):
-    _require_admin(x_user_role)
     if _mgr().get_template(body.id):
         raise HTTPException(status_code=409, detail="角色 ID 已存在")
     t = _mgr().create_template(
@@ -73,7 +67,7 @@ def create_role(
         allowed_modules=body.allowed_modules, max_concurrent=body.max_concurrent,
         workspace_restriction=body.workspace_restriction,
     )
-    actor_id = x_tenant_id or "default"
+    actor_id = principal.tenant_id
     safe_audit(
         lambda lg: lg.log_config_change(
             resource_id=f"role:{body.id}",
@@ -91,14 +85,12 @@ def update_role(
     role_id: str,
     body: dict,
     http_request: Request,
-    x_user_role: Optional[str] = Header(default="user"),
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_admin),
 ):
-    _require_admin(x_user_role)
     ok = _mgr().update_template(role_id, **body)
     if not ok:
         raise HTTPException(status_code=400, detail="更新失败（预置模板不可修改或模板不存在）")
-    actor_id = x_tenant_id or "default"
+    actor_id = principal.tenant_id
     safe_audit(
         lambda lg: lg.log_config_change(
             resource_id=f"role:{role_id}",
@@ -115,14 +107,12 @@ def update_role(
 def delete_role(
     role_id: str,
     http_request: Request,
-    x_user_role: Optional[str] = Header(default="user"),
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_admin),
 ):
-    _require_admin(x_user_role)
     ok = _mgr().delete_template(role_id)
     if not ok:
         raise HTTPException(status_code=400, detail="删除失败（预置模板不可删除或模板不存在）")
-    actor_id = x_tenant_id or "default"
+    actor_id = principal.tenant_id
     safe_audit(
         lambda lg: lg.log_config_change(
             resource_id=f"role:{role_id}",
@@ -154,10 +144,8 @@ def assign_user_role(
     user_id: str,
     body: AssignRoleRequest,
     http_request: Request,
-    x_user_role: Optional[str] = Header(default="user"),
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_admin),
 ):
-    _require_admin(x_user_role)
     if not _user_store:
         raise HTTPException(status_code=503)
     t = _mgr().get_template(body.role_template_id)
@@ -167,7 +155,7 @@ def assign_user_role(
     role_map = {"admin": UserRole.ADMIN, "readonly": UserRole.GUEST}
     user_role = role_map.get(body.role_template_id, UserRole.USER)
     _user_store.update_user(user_id, role=user_role, role_template_id=body.role_template_id)
-    actor_id = x_tenant_id or "default"
+    actor_id = principal.tenant_id
     safe_audit(
         lambda lg: lg.log_user_event(
             action="user_update",

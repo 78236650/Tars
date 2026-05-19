@@ -8,6 +8,10 @@ import { useWsStore } from '@/stores/wsStore'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
+import WorkflowStrip from '@/components/insight/WorkflowStrip.vue'
+import { biApi, insightApi } from '@/api'
+import type { InsightMetricAnswer } from '@/api'
+import { getErrorDetail } from '@/utils/errorExtractor'
 import ActiveSkillsBar from '@/components/chat/ActiveSkillsBar.vue'
 import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
 import QueueStatus from '@/components/chat/QueueStatus.vue'
@@ -28,6 +32,13 @@ const activeSkills = computed(() => chatStore.currentActiveSkills)
 const messagesLoading = computed(() => chatStore.messagesLoading)
 
 const inputMessage = ref('')
+const insightMetricQaEnabled = ref(false)
+const insightDatasourceId = ref('')
+const insightDatasources = ref<{ id: string; name: string }[]>([])
+const insightAsking = ref(false)
+const insightWorkflowEnabled = ref(false)
+const INSIGHT_ASK_RE = /^\/(问数|metric)\s+(.+)/is
+const INSIGHT_DS_STORAGE = 'tars_insight_ask_datasource_id'
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const citationOpen = ref(false)
 const citationDocId = ref('')
@@ -115,6 +126,47 @@ const quickStart = (text: string) => {
   inputMessage.value = text
 }
 
+const runInsightAsk = async (
+  question: string,
+  candidateKeys?: string[],
+  userEcho?: string
+) => {
+  const sessionId = chatStore.currentSessionId
+  const dsId = insightDatasourceId.value || (route.query.datasource_id as string) || ''
+  if (!sessionId || !dsId) {
+    toast.error(t('insight.metric.needDatasource'))
+    return
+  }
+  if (userEcho) {
+    chatStore.appendUserMessage(sessionId, {
+      id: `${Date.now()}-u`,
+      role: 'user',
+      content: userEcho,
+      timestamp: new Date().toISOString(),
+    })
+  }
+  insightAsking.value = true
+  try {
+    const answer: InsightMetricAnswer = await insightApi.ask(dsId, {
+      question,
+      candidate_metric_keys: candidateKeys,
+      session_id: sessionId,
+    })
+    chatStore.appendMessage(sessionId, {
+      id: `${Date.now()}-insight`,
+      role: 'assistant',
+      content: answer.branch === 'hit_partial' ? t('insight.metric.partialHint') : t('insight.metric.answerReady'),
+      timestamp: new Date().toISOString(),
+      insightMetricAnswer: answer,
+      insightDatasourceId: dsId,
+    })
+  } catch (e: unknown) {
+    toast.error(getErrorDetail(e, t('insight.metric.askFailed')))
+  } finally {
+    insightAsking.value = false
+  }
+}
+
 const sendMessage = async () => {
   if ((!inputMessage.value.trim() && attachments.value.length === 0) || !wsStore.isConnected) return
   if (!chatStore.currentSessionId) return
@@ -123,6 +175,15 @@ const sendMessage = async () => {
   chatStore.clearActiveSkills(sessionId)
 
   const messageContent = inputMessage.value
+
+  const metricMatch = messageContent.trim().match(INSIGHT_ASK_RE)
+  if (metricMatch && insightMetricQaEnabled.value) {
+    const question = metricMatch[2].trim()
+    inputMessage.value = ''
+    attachments.value = []
+    await runInsightAsk(question, undefined, messageContent.trim())
+    return
+  }
   const isFirstMessage = messages.value.length === 0
 
   chatStore.appendUserMessage(sessionId, {
@@ -176,6 +237,23 @@ const handleInputKeydown = (e: KeyboardEvent) => {
 onMounted(async () => {
   chatStore.initChatRealtime()
   await chatStore.initIfEmpty()
+  try {
+    const ver = await insightApi.version()
+    const phase = (ver.phase as Record<string, unknown>) || {}
+    insightMetricQaEnabled.value = Boolean(phase.metric_qa_in_chat)
+    insightWorkflowEnabled.value = Boolean(phase.workflow)
+  } catch {
+    insightMetricQaEnabled.value = false
+  }
+  try {
+    const res = await biApi.listDataSources()
+    insightDatasources.value = (res.datasources || []).map((d) => ({ id: d.id, name: d.name }))
+    const stored = localStorage.getItem(INSIGHT_DS_STORAGE)
+    const fromRoute = typeof route.query.datasource_id === 'string' ? route.query.datasource_id : ''
+    insightDatasourceId.value = fromRoute || stored || insightDatasources.value[0]?.id || ''
+  } catch {
+    insightDatasources.value = []
+  }
   if (chatStore.currentSessionId) {
     await chatStore.loadSessionMessages(chatStore.currentSessionId)
   }
@@ -218,6 +296,19 @@ const closeCitation = () => {
   citationDocId.value = ''
   citationTitleHint.value = ''
 }
+
+watch(insightDatasourceId, (id) => {
+  if (id) localStorage.setItem(INSIGHT_DS_STORAGE, id)
+})
+
+const onInsightClarify = async (payload: {
+  question: string
+  candidate_metric_keys: string[]
+  datasourceId: string
+}) => {
+  insightDatasourceId.value = payload.datasourceId
+  await runInsightAsk(payload.question, payload.candidate_metric_keys)
+}
 </script>
 
 <template>
@@ -243,12 +334,22 @@ const closeCitation = () => {
 
       <ActiveSkillsBar :skills="activeSkills" />
 
+      <WorkflowStrip
+        v-if="insightWorkflowEnabled && insightDatasourceId"
+        :datasource-id="insightDatasourceId"
+        :session-id="chatStore.currentSessionId || undefined"
+        :datasources="insightDatasources"
+        @update:datasource-id="(id) => (insightDatasourceId = id)"
+        @forged="() => {}"
+      />
+
       <ChatPanel
         :messages="messages"
-        :is-generating="wsStore.isGenerating"
+        :is-generating="wsStore.isGenerating || insightAsking"
         :loading-history="messagesLoading"
         @quick-start="quickStart"
         @citation-click="openCitation"
+        @insight-clarify="onInsightClarify"
       />
 
       <KnowledgeCitationPanel
@@ -262,6 +363,19 @@ const closeCitation = () => {
       <WarningBanner />
 
       <footer class="border-t border-amber-100/10 px-6 py-4">
+        <div
+          v-if="insightMetricQaEnabled && insightDatasources.length"
+          class="mb-3 flex flex-wrap items-center gap-2 text-xs text-stone-400"
+        >
+          <span>{{ t('insight.metric.askDatasource') }}</span>
+          <select
+            v-model="insightDatasourceId"
+            class="rounded-lg border border-amber-100/10 bg-white/[0.04] px-2 py-1 text-stone-200"
+          >
+            <option v-for="ds in insightDatasources" :key="ds.id" :value="ds.id">{{ ds.name }}</option>
+          </select>
+          <span class="text-stone-500">{{ t('insight.metric.askHint') }}</span>
+        </div>
         <div v-if="attachments.length > 0" class="mb-3 flex flex-wrap gap-2">
           <div
             v-for="(att, idx) in attachments"

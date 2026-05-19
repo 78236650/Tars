@@ -1,0 +1,69 @@
+# InsightForge metric QA eval set (INS-2.0 H8)
+# Run: pytest -m insight_eval
+version: "1"
+cases:
+  - id: hit_approved_gmv
+    branch: hit_approved
+    question: "昨日 GMV"
+    metric_key: gmv
+    sql_template: "SELECT SUM(amount) AS value FROM orders"
+    expect_branch: hit_approved
+    expect_value: 100
+
+  - id: hit_approved_orders
+    branch: hit_approved
+    question: "订单总额"
+    metric_key: order_total
+    sql_template: "SELECT SUM(total) AS value FROM orders"
+    expect_branch: hit_approved
+
+  - id: hit_draft_metric
+    branch: hit_draft
+    question: "活跃用户数"
+    metric_key: active_users
+    sql_template: "SELECT COUNT(DISTINCT user_id) AS value FROM users"
+    status: draft
+    expect_branch: hit_draft
+
+  - id: hit_partial_multi
+    branch: hit_partial
+    question: "订单"
+    expect_branch: hit_partial
+
+  - id: miss_no_metric
+    branch: miss
+    question: "火星人口"
+    expect_branch: miss
+
+  - id: adhoc_fallback
+    branch: adhoc
+    question: "随便一个数"
+    expect_branch: adhoc
+
+  - id: hit_approved_revenue
+    branch: hit_approved
+    question: "revenue 昨日"
+    metric_key: revenue
+    sql_template: "SELECT SUM(revenue) AS value FROM sales"
+    expect_branch: hit_approved
+
+  - id: hit_approved_count
+    branch: hit_approved
+    question: "订单数"
+    metric_key: order_count
+    sql_template: "SELECT COUNT(*) AS value FROM orders"
+    expect_branch: hit_approved
+
+  - id: candidate_keys_round2
+    branch: hit_approved
+    question: "GMV 确认"
+    metric_key: gmv
+    sql_template: "SELECT SUM(amount) AS value FROM orders"
+    candidate_metric_keys: [gmv]
+    expect_branch: hit_approved
+
+  - id: rejected_disabled
+    branch: miss
+    question: "未知指标 xyz"
+    allow_ad_hoc_sql: false
+    expect_branch: rejected

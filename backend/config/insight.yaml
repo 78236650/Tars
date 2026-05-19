@@ -1,7 +1,7 @@
-# InsightForge 鉴数 — INS-1.0.0
+# InsightForge 鉴数 — INS-2.0.0
 capability:
   name: insight-forge
-  version: INS-1.0.0
+  version: INS-2.0.0
 
 databases:
   tier1: [oracle, mysql, postgresql, doris]
@@ -22,11 +22,32 @@ profile:
   enable_incremental: true
   incremental_ttl_hours: 24
 
+forge:
+  pending_question_ttl_seconds: 1800
+
+qa:
+  fewshot_max_items: 5
+  fewshot_max_tokens: 2000
+  fewshot_recall_timeout_ms: 200
+  allow_ad_hoc_sql: true
+
 metric_qa:
   max_sql_rows: 1000
   sql_timeout_sec: 30
   require_metric_citation: true
   allow_ad_hoc_sql: true
+
+adoption:
+  require_review: false
+
+feedback:
+  downgrade_window_days: 30
+  downgrade_min_down: 3
+  downgrade_ratio_min: 0.30
+  downgrade_cooldown_days: 7
+
+feature_flags:
+  chat_first_enabled: true
 
 publish:
   chunk_size: 400

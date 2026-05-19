@@ -1,9 +1,11 @@
-"""InsightForge API — /api/insight (INS-1.0.0)."""
+"""InsightForge API — /api/insight (INS-2.0.0)."""
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ...api._auth import Principal, require_module
@@ -13,6 +15,8 @@ from ..config import get_insight_config
 from ..job_runner import InsightJobRunner
 from ..store import InsightMetricStore, InsightProfileRunStore
 from ..version import CAPABILITY_NAME, CAPABILITY_TAG, INS_API_VERSION, INS_VERSION
+from ..metric_qa_engine import InsightQaError, MetricQaEngine
+from ..workflow_service import InsightWorkflowService
 
 router = APIRouter(prefix="/api/insight", tags=["InsightForge"])
 
@@ -39,6 +43,12 @@ def init_insight_api(db: Database, knowledge_indexer=None) -> None:
 
     from ..llm_resolver import init_llm_resolver
     init_llm_resolver(db)
+
+    from ..agent_tools import init_insight_agent_tools
+    from ...tools import registry as tool_registry
+
+    for tool in init_insight_agent_tools(db):
+        tool_registry.register(tool)
 
     # Recover any runs that were pending/running when the previous process died.
     # BackgroundTasks do not survive restarts, so leaving them stuck blocks future
@@ -73,10 +83,110 @@ class InsightLlmSettingsBody(BaseModel):
     endpoint_id: Optional[str] = None
 
 
+class AskMetricRequest(BaseModel):
+    question: str
+    candidate_metric_keys: Optional[List[str]] = None
+    as_of_date: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class InsightFeedbackBody(BaseModel):
+    feedback: int
+
+
+class AdoptMetricRequest(BaseModel):
+    metric_id: Optional[str] = None
+    definition: Optional[str] = None
+    sql_template: Optional[str] = None
+    question_log_id: Optional[str] = None
+
+
 class StartProfileRequest(BaseModel):
     force: bool = False
     budget: Optional[Dict[str, Any]] = None
     llm: Optional[InsightLlmSelectionBody] = None
+    pending_question: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+def _workflow_service() -> InsightWorkflowService:
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    return InsightWorkflowService(_db, _ds_store, _run_store, _metric_store)
+
+
+async def _start_forge_impl(
+    datasource_id: str,
+    body: StartProfileRequest,
+    background_tasks: BackgroundTasks,
+    principal: Principal,
+):
+    if _run_store is None or _ds_store is None or _db is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+
+    tenant_id = principal.tenant_id
+    ds = _ds_store.get(datasource_id, tenant_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail="数据源不存在")
+
+    cfg = get_insight_config()
+    budget = dict(
+        body.budget
+        or {
+            "max_tables": cfg.profile.max_tables,
+            "sample_rows_per_table": cfg.profile.sample_rows_per_table,
+            "force": body.force,
+        }
+    )
+    budget["force"] = body.force
+
+    if body.llm is not None:
+        llm_payload = body.llm.model_dump(exclude={"persist"})
+        budget["llm"] = llm_payload
+        if body.llm.persist and _llm_settings_store is not None:
+            from ..llm_settings_store import InsightLlmSettings
+
+            _llm_settings_store.save(
+                InsightLlmSettings(
+                    tenant_id=tenant_id,
+                    use_chat_default=body.llm.use_chat_default,
+                    provider=body.llm.provider or "ollama",
+                    model=body.llm.model or "",
+                    endpoint_id=body.llm.endpoint_id,
+                )
+            )
+
+    wf = _workflow_service()
+    if body.pending_question:
+        wf.set_pending_question(
+            datasource_id,
+            tenant_id,
+            body.pending_question,
+            session_id=body.session_id,
+        )
+    if body.session_id:
+        wf.bind_session_datasource(body.session_id, tenant_id, datasource_id)
+
+    run = _run_store.create(
+        datasource_id=datasource_id,
+        tenant_id=tenant_id,
+        capability_version=INS_VERSION,
+        budget=budget,
+    )
+
+    runner = InsightJobRunner(_db)
+    background_tasks.add_task(
+        runner.start_profile, run.id, datasource_id, tenant_id
+    )
+
+    return {
+        "success": True,
+        "run_id": run.id,
+        "status": run.status,
+        "capability_version": INS_VERSION,
+        "profile_mode": cfg.profile_mode_for_db(ds.db_type),
+        "db_type": ds.db_type,
+    }
 
 
 @router.get("/llm/options")
@@ -151,7 +261,83 @@ async def insight_version(principal: Principal = Depends(_require)):
         "api_version": INS_API_VERSION,
         "tier1_databases": cfg.tier1_databases,
         "tier2_databases": cfg.tier2_databases,
+        "phase": {
+            "workflow": True,
+            "metric_qa_in_chat": True,
+            "workbench": "ops_only",
+            "chat_first_enabled": cfg.feature_flags.chat_first_enabled,
+        },
     }
+
+
+@router.get("/datasources/{datasource_id}/forge/events")
+async def forge_events_sse(
+    datasource_id: str,
+    request: Request,
+    principal: Principal = Depends(_require),
+):
+    """SSE stream for active forge run (in-process buffer; see deploy docs H1)."""
+    from ..workflow_events import acquire_connection, iter_sse
+
+    if _run_store is None or _ds_store is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    tenant_id = principal.tenant_id
+    if not _ds_store.get(datasource_id, tenant_id):
+        raise HTTPException(status_code=404, detail="数据源不存在")
+
+    runs = _run_store.list_by_datasource(datasource_id, tenant_id, limit=1)
+    if not runs or runs[0].status not in ("pending", "running"):
+        raise HTTPException(status_code=404, detail="无进行中的鉴数任务")
+
+    if not acquire_connection():
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "INSIGHT_SSE_RATE_LIMITED", "message": "SSE 连接数已满"},
+        )
+
+    last_id = 0
+    header = request.headers.get("last-event-id")
+    if header:
+        try:
+            last_id = int(header)
+        except ValueError:
+            last_id = 0
+
+    run_id = runs[0].id
+
+    def event_stream():
+        yield from iter_sse(run_id, last_id)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.get("/datasources/{datasource_id}/workflow")
+async def get_datasource_workflow(
+    datasource_id: str,
+    session_id: Optional[str] = None,
+    principal: Principal = Depends(_require),
+):
+    wf = _workflow_service()
+    tenant_id = principal.tenant_id
+    if _ds_store and not _ds_store.get(datasource_id, tenant_id):
+        raise HTTPException(status_code=404, detail="数据源不存在")
+    try:
+        return wf.get_composite(datasource_id, tenant_id, session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="数据源不存在")
+
+
+@router.post("/datasources/{datasource_id}/forge")
+async def start_forge(
+    datasource_id: str,
+    body: StartProfileRequest,
+    background_tasks: BackgroundTasks,
+    principal: Principal = Depends(_require),
+):
+    """Canonical INS-2.0 endpoint to start profiling."""
+    return await _start_forge_impl(
+        datasource_id, body, background_tasks, principal
+    )
 
 
 @router.post("/datasources/{datasource_id}/profile")
@@ -161,61 +347,13 @@ async def start_profile(
     background_tasks: BackgroundTasks,
     principal: Principal = Depends(_require),
 ):
-    if _run_store is None or _ds_store is None or _db is None:
-        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    """INS-1.0 compatibility alias — forwards to /forge.
 
-    tenant_id = principal.tenant_id
-    ds = _ds_store.get(datasource_id, tenant_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="数据源不存在")
-
-    cfg = get_insight_config()
-    budget = dict(
-        body.budget
-        or {
-            "max_tables": cfg.profile.max_tables,
-            "sample_rows_per_table": cfg.profile.sample_rows_per_table,
-            "force": body.force,
-        }
+    Deprecated: prefer POST /datasources/{id}/forge (kept through INS-2.0 GA).
+    """
+    return await _start_forge_impl(
+        datasource_id, body, background_tasks, principal
     )
-    budget["force"] = body.force
-
-    if body.llm is not None:
-        llm_payload = body.llm.model_dump(exclude={"persist"})
-        budget["llm"] = llm_payload
-        if body.llm.persist and _llm_settings_store is not None:
-            from ..llm_settings_store import InsightLlmSettings
-
-            _llm_settings_store.save(
-                InsightLlmSettings(
-                    tenant_id=tenant_id,
-                    use_chat_default=body.llm.use_chat_default,
-                    provider=body.llm.provider or "ollama",
-                    model=body.llm.model or "",
-                    endpoint_id=body.llm.endpoint_id,
-                )
-            )
-
-    run = _run_store.create(
-        datasource_id=datasource_id,
-        tenant_id=tenant_id,
-        capability_version=INS_VERSION,
-        budget=budget,
-    )
-
-    runner = InsightJobRunner(_db)
-    background_tasks.add_task(
-        runner.start_profile, run.id, datasource_id, tenant_id
-    )
-
-    return {
-        "success": True,
-        "run_id": run.id,
-        "status": run.status,
-        "capability_version": INS_VERSION,
-        "profile_mode": cfg.profile_mode_for_db(ds.db_type),
-        "db_type": ds.db_type,
-    }
 
 
 @router.get("/datasources/{datasource_id}/profile/runs")
@@ -267,6 +405,174 @@ async def get_profile_run(
     }
 
 
+@router.post("/datasources/{datasource_id}/ask")
+async def ask_metric(
+    datasource_id: str,
+    body: AskMetricRequest,
+    principal: Principal = Depends(_require),
+):
+    """Synchronous metric QA — does not set session asking (H2)."""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    engine = MetricQaEngine(_db)
+    try:
+        answer = await engine.ask(
+            datasource_id,
+            principal.tenant_id,
+            body.question,
+            user_id=principal.user_id,
+            candidate_metric_keys=body.candidate_metric_keys,
+            as_of_date=body.as_of_date,
+            session_id=body.session_id,
+            is_second_partial_round=bool(body.candidate_metric_keys),
+        )
+    except InsightQaError as e:
+        status = 400
+        if e.code == "INSIGHT_NOT_PROFILED":
+            status = 409
+        elif e.code == "INSIGHT_WORKFLOW_BLOCKED":
+            status = 409
+        raise HTTPException(
+            status_code=status,
+            detail={"code": e.code, "message": e.message},
+        )
+
+    try:
+        _db.add_audit_log(
+            tenant_id=principal.tenant_id,
+            user_id=principal.user_id,
+            action="insight_ask",
+            resource_type="datasource",
+            resource_id=datasource_id,
+            detail=json.dumps(
+                {
+                    "branch": answer.branch,
+                    "caliber_tier": answer.caliber_tier,
+                    "metric_key": answer.metric_key,
+                    "question_log_id": answer.question_log_id,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:
+        pass
+
+    return answer.to_dict()
+
+
+@router.post("/datasources/{datasource_id}/ask/stream")
+async def ask_metric_stream(
+    datasource_id: str,
+    body: AskMetricRequest,
+    principal: Principal = Depends(_require),
+):
+    """Stream placeholder — sets session asking during execution (H2)."""
+    wf = _workflow_service()
+    if body.session_id:
+        wf.set_session_asking_for_stream(body.session_id, principal.tenant_id, True)
+    try:
+        return await ask_metric(datasource_id, body, principal)
+    finally:
+        if body.session_id:
+            wf.set_session_asking_for_stream(body.session_id, principal.tenant_id, False)
+
+
+@router.post("/ask/{question_log_id}/feedback")
+async def ask_feedback(
+    question_log_id: str,
+    body: InsightFeedbackBody,
+    principal: Principal = Depends(_require),
+):
+    from ..question_log_store import InsightQuestionLogStore
+    from ..adoption_service import AdoptionService
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    store = InsightQuestionLogStore(_db)
+    ok = store.update_feedback(question_log_id, principal.tenant_id, body.feedback)
+    if not ok:
+        raise HTTPException(status_code=404, detail="问答记录不存在")
+    adoption = AdoptionService(_db)
+    result = adoption.process_feedback(
+        question_log_id,
+        principal.tenant_id,
+        body.feedback,
+        principal.user_id,
+    )
+    return result
+
+
+def _adopt_metric_impl(
+    metric_id: Optional[str],
+    body: AdoptMetricRequest,
+    principal: Principal,
+):
+    from ..adoption_service import AdoptionService
+    from ..store import AdoptionConflictError
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    mid = (metric_id or body.metric_id or "").strip()
+    service = AdoptionService(_db)
+    try:
+        result = service.adopt(
+            mid,
+            principal.tenant_id,
+            principal.user_id,
+            definition=body.definition,
+            sql_template=body.sql_template,
+            question_log_id=body.question_log_id,
+        )
+    except AdoptionConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "INSIGHT_ADOPTION_CONFLICT",
+                "message": "并发采用冲突，请重试",
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if result.get("code") == "INSIGHT_ADOPTION_PENDING_REVIEW":
+        raise HTTPException(
+            status_code=202,
+            detail={
+                "code": "INSIGHT_ADOPTION_PENDING_REVIEW",
+                "message": "已提交待审",
+                "adoption_id": result.get("adoption_id"),
+            },
+        )
+    return {"success": True, **result}
+
+
+@router.post("/metrics/adopt")
+async def adopt_metric_body(
+    body: AdoptMetricRequest,
+    principal: Principal = Depends(_require),
+):
+    return _adopt_metric_impl(None, body, principal)
+
+
+@router.post("/metrics/{metric_id}/adopt")
+async def adopt_metric(
+    metric_id: str,
+    body: AdoptMetricRequest,
+    principal: Principal = Depends(_require),
+):
+    return _adopt_metric_impl(metric_id, body, principal)
+
+
+@router.get("/metrics/pending_adoption")
+async def list_pending_adoption(principal: Principal = Depends(_require)):
+    from ..adoption_service import AdoptionService
+
+    if _db is None:
+        raise HTTPException(status_code=500, detail="Insight API 未初始化")
+    service = AdoptionService(_db)
+    return {"items": service.list_pending_adoptions(principal.tenant_id)}
+
+
 @router.get("/datasources/{datasource_id}/brief")
 async def get_datasource_brief(
     datasource_id: str,
@@ -289,6 +595,7 @@ async def get_datasource_brief(
     from ..snapshot_utils import split_snapshot_questions
 
     open_questions, llm_errors, llm_status = split_snapshot_questions(snapshot)
+    cfg = get_insight_config()
 
     return {
         "datasource": {
@@ -330,8 +637,9 @@ async def get_datasource_brief(
         "llm_used": snapshot.get("llm_used"),
         "phase": {
             "profile": True,
-            "metric_qa_in_chat": False,
-            "workbench": True,
+            "metric_qa_in_chat": True,
+            "workbench": "ops_only",
+            "chat_first_enabled": cfg.feature_flags.chat_first_enabled,
         },
     }
 
