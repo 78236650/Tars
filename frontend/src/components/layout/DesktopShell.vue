@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LeftPanel from '@/components/layout/LeftPanel.vue'
 import RightPanel from '@/components/layout/RightPanel.vue'
 import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
 import ReminderNotificationsDrawer from '@/components/chat/ReminderNotificationsDrawer.vue'
 import { useI18n } from '@/i18n'
+import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useSettingsStore } from '@/stores/settings'
 import { useWsStore } from '@/stores/wsStore'
@@ -14,8 +15,13 @@ const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()
 const wsStore = useWsStore()
+const chatStore = useChatStore()
 const reminderStore = useReminderNotificationsStore()
 const { t } = useI18n()
+
+onMounted(() => {
+  chatStore.initChatRealtime()
+})
 
 const desktopTitle = computed(() => {
   if (route.meta.desktopTitleKey) {
