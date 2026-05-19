@@ -1,6 +1,7 @@
 """SQL dialect helpers for InsightForge stats collection."""
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Tuple
@@ -8,25 +9,27 @@ from typing import Any, List, Optional, Tuple
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+logger = logging.getLogger(__name__)
 
-_SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+# Accept Unicode word chars, digits, dots (for schema.table), hyphens, spaces.
+# Reject quote characters that could break quoting.
+_UNSAFE_CHARS = re.compile(r'[\'";\\`]')
 
 
 def quote_ident(name: str, dialect: str = "generic") -> str:
-    if not _SAFE_IDENT.match(name or ""):
+    """Quote a single identifier segment. Rejects embedded quote chars."""
+    if not name or _UNSAFE_CHARS.search(name):
+        logger.warning("Rejected unsafe identifier: %r", name)
         raise ValueError(f"unsafe identifier: {name!r}")
     if dialect in ("mysql", "doris"):
         return f"`{name}`"
-    if dialect in ("postgresql",):
-        return f'"{name}"'
     return f'"{name}"'
 
 
 def quote_table(table: str, dialect: str = "generic") -> str:
-    if "." in table:
-        parts = table.split(".", 1)
-        return f"{quote_ident(parts[0], dialect)}.{quote_ident(parts[1], dialect)}"
-    return quote_ident(table, dialect)
+    """Quote a potentially multi-part table name (db.schema.table)."""
+    parts = table.split(".")
+    return ".".join(quote_ident(p, dialect) for p in parts)
 
 
 class DialectHelper(ABC):
