@@ -1,5 +1,6 @@
 """TARS Skills v2 - 从目录加载 Skill"""
 import json
+import threading
 import time
 import yaml
 from pathlib import Path
@@ -24,6 +25,7 @@ class SkillLoader:
         self.tool_registry = tool_registry
         self.skill_registry = skill_registry
         self._plugin_tools: Dict[str, List[str]] = {}
+        self._lock = threading.RLock()
 
     def invalidate_cache(self) -> None:
         try:
@@ -35,15 +37,16 @@ class SkillLoader:
 
     def reload_all(self) -> List[Skill]:
         """Clear registries and reload all skills from disk."""
-        if self.tool_registry:
-            for tool_names in self._plugin_tools.values():
-                for name in tool_names:
-                    self.tool_registry.unregister(name)
-        self._plugin_tools.clear()
-        if self.skill_registry:
-            self.skill_registry.clear()
-        self.invalidate_cache()
-        return self.load_all()
+        with self._lock:
+            if self.tool_registry:
+                for tool_names in self._plugin_tools.values():
+                    for name in tool_names:
+                        self.tool_registry.unregister(name)
+            self._plugin_tools.clear()
+            if self.skill_registry:
+                self.skill_registry.clear()
+            self.invalidate_cache()
+            return self.load_all()
 
     def _track_plugin_tools(self, skill_id: str, tools) -> None:
         names = []
