@@ -685,6 +685,21 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)")
 
+        # v4.1.0: Provider 用量统计
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS provider_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL DEFAULT '',
+                tokens_in INTEGER DEFAULT 0,
+                tokens_out INTEGER DEFAULT 0,
+                created_at TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_usage_tenant ON provider_usage(tenant_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_usage_created ON provider_usage(created_at DESC)")
+
         conn.commit()
 
     def create_session(
@@ -2126,6 +2141,63 @@ class Database:
             client_ip=row[7],
             created_at=_parse_db_datetime(row[8]),
         )
+
+    def record_provider_usage(
+        self,
+        tenant_id: str = "default",
+        provider: str = "",
+        model: str = "",
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+    ) -> None:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        now = get_local_now()
+        cursor.execute(
+            "INSERT INTO provider_usage (tenant_id, provider, model, tokens_in, tokens_out, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (tenant_id, provider, model, tokens_in, tokens_out, now),
+        )
+        conn.commit()
+
+    def list_provider_usage(
+        self,
+        tenant_id: str = "",
+        provider: str = "",
+        limit: int = 100,
+    ) -> tuple[list[dict], int]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        conditions: list[str] = []
+        params: list = []
+        if tenant_id:
+            conditions.append("tenant_id = ?")
+            params.append(tenant_id)
+        if provider:
+            conditions.append("provider = ?")
+            params.append(provider)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        cursor.execute(f"SELECT COUNT(*) FROM provider_usage{where}", params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(
+            f"SELECT id, tenant_id, provider, model, tokens_in, tokens_out, created_at "
+            f"FROM provider_usage{where} ORDER BY created_at DESC LIMIT ?",
+            params + [limit],
+        )
+        rows = []
+        for row in cursor.fetchall():
+            rows.append({
+                "id": row[0],
+                "tenant_id": row[1],
+                "provider": row[2],
+                "model": row[3],
+                "tokens_in": row[4],
+                "tokens_out": row[5],
+                "created_at": row[6].isoformat() if hasattr(row[6], "isoformat") else str(row[6]),
+            })
+        return rows, total
 
     def _row_to_transcription(self, row) -> Transcription:
         return Transcription(

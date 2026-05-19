@@ -1,5 +1,43 @@
 # Changelog
 
+## v4.1.0 "Skill Ecosystem" (2026-05-19)
+
+技能生态正式版：三源 SkillHub、SkillRouter 激活、多租户隔离、知识引用溯源。
+
+### SkillHub & 技能激活（Phase 1–2）
+
+- ✅ **skills.sh + GitHub 三源搜索** — bundled / skills.sh / GitHub 合并目录
+- ✅ **DependencyChecker** — 安装前 bins/packages 依赖检查，`needs_setup` 响应
+- ✅ **SkillRouter** — 信号提取 + 内容匹配按需注入，替代永久 Prompt 注入
+- ✅ **斜杠命令** — `/skill list`、`/skill find`、`/skill off`
+- ✅ **Try Skill** — ToolsView 一键试用 + ChatView `?prompt=` 预填
+- ✅ **`POST /api/skills/reload`** — 真正 reload SkillLoader
+
+### 多租户技能隔离（Phase 3）
+
+- ✅ **`skills/_global/` + `skills/tenants/{id}/`** — 目录布局 + 启动自动迁移
+- ✅ **tenant-scoped 安装** — 默认 `scope=tenant`，admin 可装 global
+- ✅ **SkillRegistry.list_for_tenant** — Agent/API 按 tenant 过滤可见技能
+
+### 模块流水线（Phase 4）
+
+- ✅ **知识引用溯源** — `[ref:doc_id]` 标注 + Chat 可点击引用卡片
+- ✅ **会议入库验收** — approve-to-knowledge 后 search_knowledge 可检索
+- ✅ **BI 查询审计** — `bi_query` action + sql_hash/row_count
+- ✅ **审计台分组** — action_group 筛选（skill/tool/bi/auth/memory）
+
+### 平台增强（Phase 5）
+
+- ✅ **Provider Fallback** — `config/providers.yaml` chain + `chat_with_fallback()`
+- ✅ **model_fallback 审计** + **provider_usage 表** + `GET /api/providers/usage`
+- ✅ **记忆导出** — `GET /api/memory/export?user_id=`
+
+### 测试
+
+- 新增 test_skillhub_v41、test_tenant_skills、test_knowledge_citations、test_provider_fallback 等
+
+---
+
 ## v4.0.5 "Skill Ecosystem Preview" (2026-05-19)
 
 技能生态预览版：SkillHub 本地可安装、知识库与 Agent 联动、Admin 管理台完善。
