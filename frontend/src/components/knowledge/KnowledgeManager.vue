@@ -95,6 +95,8 @@ import { ref, onMounted, reactive } from 'vue'
 import { knowledgeApi } from '@/api'
 import type { KnowledgeCollection, KnowledgeDocument } from '@/types'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
+import { getErrorDetail } from '@/utils/errorExtractor'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import DocumentUploader from './DocumentUploader.vue'
@@ -111,6 +113,7 @@ const searching = ref(false)
 const searched = ref(false)
 const searchResults = ref<any[]>([])
 const { t } = useI18n()
+const toast = useToast()
 
 const createForm = ref({ name: '', description: '' })
 
@@ -123,7 +126,7 @@ async function loadCollections() {
       loadDocuments(coll.id)
     }
   } catch (e) {
-    alert(t('knowledge.loadFailed'))
+    toast.error(t('knowledge.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -144,7 +147,7 @@ function getDocuments(collectionId: string): KnowledgeDocument[] {
 
 async function createCollection() {
   if (!createForm.value.name) {
-    alert(t('knowledge.fillName'))
+    toast.error(t('knowledge.fillName'))
     return
   }
   creating.value = true
@@ -154,7 +157,7 @@ async function createCollection() {
     createForm.value = { name: '', description: '' }
     await loadCollections()
   } catch (e: any) {
-    alert(t('knowledge.createFailed', { message: e.response?.data?.detail || e.message }))
+    toast.error(t('knowledge.createFailed', { message: getErrorDetail(e) || e.message }))
   } finally {
     creating.value = false
   }
@@ -166,7 +169,7 @@ async function deleteCollection(id: string) {
     await knowledgeApi.deleteCollection(id)
     await loadCollections()
   } catch (e) {
-    alert(t('knowledge.deleteFailed'))
+    toast.error(t('knowledge.deleteFailed'))
   }
 }
 
@@ -176,7 +179,7 @@ async function deleteDocument(collectionId: string, docId: string) {
     await knowledgeApi.deleteDocument(collectionId, docId)
     await loadDocuments(collectionId)
   } catch (e) {
-    alert(t('knowledge.deleteFailed'))
+    toast.error(t('knowledge.deleteFailed'))
   }
 }
 
@@ -201,7 +204,7 @@ async function performSearch() {
     searchResults.value = res.results
     searched.value = true
   } catch (e) {
-    alert(t('knowledge.searchFailed'))
+    toast.error(t('knowledge.searchFailed'))
   } finally {
     searching.value = false
   }

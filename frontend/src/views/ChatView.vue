@@ -6,6 +6,7 @@ import { useChatStore } from '@/stores/chat'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useWsStore } from '@/stores/wsStore'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
 import ActiveSkillsBar from '@/components/chat/ActiveSkillsBar.vue'
 import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
@@ -19,6 +20,7 @@ const chatStore = useChatStore()
 const reminderNotificationsStore = useReminderNotificationsStore()
 const wsStore = useWsStore()
 const { t } = useI18n()
+const toast = useToast()
 const route = useRoute()
 
 const messages = computed(() => chatStore.currentMessages)
@@ -73,11 +75,11 @@ const onFileChange = async (event: Event) => {
 
   for (const file of Array.from(files)) {
     if (attachments.value.length >= MAX_FILES) {
-      alert(t('chat.maxFiles'))
+      toast.error(t('chat.maxFiles'))
       break
     }
     if (file.size > MAX_SIZE) {
-      alert(t('chat.fileTooLarge'))
+      toast.error(t('chat.fileTooLarge'))
       continue
     }
     await uploadFile(file)
@@ -96,10 +98,10 @@ const uploadFile = async (file: File) => {
       attachments.value.push(data.file)
     } else {
       const err = await resp.json()
-      alert(err.detail || t('chat.uploadFailed'))
+      toast.error(err.detail || t('chat.uploadFailed'))
     }
   } catch {
-    alert(t('chat.uploadFailed'))
+    toast.error(t('chat.uploadFailed'))
   } finally {
     uploading.value = false
   }

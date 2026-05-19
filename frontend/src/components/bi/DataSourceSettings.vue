@@ -118,6 +118,8 @@ import { biApi, insightApi } from '@/api'
 import type { InsightProfileRunSummary } from '@/api'
 import type { DataSource } from '@/types'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
+import { getErrorDetail } from '@/utils/errorExtractor'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import SchemaAnnotator from './SchemaAnnotator.vue'
@@ -131,6 +133,7 @@ const showAnnotatorModal = ref(false)
 const creating = ref(false)
 const selectedDataSource = ref<DataSource | null>(null)
 const { t } = useI18n()
+const toast = useToast()
 const router = useRouter()
 
 const createForm = ref({
@@ -169,9 +172,9 @@ async function loadDataSources() {
     const detail = e.response?.data?.detail
     const status = e.response?.status
     if (status === 404 || status === 503) {
-      alert(t('bi.moduleDisabled'))
+      toast.error(t('bi.moduleDisabled'))
     } else {
-      alert(detail ? `${t('bi.loadFailed')}: ${detail}` : t('bi.loadFailed'))
+      toast.error(detail ? `${t('bi.loadFailed')}: ${detail}` : t('bi.loadFailed'))
     }
   } finally {
     loading.value = false
@@ -180,7 +183,7 @@ async function loadDataSources() {
 
 async function createDataSource() {
   if (!createForm.value.name || !createForm.value.connection_url) {
-    alert(t('bi.fillRequired'))
+    toast.error(t('bi.fillRequired'))
     return
   }
   creating.value = true
@@ -190,7 +193,7 @@ async function createDataSource() {
     createForm.value = { name: '', db_type: 'mysql', connection_url: '' }
     await loadDataSources()
   } catch (e: any) {
-    alert(t('bi.createFailed', { message: e.response?.data?.detail || e.message }))
+    toast.error(t('bi.createFailed', { message: getErrorDetail(e) || e.message }))
   } finally {
     creating.value = false
   }
@@ -202,26 +205,30 @@ async function deleteDataSource(id: string) {
     await biApi.deleteDataSource(id)
     await loadDataSources()
   } catch (e) {
-    alert(t('bi.deleteFailed'))
+    toast.error(t('bi.deleteFailed'))
   }
 }
 
 async function testConnection(id: string) {
   try {
     const res = await biApi.testConnection(id)
-    alert(res.success ? t('bi.connectionSuccess') : t('bi.connectionFailed', { message: res.message }))
+    if (res.success) {
+      toast.success(t('bi.connectionSuccess'))
+    } else {
+      toast.error(t('bi.connectionFailed', { message: res.message }))
+    }
   } catch (e) {
-    alert(t('bi.testFailed'))
+    toast.error(t('bi.testFailed'))
   }
 }
 
 async function refreshSchema(id: string) {
   try {
     await biApi.refreshSchema(id)
-    alert(t('bi.schemaRefreshSuccess'))
+    toast.success(t('bi.schemaRefreshSuccess'))
     await loadDataSources()
   } catch (e) {
-    alert(t('bi.refreshFailed'))
+    toast.error(t('bi.refreshFailed'))
   }
 }
 
@@ -233,11 +240,11 @@ async function startInsightProfile(id: string) {
   profilingId.value = id
   try {
     const res = await insightApi.startProfile(id)
-    alert(t('bi.insightProfileStarted', { runId: res.run_id }))
+    toast.success(t('bi.insightProfileStarted', { runId: res.run_id }))
     await loadInsightRunsForDatasource(id)
     await loadDataSources()
   } catch (e: any) {
-    alert(e.response?.data?.detail || t('bi.insightProfileFailed'))
+    toast.error(getErrorDetail(e, t('bi.insightProfileFailed')))
   } finally {
     profilingId.value = ''
   }

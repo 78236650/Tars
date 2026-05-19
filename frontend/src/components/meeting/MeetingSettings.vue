@@ -69,6 +69,8 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
+import { getErrorDetail } from '@/utils/errorExtractor'
 
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
@@ -79,6 +81,7 @@ const customPrompt = ref('')
 const availableModels = ref<string[]>([])
 const selectedModel = ref('')
 const { t } = useI18n()
+const toast = useToast()
 
 const currentPromptPreview = computed(() => {
   const tpl = templates.value.find(t => t.id === activeTemplate.value)
@@ -118,7 +121,7 @@ async function switchModel() {
   try {
     await api.put('/meeting/settings/model', { provider: 'ollama', model: selectedModel.value })
   } catch (e: any) {
-    alert(e.response?.data?.detail || t('meeting.modelSwitchFailed'))
+    toast.error(getErrorDetail(e, t('meeting.modelSwitchFailed')))
   }
 }
 
@@ -134,7 +137,7 @@ async function saveCustomPrompt() {
     await api.put('/meeting/settings/prompt', { prompt: customPrompt.value })
     activeTemplate.value = 'custom'
   } catch (e: any) {
-    alert(t('meeting.saveFailed'))
+    toast.error(t('meeting.saveFailed'))
   }
 }
 

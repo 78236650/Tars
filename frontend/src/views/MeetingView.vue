@@ -30,6 +30,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { Transcription } from '@/types'
 import { meetingApi } from '@/api'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
 import AudioUploader from '@/components/meeting/AudioUploader.vue'
 import MeetingSettings from '@/components/meeting/MeetingSettings.vue'
 import RecordingPanel from '@/components/meeting/RecordingPanel.vue'
@@ -40,6 +41,7 @@ const transcriptions = ref<Transcription[]>([])
 const selectedId = ref<string>('')
 const refreshTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const { t } = useI18n()
+const toast = useToast()
 
 const selectedTranscription = computed(() => {
   return transcriptions.value.find(t => t.id === selectedId.value) || null
@@ -78,7 +80,7 @@ async function onDelete(id: string) {
       selectedId.value = ''
     }
   } catch (e) {
-    alert(t('meeting.deleteFailed'))
+    toast.error(t('meeting.deleteFailed'))
   }
 }
 

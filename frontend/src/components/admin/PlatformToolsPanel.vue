@@ -3,8 +3,10 @@ import { ref } from 'vue'
 import { memoryApi, providersApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const toast = useToast()
 const authStore = useAuthStore()
 
 const exportTenantId = ref(authStore.user?.tenant_id || 'default')
@@ -45,7 +47,7 @@ const exportMemories = async () => {
     URL.revokeObjectURL(url)
   } catch (e) {
     console.error('导出记忆失败', e)
-    alert(t('admin.exportFailed'))
+    toast.error(t('admin.exportFailed'))
   } finally {
     exporting.value = false
   }
