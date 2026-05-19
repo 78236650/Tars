@@ -537,31 +537,44 @@ class EntityTreeBuilder:
 
         conn = self.db._get_conn()
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT from_entity, to_entity, predicate, confidence
-            FROM relations
-            WHERE tenant_id = ?
-            ORDER BY confidence DESC, created_at DESC
-            """,
-            (self.tenant_id,),
-        )
         edges: List[Dict[str, Any]] = []
         truncated = False
-        for from_e, to_e, pred, conf in cur.fetchall():
-            if from_e not in entity_ids or to_e not in entity_ids:
-                continue
-            if len(edges) >= max_edges:
-                truncated = True
-                break
-            edges.append(
-                {
-                    "from": from_e,
-                    "to": to_e,
-                    "predicate": pred,
-                    "confidence": conf,
-                }
+        # SQL-side filter: only fetch edges whose endpoints are in entity_ids.
+        # Chunk IN-list to respect SQLite's parameter limit (~999).
+        id_list = list(entity_ids)
+        chunk_size = 400
+        seen_edges: set = set()
+        for i in range(0, len(id_list), chunk_size):
+            chunk = id_list[i : i + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            sql = (
+                "SELECT from_entity, to_entity, predicate, confidence "
+                "FROM relations "
+                f"WHERE tenant_id = ? AND (from_entity IN ({placeholders}) OR to_entity IN ({placeholders})) "
+                "ORDER BY confidence DESC, created_at DESC "
+                f"LIMIT {max_edges * 2}"
             )
+            cur.execute(sql, (self.tenant_id, *chunk, *chunk))
+            for from_e, to_e, pred, conf in cur.fetchall():
+                if from_e not in entity_ids or to_e not in entity_ids:
+                    continue
+                key = (from_e, to_e, pred)
+                if key in seen_edges:
+                    continue
+                seen_edges.add(key)
+                if len(edges) >= max_edges:
+                    truncated = True
+                    break
+                edges.append(
+                    {
+                        "from": from_e,
+                        "to": to_e,
+                        "predicate": pred,
+                        "confidence": conf,
+                    }
+                )
+            if truncated:
+                break
 
         nodes = [
             {
