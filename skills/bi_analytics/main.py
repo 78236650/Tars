@@ -2,6 +2,7 @@
 
 注册 BI 相关工具到 TARS 全局 tool_registry
 """
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from tars.tools.base import BaseTool, ToolResult
@@ -109,6 +110,7 @@ class BIQueryTool(BaseTool):
             return ToolResult(success=False, output="", error=f"数据源 '{ds_id}' 不存在")
 
         agent = SQLAgent(ds.connection_url)
+        sql_hash = hashlib.sha256(sql.encode()).hexdigest()[:16]
         try:
             result = agent.execute(sql)
             if result["success"]:
@@ -122,18 +124,43 @@ class BIQueryTool(BaseTool):
                 ]
                 for row in preview:
                     lines.append(str(row))
+                try:
+                    from tars.security.audit import audit_logger
+                    if audit_logger:
+                        audit_logger.log_bi_query(
+                            datasource_id=ds_id,
+                            tenant_id=tenant_id,
+                            user_id=tenant_id,
+                            sql_hash=sql_hash,
+                            row_count=row_count,
+                            success=True,
+                        )
+                except Exception:
+                    pass
                 return ToolResult(
                     success=True,
                     output="\n".join(lines),
                     metadata=result,
                 )
-            else:
-                return ToolResult(
-                    success=False,
-                    output="",
-                    error=result["error"],
-                    metadata=result,
-                )
+            try:
+                from tars.security.audit import audit_logger
+                if audit_logger:
+                    audit_logger.log_bi_query(
+                        datasource_id=ds_id,
+                        tenant_id=tenant_id,
+                        user_id=tenant_id,
+                        sql_hash=sql_hash,
+                        row_count=0,
+                        success=False,
+                    )
+            except Exception:
+                pass
+            return ToolResult(
+                success=False,
+                output="",
+                error=result["error"],
+                metadata=result,
+            )
         finally:
             agent.close()
 

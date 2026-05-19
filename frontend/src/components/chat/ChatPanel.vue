@@ -417,6 +417,27 @@ onMounted(() => {
 
 .step-detail {
   color: #78716c;
+}
+
+:deep(.knowledge-ref) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+  font-size: 12px;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+:deep(.knowledge-ref:hover) {
+  background: rgba(59, 130, 246, 0.25);
+  color: #bfdbfe;
+}
   font-size: 11px;
   display: block;
   margin-top: 2px;

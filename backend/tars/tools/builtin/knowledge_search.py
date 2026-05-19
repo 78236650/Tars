@@ -65,7 +65,10 @@ class KnowledgeSearchTool(BaseTool):
             return ToolResult(
                 success=True,
                 output=text,
-                metadata={"results": results, "count": len(results)},
+                metadata={
+                    "results": [r.get("citation", {}) for r in results],
+                    "count": len(results),
+                },
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=f"搜索失败: {e}")

@@ -1,8 +1,5 @@
-"""Audit log query REST API — v4.0.0 Phase 1 Task 4.
-
-Provides: GET /api/audit/logs — query audit log entries (admin only).
-"""
-from typing import Optional
+"""Audit log query REST API — v4.0.0 Phase 1 Task 4."""
+from typing import List, Optional
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from ..database import Database
@@ -11,6 +8,14 @@ from ..security.audit import init_audit_logger, audit_logger as _audit_logger
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 _db: Optional[Database] = None
+
+ACTION_GROUPS: dict[str, List[str]] = {
+    "skill": ["skill_install", "skill_uninstall"],
+    "tool": ["tool_call", "tool_call:success", "tool_call:failed", "permission_denied"],
+    "bi": ["bi_query"],
+    "auth": ["login", "logout"],
+    "memory": ["memory:write", "memory:delete", "memory:promote", "memory:purge"],
+}
 
 
 def init_audit_api(db: Database):
@@ -35,6 +40,7 @@ def _format_resource(log) -> str:
 @router.get("/logs")
 def list_audit_logs(
     action: str = Query(""),
+    action_group: str = Query(""),
     user_id: str = Query(""),
     resource_type: str = Query(""),
     tenant_id: str = Query(""),
@@ -46,10 +52,18 @@ def list_audit_logs(
     if x_user_role != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可查询审计日志")
     db = _require_db()
+
+    actions_filter: Optional[List[str]] = None
+    if action_group:
+        actions_filter = ACTION_GROUPS.get(action_group)
+        if actions_filter is None:
+            raise HTTPException(status_code=400, detail=f"未知 action_group: {action_group}")
+
     logs, total = db.list_audit_logs(
         tenant_id=tenant_id,
         user_id=user_id,
         action=action,
+        actions=actions_filter,
         resource_type=resource_type,
         page=page,
         page_size=page_size,

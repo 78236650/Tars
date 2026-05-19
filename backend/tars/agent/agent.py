@@ -774,7 +774,12 @@ class AgentV2:
                 sp += f"\n\n{skill_injection}"
 
         # 知识库规则
-        sp += "\n\n## 知识库使用规则\n回答用户问题前，如果问题涉及项目信息、历史决策、会议内容、技术方案或业务知识，请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。"
+        sp += (
+            "\n\n## 知识库使用规则\n"
+            "回答用户问题前，如果问题涉及项目信息、历史决策、会议内容、技术方案或业务知识，"
+            "请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。\n"
+            "引用知识库内容时，在相关陈述句末标注 [ref:doc_id]（doc_id 来自检索结果中的 ref: 字段）。"
+        )
 
         # TaskDetector
         is_slash_plan = user_content.startswith("/plan")

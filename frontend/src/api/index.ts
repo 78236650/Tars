@@ -573,6 +573,7 @@ export interface AuditLogResponse {
 export const auditApi = {
   getLogs: async (params?: {
     action?: string
+    action_group?: string
     user_id?: string
     tenant_id?: string
     page?: number
