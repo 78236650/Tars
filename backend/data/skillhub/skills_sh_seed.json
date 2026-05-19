@@ -1,0 +1,26 @@
+[
+  {
+    "id": "skills_sh/anthropics/skills",
+    "name": "anthropics-skills",
+    "description": "Official Anthropic Agent Skills collection",
+    "author": "anthropics",
+    "version": "latest",
+    "type": "prompt",
+    "tags": ["skills.sh", "official"],
+    "source": "skills_sh",
+    "github_repo": "anthropics/skills",
+    "stars": 0
+  },
+  {
+    "id": "skills_sh/vercel-labs/agent-skills",
+    "name": "vercel-agent-skills",
+    "description": "Vercel agent skills for web development workflows",
+    "author": "vercel-labs",
+    "version": "latest",
+    "type": "prompt",
+    "tags": ["skills.sh", "web", "react"],
+    "source": "skills_sh",
+    "github_repo": "vercel-labs/agent-skills",
+    "stars": 0
+  }
+]

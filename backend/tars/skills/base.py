@@ -49,8 +49,17 @@ class Skill:
     priority: int = 50
     lifecycle: str = "per_turn"
     hooks: Dict[str, str] = field(default_factory=dict)
+    # v4.1.0 多租户
+    scope: str = "global"       # global | tenant
+    tenant_id: str = "global"   # global 或具体 tenant
     # 内部状态
     _dir_path: Optional[str] = field(default=None, repr=False)
+
+    @property
+    def registry_key(self) -> str:
+        if self.scope == "global":
+            return self.id
+        return f"{self.tenant_id}:{self.id}"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -75,4 +84,6 @@ class Skill:
                 {"name": p.name, "type": p.type, "description": p.description, "required": p.required, "default": p.default}
                 for p in self.parameters
             ],
+            "scope": self.scope,
+            "tenant_id": self.tenant_id,
         }

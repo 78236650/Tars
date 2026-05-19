@@ -108,8 +108,8 @@ class TestSkillHubLocalInstall:
         assert result["success"] is True
         assert result["skill_id"] == "demo-skill"
         assert result.get("ready") is True
-        assert (skillhub_bundle["skills_dir"] / "demo-skill" / "SKILL.md").exists()
-        assert sr.get("demo-skill") is not None
+        assert (skillhub_bundle["skills_dir"] / "tenants" / "default" / "demo-skill" / "SKILL.md").exists()
+        assert sr.get("demo-skill", "default") is not None
 
     def test_contextual_skill_injection(self, skillhub_bundle):
         from tars.skills.loader import SkillLoader

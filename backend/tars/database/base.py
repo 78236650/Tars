@@ -569,6 +569,11 @@ class Database:
                 enabled INTEGER DEFAULT 1
             )
         """)
+        for col, default in [("tenant_id", "'global'"), ("scope", "'global'")]:
+            try:
+                cursor.execute(f"ALTER TABLE skills_v3 ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
+            except sqlite3.OperationalError:
+                pass
 
         # v2.5 tasks 表加列
         for col, coltype in [("skill_id", "TEXT"), ("pdca_ref", "TEXT")]:

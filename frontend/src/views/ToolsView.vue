@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import ToolCard from '@/components/tools/ToolCard.vue'
 import ToolDetailModal from '@/components/tools/ToolDetailModal.vue'
 import AddToolModal from '@/components/tools/AddToolModal.vue'
+import TrySkillButton from '@/components/tools/TrySkillButton.vue'
 import { toolsApi, skillsApi, skillhubApi } from '@/api'
 import { useI18n } from '@/i18n'
 import type { Tool, SkillItem, SkillHubPackage } from '@/types'
@@ -185,6 +186,15 @@ const installFromHub = async (skillId: string, confirmPermissions = true) => {
       }
       return
     }
+    if (data.needs_setup) {
+      const hints = (data.install_hints || []).join('; ')
+      installMessage.value = {
+        id: skillId,
+        success: false,
+        message: `${t('tools.needsSetup')}: ${hints}`,
+      }
+      return
+    }
     installMessage.value = {
       id: skillId,
       success: true,
@@ -203,6 +213,14 @@ const installFromHub = async (skillId: string, confirmPermissions = true) => {
   } finally {
     installingId.value = null
   }
+}
+
+const sourceLabel = (source?: string) => {
+  if (source === 'bundled') return t('tools.sourceBundled')
+  if (source === 'skills_sh') return t('tools.sourceSkillsSh')
+  if (source === 'github') return t('tools.sourceGithub')
+  if (source === 'package') return t('tools.sourcePackage')
+  return source || ''
 }
 
 const refreshCatalogStatus = async () => {
@@ -471,7 +489,9 @@ onMounted(() => {
                       <span class="rounded-full px-1.5 py-0.5 text-xs" :class="pkg.type === 'plugin' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'">
                         {{ pkg.type === 'plugin' ? t('tools.marketToolType') : t('tools.marketPromptType') }}
                       </span>
-                      <!-- 已安装标签 -->
+                      <span v-if="pkg.source" class="rounded-full bg-white/[0.05] px-1.5 py-0.5 text-xs text-stone-400">
+                        {{ sourceLabel(pkg.source) }}
+                      </span>
                       <span v-if="pkg.installed" class="rounded-full border border-amber-400/20 bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-200">
                         {{ t('tools.installed') }}
                       </span>
@@ -510,6 +530,11 @@ onMounted(() => {
                       <p v-if="installMessage.success && installMessage.examplePrompt" class="mt-2 opacity-90 text-xs">
                         {{ t('tools.tryExample') }}: 「{{ installMessage.examplePrompt }}」
                       </p>
+                      <TrySkillButton
+                        v-if="installMessage.success && installMessage.examplePrompt"
+                        :prompt="installMessage.examplePrompt"
+                        :skill="pkg.id.split('/').pop()"
+                      />
                     </div>
                   </div>
                 </div>

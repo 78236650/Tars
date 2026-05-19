@@ -1,11 +1,20 @@
 """TARS API - 技能管理路由"""
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Header
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..skills import skill_registry, SkillType
 
 router = APIRouter(prefix="/api/skills", tags=["技能管理"])
+
+_skill_loader = None
+_tool_registry = None
+
+
+def init_skills_api(skill_loader=None, tool_registry=None):
+    global _skill_loader, _tool_registry
+    _skill_loader = skill_loader
+    _tool_registry = tool_registry
 
 
 class CreatePromptSkillRequest(BaseModel):
@@ -18,12 +27,14 @@ class CreatePromptSkillRequest(BaseModel):
 
 
 @router.get("/")
-async def list_skills():
-    """列出所有已安装技能"""
-    skills = skill_registry.list_all()
+async def list_skills(x_tenant_id: Optional[str] = Header(default="default")):
+    """列出当前 tenant 可见的已安装技能"""
+    tenant_id = x_tenant_id or "default"
+    skills = skill_registry.list_for_tenant(tenant_id)
     return {
         "skills": [s.to_dict() for s in skills],
         "total": len(skills),
+        "tenant_id": tenant_id,
     }
 
 
@@ -75,9 +86,10 @@ async def activate_skill(skill_id: str):
 
 
 @router.get("/{skill_id}")
-async def get_skill(skill_id: str):
+async def get_skill(skill_id: str, x_tenant_id: Optional[str] = Header(default="default")):
     """获取技能详情"""
-    skill = skill_registry.get(skill_id)
+    tenant_id = x_tenant_id or "default"
+    skill = skill_registry.get(skill_id, tenant_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"技能 '{skill_id}' 不存在")
     return {"success": True, "skill": skill.to_dict()}
@@ -127,8 +139,15 @@ async def uninstall_skill(skill_id: str):
 @router.post("/reload")
 async def reload_skills():
     """重新加载所有技能"""
-    # 需要在 app 初始化时注入 skill_loader
-    return {"success": True, "message": "技能重新加载完成"}
+    if not _skill_loader:
+        raise HTTPException(status_code=503, detail="SkillLoader 未初始化")
+    skills = _skill_loader.reload_all()
+    return {
+        "success": True,
+        "message": "技能重新加载完成",
+        "count": len(skills),
+        "skills": [s.id for s in skills],
+    }
 
 
 @router.put("/{skill_id}/enable")

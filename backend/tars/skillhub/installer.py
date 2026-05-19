@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .client import SkillHubClient
+from .dependency_checker import DependencyChecker
 from .local_catalog import LocalSkillCatalog
+from .skills_sh_client import SkillsShClient
 from .models import SkillHubPackage
+from ..skills.tenant_paths import TenantSkillPaths
 
 
 DANGEROUS_PERMISSIONS = {"command_exec", "file_write"}
@@ -37,17 +40,44 @@ class SkillInstaller:
     ):
         self.skills_dir = Path(skills_dir)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
+        self.paths = TenantSkillPaths(str(self.skills_dir))
         self.client = client
         self.skill_loader = skill_loader
         self.skill_registry = skill_registry
         self.local_catalog = local_catalog
 
-    async def install(self, repo_full_name: str, confirm_permissions: bool = True) -> Dict[str, Any]:
-        """安装流程：本地 bundled/package → 或 GitHub 远程下载"""
+    async def install(
+        self,
+        repo_full_name: str,
+        confirm_permissions: bool = True,
+        skip_dependency_check: bool = False,
+        scope: Optional[str] = None,
+        tenant_id: str = "default",
+    ) -> Dict[str, Any]:
+        """安装流程：本地 bundled/package → skills.sh → GitHub 远程下载"""
+        from ..config.skills import skills_config
+        install_scope = scope or skills_config.default_install_scope
+        if install_scope not in ("global", "tenant"):
+            install_scope = "tenant"
+
+        if repo_full_name.startswith("skills_sh/"):
+            github_repo = SkillsShClient.resolve_repo(repo_full_name)
+            if github_repo.count("/") == 1:
+                return await self.install(
+                    github_repo,
+                    confirm_permissions=confirm_permissions,
+                    skip_dependency_check=skip_dependency_check,
+                    scope=install_scope,
+                    tenant_id=tenant_id,
+                )
+
         if self.local_catalog:
             local_source = self.local_catalog.resolve_install_source(repo_full_name)
             if local_source:
-                return self._install_local(local_source, confirm_permissions)
+                return self._install_local(
+                    local_source, confirm_permissions, skip_dependency_check,
+                    scope=install_scope, tenant_id=tenant_id,
+                )
 
         pkg = await self.client.get_detail(repo_full_name)
         if not pkg:
@@ -80,14 +110,25 @@ class SkillInstaller:
                 return {"success": False, "error": "包中未找到 skill.yaml 或 SKILL.md"}
 
             skill_id = self._detect_skill_id(skill_root) or pkg.name
-            target_dir = self.skills_dir / skill_id
+            target_dir = self.paths.install_target(skill_id, install_scope, tenant_id)
             if target_dir.exists():
                 shutil.rmtree(target_dir)
             shutil.copytree(skill_root, target_dir)
 
-            return self._finalize_install(target_dir, skill_id, confirm_permissions, entry=None)
+            return self._finalize_install(
+                target_dir, skill_id, confirm_permissions, entry=None,
+                skip_dependency_check=skip_dependency_check,
+                scope=install_scope, tenant_id=tenant_id,
+            )
 
-    def _install_local(self, local_source: Dict[str, Any], confirm_permissions: bool) -> Dict[str, Any]:
+    def _install_local(
+        self,
+        local_source: Dict[str, Any],
+        confirm_permissions: bool,
+        skip_dependency_check: bool = False,
+        scope: str = "tenant",
+        tenant_id: str = "default",
+    ) -> Dict[str, Any]:
         """从 bundled .md 或 package 目录安装"""
         entry = local_source.get("entry") or {}
         source_path: Path = local_source["path"]
@@ -103,7 +144,7 @@ class SkillInstaller:
             )
             # 目录名安全化
             skill_id = str(skill_id).replace("/", "-").replace(" ", "-").lower()
-            target_dir = self.skills_dir / skill_id
+            target_dir = self.paths.install_target(skill_id, scope, tenant_id)
             if target_dir.exists():
                 shutil.rmtree(target_dir)
             target_dir.mkdir(parents=True)
@@ -111,13 +152,17 @@ class SkillInstaller:
             skill_root = target_dir
         else:
             skill_id = entry.get("package_dir") or source_path.name
-            target_dir = self.skills_dir / skill_id
+            target_dir = self.paths.install_target(skill_id, scope, tenant_id)
             if target_dir.exists():
                 shutil.rmtree(target_dir)
             shutil.copytree(source_path, target_dir)
             skill_root = target_dir
 
-        return self._finalize_install(skill_root, skill_id, confirm_permissions, entry=entry)
+        return self._finalize_install(
+            skill_root, skill_id, confirm_permissions, entry=entry,
+            skip_dependency_check=skip_dependency_check,
+            scope=scope, tenant_id=tenant_id,
+        )
 
     def _finalize_install(
         self,
@@ -125,6 +170,9 @@ class SkillInstaller:
         fallback_id: str,
         confirm_permissions: bool,
         entry: Optional[Dict[str, Any]] = None,
+        skip_dependency_check: bool = False,
+        scope: str = "tenant",
+        tenant_id: str = "default",
     ) -> Dict[str, Any]:
         """复制完成后：兼容性检查 → 加载注册 → 自检"""
         yaml_path = skill_root / "skill.yaml"
@@ -148,6 +196,16 @@ class SkillInstaller:
         else:
             return {"success": False, "error": "包中未找到 skill.yaml 或 SKILL.md"}
 
+        dep_report = self._check_dependencies(yaml_path if yaml_path.exists() else None, md_path if md_path.exists() else None)
+        if dep_report and not dep_report.ok and not skip_dependency_check:
+            return {
+                "success": False,
+                "needs_setup": True,
+                "dependencies": dep_report.to_dict(),
+                "install_hints": dep_report.install_hints,
+                "error": "缺少依赖，确认后可继续安装",
+            }
+
         if confirm_permissions and self._has_dangerous_permissions(permissions):
             return {
                 "success": False,
@@ -156,10 +214,13 @@ class SkillInstaller:
                 "error": "需要权限确认",
             }
 
-        skill = self._load_installed_skill(skill_root, yaml_path, md_path)
+        effective_tenant = tenant_id if scope == "tenant" else "global"
+        skill = self._load_installed_skill(skill_root, yaml_path, md_path, scope, effective_tenant)
         if skill:
             skill.source = "skillhub"
             skill.enabled = True
+            skill.scope = scope
+            skill.tenant_id = effective_tenant
             if self.skill_registry:
                 self.skill_registry.register(skill)
 
@@ -174,6 +235,8 @@ class SkillInstaller:
         result = {
             "success": True,
             "skill_id": skill_id,
+            "scope": scope,
+            "tenant_id": skill.tenant_id if skill else (tenant_id if scope == "tenant" else "global"),
             "usage": usage,
             "example_prompt": example_prompt or "",
             "verified": verify_result["ok"],
@@ -181,17 +244,23 @@ class SkillInstaller:
         }
         if skill:
             result["skill"] = skill.to_dict()
+        if dep_report and not dep_report.ok:
+            result["dependencies"] = dep_report.to_dict()
+            result["warning"] = "技能已安装，但部分依赖未满足: " + ", ".join(dep_report.install_hints[:3])
         if not verify_result["ok"]:
             result["warning"] = verify_result["warning"]
         return result
 
-    def _load_installed_skill(self, skill_root: Path, yaml_path: Path, md_path: Path):
+    def _load_installed_skill(
+        self, skill_root: Path, yaml_path: Path, md_path: Path,
+        scope: str = "tenant", tenant_id: str = "default",
+    ):
         if not self.skill_loader:
             return None
         if md_path.exists():
-            return self.skill_loader._load_skill_md(md_path, skill_root)
+            return self.skill_loader._load_skill_md(md_path, skill_root, scope=scope, tenant_id=tenant_id)
         if yaml_path.exists():
-            return self.skill_loader._load_skill(yaml_path, skill_root)
+            return self.skill_loader._load_skill(yaml_path, skill_root, scope=scope, tenant_id=tenant_id)
         return None
 
     def _invalidate_loader_cache(self) -> None:
@@ -205,27 +274,54 @@ class SkillInstaller:
         if hasattr(self.skill_loader, "_disclosure_cache"):
             del self.skill_loader._disclosure_cache
 
-    def uninstall(self, skill_id: str) -> Dict[str, Any]:
-        target = self.skills_dir / skill_id
-        if not target.exists():
+    def uninstall(self, skill_id: str, tenant_id: Optional[str] = None, scope: Optional[str] = None) -> Dict[str, Any]:
+        target = self._find_skill_dir(skill_id, tenant_id=tenant_id, scope=scope)
+        if not target:
             return {"success": False, "error": f"技能 {skill_id} 未安装"}
         try:
-            # 从 skill_registry 注销
             if self.skill_registry:
-                self.skill_registry.unregister(skill_id)
+                skill = self.skill_registry.get(skill_id, tenant_id)
+                if skill:
+                    self.skill_registry.unregister(skill_id, tenant_id=skill.tenant_id if skill.scope == "tenant" else None)
+                else:
+                    self.skill_registry.unregister(skill_id, tenant_id=tenant_id)
             shutil.rmtree(target)
+            self._invalidate_loader_cache()
             return {"success": True, "message": f"{skill_id} 已卸载"}
         except Exception as e:
             return {"success": False, "error": f"卸载失败: {e}"}
+
+    def _find_skill_dir(self, skill_id: str, tenant_id: Optional[str] = None, scope: Optional[str] = None) -> Optional[Path]:
+        safe_id = skill_id.replace("/", "-").replace(" ", "-")
+        if scope == "global":
+            candidate = self.paths.install_target(safe_id, "global", tenant_id or "default")
+            return candidate if candidate.exists() else None
+        if tenant_id:
+            candidate = self.paths.install_target(safe_id, "tenant", tenant_id)
+            if candidate.exists():
+                return candidate
+        for load_dir in self.paths.load_dirs(tenant_id):
+            candidate = load_dir / safe_id
+            if candidate.is_dir():
+                return candidate
+        legacy = self.skills_dir / safe_id
+        return legacy if legacy.is_dir() else None
 
     async def update(self, skill_id: str) -> Dict[str, Any]:
         """通过重新安装实现更新"""
         return await self.install(skill_id, confirm_permissions=False)
 
-    def list_installed(self) -> List[str]:
+    def list_installed(self, tenant_id: Optional[str] = None) -> List[str]:
         if not self.skills_dir.exists():
             return []
-        return [d.name for d in self.skills_dir.iterdir() if d.is_dir() and (d / "skill.yaml").exists()]
+        ids = []
+        for load_dir in self.paths.load_dirs(tenant_id):
+            if not load_dir.exists():
+                continue
+            for d in load_dir.iterdir():
+                if d.is_dir() and ((d / "skill.yaml").exists() or (d / "SKILL.md").exists()):
+                    ids.append(d.name)
+        return sorted(set(ids))
 
     async def check_updates(self, installed_ids: List[str]) -> List[Dict[str, str]]:
         """检查已安装技能的更新"""
@@ -382,6 +478,23 @@ class SkillInstaller:
             return data.get("permissions", [])
         except Exception:
             return []
+
+    @staticmethod
+    def _check_dependencies(yaml_path: Optional[Path], md_path: Optional[Path]):
+        checker = DependencyChecker()
+        if yaml_path and yaml_path.exists():
+            try:
+                import yaml
+                with open(yaml_path, "r", encoding="utf-8") as f:
+                    meta = yaml.safe_load(f) or {}
+                return checker.check(meta)
+            except Exception:
+                return None
+        if md_path and md_path.exists():
+            content = md_path.read_text(encoding="utf-8")
+            meta = checker.parse_meta_from_md(content)
+            return checker.check(meta)
+        return None
 
     @staticmethod
     def _detect_skill_id(skill_root: Path) -> Optional[str]:
