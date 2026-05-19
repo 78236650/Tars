@@ -1,5 +1,49 @@
 # Changelog
 
+## v4.1.5 "Review Followup" (2026-05-19)
+
+针对 2026-05-19 全量 review 的安全/功能/性能修复。
+
+### 安全（BLOCKER 收口）
+- ✅ **统一鉴权依赖** — 引入 `tars.api._auth.require_authenticated_user / require_admin / require_module`；删除 5+ 处 `except: return` 静默放过
+- ✅ **`X-Tenant-Id` 不再可伪造** — 仅 admin 用户配合有效 API key 时充当 impersonate；普通用户的 header 一律忽略
+- ✅ **`/api/knowledge/ref/{doc_id}` 跨租户读取关闭** — SQL 全部加 `tenant_id` 过滤
+- ✅ **`/api/providers/usage` 改为 admin-only**
+- ✅ **`relations` 表加 `tenant_id` 列 + 反向迁移** — 记忆树/图谱所有读路径都加 WHERE
+- ✅ **connection_url SSRF 防线** — 新增 `tars.utils.url_safety.validate_external_db_url`，拒绝 link-local / RFC1918 / loopback；env `TARS_INSIGHT_ALLOW_PRIVATE_HOSTS=1` 才放开
+
+### 功能完整性
+- ✅ **`insight_profile_runs.started_at`** 在第一次进入 `running` 时落库
+- ✅ **启动 sweeper** — 进程崩溃留下的 `running/pending` run 在下次启动时统一标 `failed("process restarted")`
+- ✅ **InsightForge P0 预检** — `tars.insight.preflight.run_preflight` 在 schema 抓取前验证 URL 合规 + `test_connection`
+- ✅ **LLM 同步重试 2x** — `tars.insight.retry.retry_call` 包裹每个 batch
+- ✅ **`heuristic_used`** 标志写入 snapshot，UI 可标记规则化产出
+- ✅ **`schema_snapshot.tables` 深合并** — 保留用户加的 `_user_note`
+- ✅ **`replace_draft_metrics` UNIQUE 冲突** 改 `INSERT OR IGNORE`，approved 行不再被覆盖
+- ✅ **`KnowledgePublisher.publish` 失败可见** — `status != indexed/no_chunks` 时返回 `None` 并 warning，job_runner 把失败追加到 `llm_errors`
+- ✅ **`collection_id` 跨租户重写防护** — 已存在的 collection 不允许换 tenant
+- ✅ **citation 渲染向后兼容** — 缺 `doc_id` 的旧消息不再生成 `ref:unknown`
+
+### 性能与一致性
+- ✅ **`build_graph` 关系 SQL 端过滤** — 不再全表扫
+- ✅ **`memory_count` 准确计数** — 共现 entity 都 +1
+- ✅ **`MemoryTreeVirtualList` scrollTop clamp** — 折叠后不再卡白屏
+- ✅ **`MemoryEntityForceGraph` 选区不重排** — 切换 selectedId 用 `dispatchAction` 而非 `setOption`，保留 pan/zoom
+
+### 前端 UX
+- ✅ **`alert()` 全部替换为 toast**（10+ 处）
+- ✅ **`useConfirm` 替换 `window.confirm`**
+- ✅ **InsightView polling AbortController + onBeforeUnmount**
+- ✅ **删除「鉴数Demo」硬编码**，examples 改 i18n
+- ✅ **路由按 `enabledModules` 网关**
+
+### 配置与文档
+- ✅ **`tars.utils.env_helpers`** 统一 bool/int/float env 解析；`config/memory.py` 已迁移
+- ✅ **`docs/04-运维文档/auth-model.md`** 描述新认证模型
+- ✅ **`scripts/check_i18n_parity.py`** — zh ⇄ en 键对齐校验
+
+---
+
 ## v4.2.0 "Memory Graph & Virtual Tree" (2026-05-19)
 
 记忆实体 Tab 增强：满屏力导向图谱 + 大树虚拟滚动。
