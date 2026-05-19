@@ -511,11 +511,9 @@ class EntityTreeBuilder:
                     continue
                 row = entity_index[eid]
                 row["type"] = etype
+                row["memory_count"] += 1
                 if hint and hint != eid:
                     row["label"] = hint
-            pid = primary_entity_id(refs)
-            if pid and pid in entity_index:
-                entity_index[pid]["memory_count"] += 1
 
         for eid in list(entity_index.keys()):
             if not entity_index[eid]["label"]:
