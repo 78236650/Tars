@@ -221,25 +221,75 @@ gantt
 
 **文档：** [v4.0.5 发布说明](../01-项目概览/v4.0.5-release-notes.md)
 
-### v4.1.0 "Skill Ecosystem" (📋 规划中)
+### v4.1.0 "Skill Ecosystem" (✅ 完成)
 **目标:** 技能装了就能用，SkillHub 三源生态，多租户技能隔离，模块流水线闭环
-**计划日期:** 2026-05-19 起，预计 6–8 周
+**发布日期:** 2026-05-19
 
-- 📋 SkillHub：bundled + skills.sh + GitHub 三源搜索与安装
-- 📋 SkillRouter 接入 Agent 主流程，按需注入技能
-- 📋 安装后「去试试」跳转 Chat 预填 prompt
-- 📋 多租户 skills 目录隔离（`_global` + `tenants/{id}`）
-- 📋 会议转写 → 知识库入库流水线
-- 📋 知识库引用溯源、BI 数据源测试、审计台增强
-- 📋 Provider fallback 链 + 记忆过期/export
+- ✅ SkillHub：bundled + skills.sh + GitHub 三源搜索与安装
+- ✅ SkillRouter 接入 Agent 主流程，按需注入技能
+- ✅ 多租户 skills 目录隔离（`_global` + `tenants/{id}`）
+- ✅ Provider fallback 链 + 记忆 export
 
 **文档：**
 - [建设方案](../superpowers/plans/2026-05-19-tars-v4.1.0-plan.md)
 - [技术方案](../02-技术方案/v4.1.0-skill-ecosystem-design.md)
 - [执行计划](./v4.1.0-implementation-plan.md)
 
+### v4.1.1 "Experience Layer" (✅ 完成)
+**发布日期:** 2026-05-19
+
+- ✅ SkillHub 安装向导、聊天技能条、知识引用卡片
+- ✅ 设置页版本升级 Changelog
+
+**文档：** [v4.1.1 发布说明](../01-项目概览/v4.1.1-release-notes.md)
+
+### v4.1.2 "Skill Ops & Platform UI" (✅ 完成)
+**发布日期:** 2026-05-19
+
+- ✅ SkillCurator 运维、待归档面板、Platform Tools Admin UI
+- ✅ 技能目录扩展与 Router/Curator 测试
+
+### v4.1.3 "Chat Polish & Remember" (✅ 完成)
+**发布日期:** 2026-05-19
+
+- ✅ 聊天顶栏精简、Ctrl/⌘+Enter 发送、回复复制
+- ✅ 记住要点：`extract-from-turn` / `save-from-turn` + RememberMemoryDialog
+
+### v4.1.4 "Memory Entity Tree" (✅ 完成)
+**目标:** 记忆管理页按实体鸟瞰结构，保留原有人格/近期/长期/全部 Tab
+**发布日期:** 2026-05-19
+
+- ✅ `GET /api/memory/tree`（实体视图 + 压缩谱系 `view=provenance`）
+- ✅ `GET /api/memory/tree/search`、`GET /api/memory/tree/relations`
+- ✅ 记忆页「实体」Tab：左树右详情、搜索、Admin 用户联动
+- ✅ 关系迷你 SVG 图；大树 >120 节点默认折叠顶层
+- 📋 满屏力导向知识图谱（延后 v4.2+）
+
+**文档：**
+- [v4.1.4 发布说明](../01-项目概览/v4.1.4-release-notes.md)
+- [设计说明](../superpowers/specs/2026-05-19-memory-tree-entity-view-design.md)
+- [实施计划](../superpowers/plans/2026-05-19-memory-tree-entity-view-plan.md)
+
+### InsightForge 鉴数 `INS-1.0.0` (✅ Phase 1 Profile 流水线 → Phase 2 指标问答)
+**定位:** 业务场景深入阶段 — 独立能力线（与 TARS v4.x 主版本并行）
+**Tag:** `@insight-forge` · Git `insight-v1.0.0`
+**目标:** 连库冷启动建立业务知识；`insight_analyst` 只回答指标数值/口径/SQL
+**数据库:** Oracle / MySQL / PostgreSQL / Doris（完整）+ JDBC（降级 Profile）
+**原型图:** `analyst`/`developer` + `python_exec`；完整 BI 报表 → 未来报表模块
+
+- 📐 产品设计、技术详设、实施计划（2026-05-19）
+- ✅ Profile 流水线（Schema/统计/关系/LLM/知识库）INS-1.0.0-alpha
+- 📋 Phase 2：`insight_ask_metric` + 鉴数工作台 UI
+- 📋 角色 `insight_analyst`：禁用 `bi_generate_chart`
+- 📋 导出 metrics.yaml 供报表/其他 Agent 消费
+
+**文档：**
+- [InsightForge 产品设计](../superpowers/specs/2026-05-19-insightforge-design.md)
+- [技术详设 INS-1.0.0](../02-技术方案/insightforge-ins-v1-design.md)
+- [实施计划](./insightforge-ins-v1-implementation-plan.md)
+
 ---
 
-*文档版本: v1.10*
+*文档版本: v1.12*
 *创建日期: 2026-05-05*
 *更新日期: 2026-05-19*

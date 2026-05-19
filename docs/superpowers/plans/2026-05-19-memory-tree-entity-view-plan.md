@@ -48,7 +48,7 @@ frontend/src/
 - Create: `backend/tars/memory/tree_builder.py`
 - Test: `backend/tests/test_memory_tree_api.py`
 
-- [ ] **Step 1: 写失败测试 `normalize_entity_ref`**
+- [x] **Step 1: 写失败测试 `normalize_entity_ref`**
 
 ```python
 def test_normalize_entity_ref_string_id():
@@ -60,13 +60,13 @@ def test_normalize_entity_ref_dict():
     assert etype == "person"
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd backend && pytest tests/test_memory_tree_api.py::test_normalize_entity_ref_string_id -v`
 
-- [ ] **Step 3: 实现 `normalize_entity_ref` + `primary_entity_id(memory)`**
+- [x] **Step 3: 实现 `normalize_entity_ref` + `primary_entity_id(memory)`**
 
-- [ ] **Step 4: 测试通过**
+- [x] **Step 4: 测试通过**
 
 ---
 
@@ -77,9 +77,9 @@ Run: `cd backend && pytest tests/test_memory_tree_api.py::test_normalize_entity_
 - Modify: `backend/tars/database/base.py`（可选：新增 `list_memories_for_tree(tenant_id, limit=5000)`）
 - Test: `backend/tests/test_memory_tree_api.py`
 
-- [ ] **Step 1: 写失败测试 — 空租户返回 `__core__` + 空态 stats**
+- [x] **Step 1: 写失败测试 — 空租户返回 `__core__` + 空态 stats**
 
-- [ ] **Step 2: 实现 `build(tenant_id, max_per_bucket=30)`**
+- [x] **Step 2: 实现 `build(tenant_id, max_per_bucket=30)`**
 
   - 分支：`__core__`（调 `CoreMemoryManager.get_all()`）
   - 按 `entity_refs[0]` 分组 → `__type:{type}` → entity 节点
@@ -87,11 +87,11 @@ Run: `cd backend && pytest tests/test_memory_tree_api.py::test_normalize_entity_
   - `__orphan__`：无 refs 记忆
   - `stats`: entity_count, orphan_count, ghost_entity_count
 
-- [ ] **Step 3: 写测试 — 两实体、共现记忆只在主实体下**
+- [x] **Step 3: 写测试 — 两实体、共现记忆只在主实体下**
 
-- [ ] **Step 4: 写测试 — 桶截断 `truncated: true`**
+- [x] **Step 4: 写测试 — 桶截断 `truncated: true`**
 
-- [ ] **Step 5: pytest 全绿**
+- [x] **Step 5: pytest 全绿**
 
 Run: `cd backend && pytest tests/test_memory_tree_api.py -v`
 
@@ -102,9 +102,9 @@ Run: `cd backend && pytest tests/test_memory_tree_api.py -v`
 **Files:**
 - Modify: `backend/tars/api/memory.py`
 
-- [ ] **Step 1: 写失败测试 `GET /api/memory/tree` 返回 200 + nodes**
+- [x] **Step 1: 写失败测试 `GET /api/memory/tree` 返回 200 + nodes**
 
-- [ ] **Step 2: 注册路由**
+- [x] **Step 2: 注册路由**
 
 ```python
 @router.get("/tree")
@@ -113,13 +113,13 @@ def get_memory_tree(...):
     return builder.build(...)
 ```
 
-- [ ] **Step 3: 写失败测试 `GET /api/memory/tree/relations?entity_id=`**
+- [x] **Step 3: 写失败测试 `GET /api/memory/tree/relations?entity_id=`**
 
-- [ ] **Step 4: 实现 relations 端点（查 `relations` 表 + 解析 to/from label）**
+- [x] **Step 4: 实现 relations 端点（查 `relations` 表 + 解析 to/from label）**
 
-- [ ] **Step 5: Admin `user_id` 非 admin 403 测试**
+- [x] **Step 5: Admin `user_id` 非 admin 403 测试**
 
-- [ ] **Step 6: pytest 通过**
+- [x] **Step 6: pytest 通过**
 
 ---
 
@@ -129,11 +129,11 @@ def get_memory_tree(...):
 - Modify: `frontend/src/types/index.ts`
 - Modify: `frontend/src/api/index.ts`
 
-- [ ] **Step 1: 定义 `MemoryTreeNode`, `MemoryTreeResponse`, `EntityRelationsResponse`**
+- [x] **Step 1: 定义 `MemoryTreeNode`, `MemoryTreeResponse`, `EntityRelationsResponse`**
 
-- [ ] **Step 2: 添加 `memoryApi.getTree`, `getTreeRelations`**
+- [x] **Step 2: 添加 `memoryApi.getTree`, `getTreeRelations`**
 
-- [ ] **Step 3: `npm run build` 类型检查通过**（在 frontend 目录）
+- [x] **Step 3: `npm run build` 类型检查通过**（在 frontend 目录）
 
 ---
 
@@ -146,19 +146,19 @@ def get_memory_tree(...):
 - Modify: `frontend/src/views/MemoryView.vue`
 - Modify: `frontend/src/i18n/index.ts`
 
-- [ ] **Step 1: `MemoryView` tabs 增加 `{ key: 'tree', label: t('memory.tab.entity') }`（放在 longterm 与 all 之间）**
+- [x] **Step 1: `MemoryView` tabs 增加 `{ key: 'tree', label: t('memory.tab.entity') }`（放在 longterm 与 all 之间）**
 
-- [ ] **Step 2: `MemoryTreeTab` 挂载，onMounted 调 `getTree`**
+- [x] **Step 2: `MemoryTreeTab` 挂载，onMounted 调 `getTree`**
 
-- [ ] **Step 3: 左树递归组件 — 展开/折叠，实体节点显示 `(memory_count)`**
+- [x] **Step 3: 左树递归组件 — 展开/折叠，实体节点显示 `(memory_count)`**
 
-- [ ] **Step 4: 点击 `kind=entity` → 加载 relations + 显示实体摘要**
+- [x] **Step 4: 点击 `kind=entity` → 加载 relations + 显示实体摘要**
 
-- [ ] **Step 5: 点击 `kind=memory` → 右侧 `MemoryCard` 或复用现有卡片逻辑**
+- [x] **Step 5: 点击 `kind=memory` → 右侧 `MemoryCard` 或复用现有卡片逻辑**
 
-- [ ] **Step 6: 空态、loading、error 态**
+- [x] **Step 6: 空态、loading、error 态**
 
-- [ ] **Step 7: 刷新按钮触发父组件 `loadStats`**
+- [x] **Step 7: 刷新按钮触发父组件 `loadStats`**
 
 ---
 
@@ -172,7 +172,7 @@ def get_memory_tree(...):
   4. 选中实体 → 右侧关系区（无关系时空态）
   5. 近期/长期/全部 Tab 行为未变
 
-- [ ] **回归测试**
+- [x] **回归测试**
 
 Run: `cd backend && pytest tests/test_memory_tree_api.py tests/test_memory_management_api.py -v`
 

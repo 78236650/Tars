@@ -13,6 +13,42 @@ interface VersionSection {
 
 const versions: VersionSection[] = [
   {
+    version: 'v4.1.4',
+    subtitle: 'Memory Entity Tree',
+    releaseDateKey: 'settings.changelog.v414ReleaseDate',
+    features: [
+      'settings.changelog.v414.feature1',
+      'settings.changelog.v414.feature2',
+      'settings.changelog.v414.feature3',
+      'settings.changelog.v414.feature4',
+    ],
+    improvements: [
+      'settings.changelog.v414.improvement1',
+      'settings.changelog.v414.improvement2',
+    ],
+  },
+  {
+    version: 'v4.1.3',
+    subtitle: 'Chat Polish & Remember',
+    releaseDateKey: 'settings.changelog.v413ReleaseDate',
+    features: [
+      'settings.changelog.v413.feature1',
+      'settings.changelog.v413.feature2',
+      'settings.changelog.v413.feature3',
+    ],
+    improvements: ['settings.changelog.v413.improvement1'],
+  },
+  {
+    version: 'v4.1.2',
+    subtitle: 'Skill Ops & Platform UI',
+    releaseDateKey: 'settings.changelog.v412ReleaseDate',
+    features: [
+      'settings.changelog.v412.feature1',
+      'settings.changelog.v412.feature2',
+    ],
+    improvements: ['settings.changelog.v412.improvement1'],
+  },
+  {
     version: 'v4.1.1',
     subtitle: 'Experience Layer',
     releaseDateKey: 'settings.changelog.v411ReleaseDate',
