@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..models.base import ChatMessage
 from .config import InsightBudget
+from .retry import retry_call
 from .snapshot_utils import format_llm_error
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,12 @@ class LlmSynthesizer:
         failed_batches = 0
         for batch in batches:
             try:
-                part = await self._call_llm(datasource_name, batch)
+                part = await retry_call(
+                    lambda b=batch: self._call_llm(datasource_name, b),
+                    attempts=2,
+                    backoff=1.0,
+                    label=f"insight_llm_batch[{datasource_name}]",
+                )
                 annotations.update(part.get("tables") or {})
                 metrics.extend(part.get("metric_candidates") or [])
                 open_questions.extend(part.get("open_questions") or [])

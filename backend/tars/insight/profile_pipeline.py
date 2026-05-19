@@ -72,6 +72,12 @@ class ProfilePipeline:
         stats_dialect = self.config.stats_dialect_key(db_type)
         budget = self.config.profile
 
+        self._progress("preflight", 0, 6, "连接预检")
+        from .preflight import run_preflight
+        pf = run_preflight(datasource.connection_url)
+        if not pf.ok:
+            raise RuntimeError(f"preflight_failed: {pf.reason}; hint: {pf.hint}")
+
         collector = StatsCollector(
             datasource.connection_url,
             db_type,
@@ -81,7 +87,7 @@ class ProfilePipeline:
         quality_flags: List[Dict[str, Any]] = []
 
         try:
-            self._progress("schema", 0, 5, "抓取 Schema")
+            self._progress("schema", 1, 6, "抓取 Schema")
             schema = collector.collect_schema()
             if schema.get("error"):
                 raise RuntimeError(schema["error"])
@@ -89,7 +95,7 @@ class ProfilePipeline:
             tables = collector.filter_tables(schema)
             total_tables = max(len(tables), 1)
 
-            self._progress("stats", 1, 5, f"统计画像 ({len(tables)} 表)")
+            self._progress("stats", 2, 6, f"统计画像 ({len(tables)} 表)")
             table_stats = collector.collect_all(schema, tables)
 
             for tname, ts in table_stats.items():
@@ -104,14 +110,14 @@ class ProfilePipeline:
                             }
                         )
 
-            self._progress("relations", 2, 5, "推断表关系")
+            self._progress("relations", 3, 6, "推断表关系")
             role_info = RoleClassifier().classify_tables(
                 schema, table_stats, budget.core_table_top_n
             )
             core_tables = role_info.get("table_tiers", {}).get("core", tables[: budget.core_table_top_n])
             relations = RelationInferencer().infer(schema, table_stats, core_tables)
 
-            self._progress("synthesize", 3, 5, "生成业务语义")
+            self._progress("synthesize", 4, 6, "生成业务语义")
             synthesizer = LlmSynthesizer(budget, self.llm_provider)
             (
                 annotations,
@@ -141,6 +147,7 @@ class ProfilePipeline:
                 "open_questions": open_questions,
                 "llm_errors": llm_errors,
                 "llm_status": llm_status,
+                "heuristic_used": llm_status in ("skipped", "failed"),
                 "metric_candidates_count": len(metric_candidates),
             }
 
@@ -160,7 +167,7 @@ class ProfilePipeline:
 
             knowledge_doc_id = None
             if self.publisher:
-                self._progress("publish", 4, 5, "写入知识库")
+                self._progress("publish", 5, 6, "写入知识库")
                 md = self.publisher.render_markdown(
                     datasource.name,
                     schema,
@@ -179,7 +186,7 @@ class ProfilePipeline:
                     run_id=run_id,
                 )
 
-            self._progress("done", 5, 5, "完成")
+            self._progress("done", 6, 6, "完成")
 
             return {
                 "success": True,
