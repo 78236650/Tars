@@ -196,6 +196,31 @@ export interface MemoryTreeSearchResponse {
   items: MemoryTreeSearchHit[]
 }
 
+export interface MemoryEntityGraphNode {
+  id: string
+  label: string
+  type: string
+  memory_count: number
+}
+
+export interface MemoryEntityGraphEdge {
+  from: string
+  to: string
+  predicate: string
+  confidence: number
+}
+
+export interface MemoryEntityGraphResponse {
+  tenant_id: string
+  nodes: MemoryEntityGraphNode[]
+  edges: MemoryEntityGraphEdge[]
+  stats: {
+    node_count: number
+    edge_count: number
+    truncated: boolean
+  }
+}
+
 export interface SubAgent {
   type: string
   name: string

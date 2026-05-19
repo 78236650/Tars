@@ -221,7 +221,8 @@ Run: `cd backend && pytest tests/test_memory_tree_api.py tests/test_memory_manag
 - [x] 大树默认折叠策略（可展开节点 >120 时仅展开顶层 + 提示）
 - [x] 关系迷你图（轻量 SVG，点击跳转实体）— 替代满屏力导向图
 - [x] 大树折叠策略 + `tree_node_count` 统计（替代完整虚拟滚动）
-- [ ] 满屏力导向图谱（明确延后 v4.2+）
+- [x] 满屏力导向图谱（v4.2：`view=图谱` + `GET /api/memory/tree/graph`）
+- [x] 真·虚拟滚动（扁平行 ≥40 启用 `MemoryTreeVirtualList`）
 
 ---
 

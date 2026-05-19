@@ -14,6 +14,7 @@ import type {
   MemoryMergeResponse,
   MemoryTreeResponse,
   MemoryTreeSearchResponse,
+  MemoryEntityGraphResponse,
   EntityRelationsResponse,
   SubAgent,
   SubAgentListResponse,
@@ -175,6 +176,13 @@ export const memoryApi = {
     user_id?: string
   }): Promise<MemoryTreeSearchResponse> => {
     const response = await api.get<MemoryTreeSearchResponse>('/memory/tree/search', { params })
+    return response.data
+  },
+
+  getTreeGraph: async (userId?: string): Promise<MemoryEntityGraphResponse> => {
+    const response = await api.get<MemoryEntityGraphResponse>('/memory/tree/graph', {
+      params: { user_id: userId || undefined },
+    })
     return response.data
   },
 
@@ -468,6 +476,47 @@ export const biApi = {
 
   generateChart: async (id: string, sql: string, chart_type?: string, user_question?: string): Promise<BIChartResult> => {
     const response = await api.post(`/datasources/${id}/chart`, { sql, chart_type, user_question })
+    return response.data
+  },
+}
+
+// ========= InsightForge 鉴数 API =========
+
+export interface InsightProfileRunSummary {
+  id: string
+  status: string
+  capability_version?: string
+  progress?: Record<string, unknown>
+  error?: string | null
+  created_at?: string
+  finished_at?: string | null
+}
+
+export const insightApi = {
+  version: async (): Promise<Record<string, unknown>> => {
+    const response = await api.get('/insight/version')
+    return response.data
+  },
+
+  startProfile: async (
+    datasourceId: string,
+    options?: { force?: boolean }
+  ): Promise<{ success: boolean; run_id: string; status: string }> => {
+    const response = await api.post(`/insight/datasources/${datasourceId}/profile`, {
+      force: options?.force ?? false,
+    })
+    return response.data
+  },
+
+  listProfileRuns: async (
+    datasourceId: string
+  ): Promise<{ runs: InsightProfileRunSummary[] }> => {
+    const response = await api.get(`/insight/datasources/${datasourceId}/profile/runs`)
+    return response.data
+  },
+
+  getProfileRun: async (runId: string): Promise<InsightProfileRunSummary & { insight_snapshot?: unknown }> => {
+    const response = await api.get(`/insight/profile/runs/${runId}`)
     return response.data
   },
 }
