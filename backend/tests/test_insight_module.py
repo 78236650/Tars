@@ -47,9 +47,23 @@ def test_profile_run_store_crud():
 
 @pytest.fixture
 def insight_client():
-    from tars.main import app
+    from tars.main import app, user_store
+    from tars.database.user_store import UserRole
 
-    return TestClient(app)
+    # Ensure an admin user exists for authenticated requests.
+    admin = None
+    for u in user_store.get_all_users():
+        if u.role == UserRole.ADMIN:
+            admin = u
+            break
+    if not admin:
+        import uuid
+        name = f"test_admin_{uuid.uuid4().hex[:6]}"
+        admin = user_store.create_user(username=name, email=f"{name}@test.local", role=UserRole.ADMIN)
+
+    client = TestClient(app)
+    client.headers.update({"X-API-Key": admin.api_key})
+    return client
 
 
 def test_insight_version_endpoint(insight_client):
