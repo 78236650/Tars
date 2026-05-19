@@ -18,12 +18,12 @@ describe('SettingsView', () => {
       history: createMemoryHistory(),
       routes: [
         { path: '/', component: { template: '<div>chat</div>' } },
-        { path: '/settings/subagents', component: { template: '<div>subagents</div>' } },
-        { path: '/settings/users', component: { template: '<div>users</div>' } },
         { path: '/settings/personality', component: { template: '<div>personality</div>' } },
+        { path: '/settings/subagents', component: { template: '<div>subagents</div>' } },
+        { path: '/settings/changelog', component: { template: '<div>changelog</div>' } },
       ],
     })
-    await router.push('/settings/subagents')
+    await router.push('/settings/personality')
     await router.isReady()
 
     const wrapper = mount(SettingsView, {
@@ -37,9 +37,8 @@ describe('SettingsView', () => {
 
     expect(wrapper.text()).toContain('设置')
     expect(wrapper.text()).toContain('返回聊天')
-    expect(wrapper.text()).toContain('子代理')
-    expect(wrapper.text()).toContain('用户管理')
     expect(wrapper.text()).toContain('人格设置')
+    expect(wrapper.text()).toContain('子代理')
     expect(wrapper.text()).toContain('EN')
 
     useI18n().setLocale('en')
@@ -47,9 +46,8 @@ describe('SettingsView', () => {
 
     expect(wrapper.text()).toContain('Settings')
     expect(wrapper.text()).toContain('Back to Chat')
-    expect(wrapper.text()).toContain('Sub-Agents')
-    expect(wrapper.text()).toContain('Users')
     expect(wrapper.text()).toContain('Personality')
+    expect(wrapper.text()).toContain('Sub-Agents')
     expect(wrapper.text()).toContain('ZH')
   })
 })

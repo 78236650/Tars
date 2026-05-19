@@ -26,6 +26,7 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await authApi.getCurrentUser(key)
       user.value = response
       isAuthenticated.value = true
+      localStorage.setItem('auth_user', JSON.stringify(response))
       return true
     } catch {
       clearApiKey()
@@ -39,6 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
       setApiKey(response.api_key)
       user.value = response.user
       isAuthenticated.value = true
+      localStorage.setItem('auth_user', JSON.stringify(response.user))
       return true
     } catch {
       logout()
@@ -50,6 +52,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     isAuthenticated.value = false
     clearApiKey()
+    localStorage.removeItem('auth_user')
   }
 
   const initAuth = async () => {
@@ -63,8 +66,24 @@ export const useAuthStore = defineStore('auth', () => {
       apiKey.value = savedKey
       user.value = response
       isAuthenticated.value = true
+      localStorage.setItem('auth_user', JSON.stringify(response))
     } catch {
       logout()
+    }
+  }
+
+  /** 用本地缓存快速恢复登录态，避免整页刷新时长时间白屏 */
+  const restoreFromCache = (): boolean => {
+    const savedKey = localStorage.getItem(API_KEY_STORAGE_KEY)
+    const cachedUser = localStorage.getItem('auth_user')
+    if (!savedKey || !cachedUser) return false
+    try {
+      apiKey.value = savedKey
+      user.value = JSON.parse(cachedUser) as User
+      isAuthenticated.value = true
+      return true
+    } catch {
+      return false
     }
   }
 
@@ -77,6 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     loginWithCredentials,
     logout,
-    initAuth
+    initAuth,
+    restoreFromCache,
   }
 })

@@ -207,7 +207,25 @@ gantt
 - 系统托盘
 - 文件关联
 
+### v4.1.0 "Skill Ecosystem" (📋 规划中)
+**目标:** 技能装了就能用，SkillHub 三源生态，多租户技能隔离，模块流水线闭环
+**计划日期:** 2026-05-19 起，预计 6–8 周
+
+- 📋 SkillHub：bundled + skills.sh + GitHub 三源搜索与安装
+- 📋 SkillRouter 接入 Agent 主流程，按需注入技能
+- 📋 安装后「去试试」跳转 Chat 预填 prompt
+- 📋 多租户 skills 目录隔离（`_global` + `tenants/{id}`）
+- 📋 会议转写 → 知识库入库流水线
+- 📋 知识库引用溯源、BI 数据源测试、审计台增强
+- 📋 Provider fallback 链 + 记忆过期/export
+
+**文档：**
+- [建设方案](../superpowers/plans/2026-05-19-tars-v4.1.0-plan.md)
+- [技术方案](../02-技术方案/v4.1.0-skill-ecosystem-design.md)
+- [执行计划](./v4.1.0-implementation-plan.md)
+
 ---
 
-*文档版本: v1.8*
+*文档版本: v1.9*
 *创建日期: 2026-05-05*
+*更新日期: 2026-05-19*

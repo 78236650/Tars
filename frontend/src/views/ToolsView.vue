@@ -83,8 +83,8 @@ const hubSearchQuery = ref('')
 const hubSearching = ref(false)
 const hubLoaded = ref(false)
 const installingId = ref<string | null>(null)
-const installMessage = ref<{ id: string; success: boolean; message: string } | null>(null)
-const hubFilter = ref<'all' | 'plugin' | 'prompt'>('all')
+const installMessage = ref<{ id: string; success: boolean; message: string; examplePrompt?: string } | null>(null)
+const hubFilter = ref<'all' | 'plugin' | 'prompt' | 'featured'>('all')
 
 // 弹窗
 const showAddModal = ref(false)
@@ -170,25 +170,35 @@ const searchHub = async () => {
   }
 }
 
-const installFromHub = async (skillId: string) => {
+const installFromHub = async (skillId: string, confirmPermissions = true) => {
   installingId.value = skillId
   installMessage.value = null
   try {
-    const resp = await skillhubApi.install(skillId)
+    const resp = await skillhubApi.install(skillId, confirmPermissions)
     const data = resp.data
+    if (data.needs_confirmation) {
+      const perms = (data.permissions || []).join(', ')
+      installMessage.value = {
+        id: skillId,
+        success: false,
+        message: `${t('tools.permissionConfirm')}: ${perms}`,
+      }
+      return
+    }
     installMessage.value = {
       id: skillId,
       success: true,
       message: data.usage || t('tools.installSuccess'),
+      examplePrompt: data.example_prompt || '',
     }
-    // 更新已安装列表和目录状态
     await loadSkills()
     await refreshCatalogStatus()
   } catch (e: any) {
+    const detail = e?.response?.data?.detail
     installMessage.value = {
       id: skillId,
       success: false,
-      message: e?.response?.data?.detail || t('tools.installFailed'),
+      message: typeof detail === 'string' ? detail : (detail?.error || t('tools.installFailed')),
     }
   } finally {
     installingId.value = null
@@ -233,10 +243,12 @@ const filteredSkills = computed(() => {
 
 const filteredHubResults = computed(() => {
   let results = hubResults.value
-  if (hubFilter.value !== 'all') {
+  if (hubFilter.value === 'featured') {
+    results = results.filter(pkg => pkg.featured)
+  } else if (hubFilter.value !== 'all') {
     results = results.filter(pkg => pkg.type === hubFilter.value)
   }
-  return results
+  return [...results].sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)))
 })
 
 // ========= 操作 =========
@@ -420,6 +432,11 @@ onMounted(() => {
             <!-- 分类标签 -->
             <div class="flex gap-2 mb-5">
               <button
+                @click="hubFilter = 'featured'"
+                class="rounded-full px-3 py-1.5 text-xs font-medium transition"
+                :class="hubFilter === 'featured' ? 'bg-amber-500 text-stone-950' : 'bg-white/[0.05] text-stone-300 hover:bg-amber-500/10'"
+              >{{ t('tools.filterFeatured') }}</button>
+              <button
                 @click="hubFilter = 'all'"
                 class="rounded-full px-3 py-1.5 text-xs font-medium transition"
                 :class="hubFilter === 'all' ? 'bg-amber-500 text-stone-950' : 'bg-white/[0.05] text-stone-300 hover:bg-amber-500/10'"
@@ -490,6 +507,9 @@ onMounted(() => {
                     <div>
                       <p class="font-medium text-xs mb-1">{{ installMessage.success ? t('tools.installSuccess') : t('tools.installFailed') }}</p>
                       <p class="opacity-80">{{ installMessage.message }}</p>
+                      <p v-if="installMessage.success && installMessage.examplePrompt" class="mt-2 opacity-90 text-xs">
+                        {{ t('tools.tryExample') }}: 「{{ installMessage.examplePrompt }}」
+                      </p>
                     </div>
                   </div>
                 </div>

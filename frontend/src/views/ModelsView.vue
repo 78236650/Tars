@@ -96,6 +96,13 @@ const getProviderStatus = (name: string): string => {
   return 'unknown'
 }
 
+const providerStatusLabel = (name: string): string => {
+  const status = getProviderStatus(name)
+  if (status === 'ok') return t('modelsPage.online')
+  if (status === 'disconnected') return t('modelsPage.disconnected')
+  return t('modelsPage.offline')
+}
+
 const openEdit = (ep: Endpoint) => {
   editingEndpoint.value = ep
   editForm.value = {
@@ -187,7 +194,8 @@ const fetchModels = async (id: string) => {
   busyEndpointId.value = id
   try {
     const res = await settingsStore.fetchEndpointModels(id)
-    toast.success(`${t('modelsPage.fetchModels')}: found ${(res.models || []).length} models`)
+    const count = (res.models || []).length
+    toast.success(count > 0 ? t('modelsPage.fetchOk', { count }) : t('modelsPage.fetchEmpty'))
   } catch (e) {
     toast.error(formatApiError(e))
   } finally {
@@ -224,7 +232,7 @@ const fetchModels = async (id: string) => {
                     ? 'bg-stone-500/10 text-stone-400'
                     : 'bg-rose-500/10 text-rose-300'"
                 >
-                  {{ getProviderStatus(prov.name) === 'ok' ? t('modelsPage.online') : t('modelsPage.offline') }}
+                  {{ providerStatusLabel(prov.name) }}
                 </span>
               </h3>
               <div class="flex items-center gap-2">
@@ -364,7 +372,7 @@ const fetchModels = async (id: string) => {
               <input
                 v-model="addForm.base_url"
                 type="url"
-                :placeholder="t('modelsPage.urlPh')"
+                :placeholder="t('modelsPage.baseUrlPh')"
                 class="w-full rounded-2xl border border-amber-100/10 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:border-amber-300/30 focus:outline-none"
               />
               <input

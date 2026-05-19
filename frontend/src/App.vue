@@ -7,7 +7,7 @@ import DesktopShell from '@/components/layout/DesktopShell.vue'
 
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
-const isLoading = ref(true)
+const isLoading = ref(!authStore.restoreFromCache())
 const route = useRoute()
 const showShell = computed(() => route.meta.shell !== false)
 

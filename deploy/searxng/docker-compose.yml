@@ -1,0 +1,21 @@
+# SearXNG for TARS web_search (SEARXNG_URL=http://localhost:8888)
+# 单容器模式，无需 Valkey，适合本机开发
+
+name: searxng
+
+services:
+  searxng:
+    container_name: searxng
+    image: docker.io/searxng/searxng:${SEARXNG_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    environment:
+      SEARXNG_BIND_ADDRESS: "0.0.0.0"
+      SEARXNG_PORT: "8080"
+    volumes:
+      - ./core-config/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng/
+
+volumes:
+  searxng-cache:

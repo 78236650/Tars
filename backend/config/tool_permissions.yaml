@@ -20,6 +20,10 @@ roles:
       - command
       - knowledge_search
       - meeting_recognizer
+      - bi_query
+      - bi_list_datasources
+      - bi_generate_chart
+      - bi_schema_explore
     denied_tools:
       - shell          # 需要 admin 单独授权
       - process

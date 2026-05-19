@@ -7,6 +7,23 @@ import pytest
 import asyncio
 
 
+def _embedding_provider():
+    from tars.memory.embeddings import (
+        DeterministicEmbeddingProvider,
+        LocalEmbeddingProvider,
+        _sentence_transformers_available,
+    )
+    if _sentence_transformers_available():
+        return LocalEmbeddingProvider(model_name="BAAI/bge-small-zh-v1.5")
+    return DeterministicEmbeddingProvider(dim=512)
+
+
+requires_sentence_transformers = pytest.mark.skipif(
+    not __import__("importlib").util.find_spec("sentence_transformers"),
+    reason="sentence-transformers not installed",
+)
+
+
 class TestRegexExtractor:
     def test_extract_chinese_preference(self):
         from tars.memory.extractor import RegexExtractor
@@ -132,13 +149,13 @@ class TestDeduplicator:
 
 class TestEmbeddings:
     def test_local_embedding_encode(self):
-        from tars.memory.embeddings import LocalEmbeddingProvider
-        provider = LocalEmbeddingProvider(model_name="BAAI/bge-small-zh-v1.5")
+        provider = _embedding_provider()
         vecs = provider.encode(["你好世界", "Hello World"])
         assert len(vecs) == 2
-        assert len(vecs[0]) == 512  # bge-small 维度
+        assert len(vecs[0]) == 512
         assert all(isinstance(v, float) for v in vecs[0])
 
+    @requires_sentence_transformers
     def test_similar_texts_have_high_similarity(self):
         from tars.memory.embeddings import LocalEmbeddingProvider
         from tars.memory.deduplicator import cosine_similarity
@@ -147,6 +164,7 @@ class TestEmbeddings:
         sim = cosine_similarity(vecs[0], vecs[1])
         assert sim > 0.7
 
+    @requires_sentence_transformers
     def test_different_texts_have_low_similarity(self):
         from tars.memory.embeddings import LocalEmbeddingProvider
         from tars.memory.deduplicator import cosine_similarity
@@ -168,9 +186,9 @@ class TestHybridSearch:
     @pytest.fixture
     def setup_db(self, tmp_path):
         from tars.database.base import Database
-        from tars.memory.embeddings import LocalEmbeddingProvider, serialize_vector
+        from tars.memory.embeddings import serialize_vector
         db = Database(db_path=str(tmp_path / "test.db"))
-        provider = LocalEmbeddingProvider(model_name="BAAI/bge-small-zh-v1.5")
+        provider = _embedding_provider()
 
         memories_data = [
             ("我喜欢使用Python编程", "user_preference"),
@@ -203,9 +221,9 @@ class TestMemoryManagerIntegration:
     @pytest.fixture
     def manager(self, tmp_path):
         from tars.database.base import Database
-        from tars.memory import MemoryManager, LocalEmbeddingProvider
+        from tars.memory import MemoryManager
         db = Database(db_path=str(tmp_path / "test.db"))
-        provider = LocalEmbeddingProvider(model_name="BAAI/bge-small-zh-v1.5")
+        provider = _embedding_provider()
         return MemoryManager(db=db, embedding_provider=provider)
 
     @pytest.mark.asyncio

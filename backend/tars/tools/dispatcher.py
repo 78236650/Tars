@@ -112,8 +112,35 @@ class ToolDispatcher:
             merged_arguments = dict(arguments)
             for key, value in (context or {}).items():
                 merged_arguments.setdefault(key, value)
-            return await tool.execute(**merged_arguments)
+            result = await tool.execute(**merged_arguments)
+            try:
+                from ..security.audit import audit_logger
+                if audit_logger:
+                    audit_logger.log_tool_call(
+                        tool_name=tool_name,
+                        tenant_id=(context or {}).get("tenant_id", "default"),
+                        user_id=(context or {}).get("user_id", "default"),
+                        arguments=arguments,
+                        success=result.success,
+                        client_ip=(context or {}).get("client_ip", ""),
+                    )
+            except Exception:
+                pass
+            return result
         except Exception as e:
+            try:
+                from ..security.audit import audit_logger
+                if audit_logger:
+                    audit_logger.log_tool_call(
+                        tool_name=tool_name,
+                        tenant_id=(context or {}).get("tenant_id", "default"),
+                        user_id=(context or {}).get("user_id", "default"),
+                        arguments=arguments,
+                        success=False,
+                        client_ip=(context or {}).get("client_ip", ""),
+                    )
+            except Exception:
+                pass
             return ToolResult(success=False, output="", error=f"工具执行失败: {e}")
 
     async def chat_with_tools(

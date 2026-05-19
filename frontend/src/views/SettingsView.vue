@@ -1,26 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
-import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const { locale, toggleLocale, t } = useI18n()
-const authStore = useAuthStore()
 
-const tabs = computed(() => {
-  const base = [
-    { labelKey: 'settings.tabs.subagents', path: '/settings/subagents' },
-    { labelKey: 'settings.tabs.users', path: '/settings/users' },
-    { labelKey: 'settings.tabs.personality', path: '/settings/personality' },
-  ]
-  if (authStore.user?.role === 'admin') {
-    base.push({ labelKey: 'settings.tabs.roles', path: '/settings/roles' })
-  }
-  base.push({ labelKey: 'settings.tabs.changelog', path: '/settings/changelog' })
-  return base
-})
+const tabs = [
+  { labelKey: 'settings.tabs.personality', path: '/settings/personality' },
+  { labelKey: 'settings.tabs.subagents', path: '/settings/subagents' },
+  { labelKey: 'settings.tabs.changelog', path: '/settings/changelog' },
+]
 </script>
 
 <template>

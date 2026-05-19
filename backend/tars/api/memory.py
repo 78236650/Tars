@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..database import Database
 from ..memory.compressor import MemoryCompressor
 from ..memory.core_memory import BLOCK_NAMES
 from ..memory.manager import MemoryManager
+from ..security.audit import safe_audit, client_ip_from_request
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -38,10 +39,37 @@ def _require_manager() -> MemoryManager:
     return _memory_manager
 
 
+def _tenant_manager(tenant_id: Optional[str]) -> MemoryManager:
+    return _require_manager().for_tenant((tenant_id or "default").strip() or "default")
+
+
 def _require_compressor() -> MemoryCompressor:
     if _compressor is None:
         raise HTTPException(status_code=500, detail="Memory compressor not initialized")
     return _compressor
+
+
+def _tenant_compressor(tenant_id: Optional[str]) -> MemoryCompressor:
+    base = _require_compressor()
+    scoped_tenant = (tenant_id or "default").strip() or "default"
+    return MemoryCompressor(base.db, provider=base.provider, tenant_id=scoped_tenant)
+
+
+def _audit_memory_write(
+    action: str,
+    memory_id: str,
+    tenant_id: str,
+    http_request: Optional[Request] = None,
+):
+    safe_audit(
+        lambda lg: lg.log_memory_access(
+            memory_id=memory_id,
+            action=action,
+            tenant_id=tenant_id,
+            user_id=tenant_id,
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
 
 
 def _memory_to_dict(memory) -> Dict[str, Any]:
@@ -69,7 +97,7 @@ def _memory_to_dict(memory) -> Dict[str, Any]:
 
 
 class UpdateCoreBlockRequest(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = ""
 
 
 class UpdateMemoryRequest(BaseModel):
@@ -97,18 +125,35 @@ def get_memory_stats(x_tenant_id: Optional[str] = Header(default="default")):
 
 
 @router.get("/core")
-def get_core_memory():
-    manager = _require_manager()
-    return {"blocks": manager.core.get_all()}
+def get_core_memory(x_tenant_id: Optional[str] = Header(default="default")):
+    manager = _tenant_manager(x_tenant_id)
+    return {"blocks": manager.core.get_all(), "tenant_id": manager.tenant_id}
 
 
 @router.put("/core/{block}")
-def update_core_memory(block: str, payload: UpdateCoreBlockRequest):
-    manager = _require_manager()
+def update_core_memory(
+    block: str,
+    payload: UpdateCoreBlockRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    manager = _tenant_manager(x_tenant_id)
     if block not in BLOCK_NAMES:
         raise HTTPException(status_code=400, detail="invalid core memory block")
     manager.core.set(block, payload.content)
-    return {"success": True, "block": block, "content": payload.content}
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id=f"core_memory:{block}",
+            detail="memory_write",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
+    return {
+        "success": True,
+        "block": block,
+        "content": payload.content,
+        "tenant_id": manager.tenant_id,
+    }
 
 
 @router.get("/recent")
@@ -188,14 +233,19 @@ def get_compress_status():
 
 
 @router.post("/compress")
-async def run_manual_compress():
-    compressor = _require_compressor()
-    return await compressor.compress_all()
+async def run_manual_compress(x_tenant_id: Optional[str] = Header(default="default")):
+    compressor = _tenant_compressor(x_tenant_id)
+    report = await compressor.compress_all()
+    _require_compressor()._status = compressor._status
+    return report
 
 
 @router.post("/merge")
-async def merge_memories(payload: MergeRequest):
-    compressor = _require_compressor()
+async def merge_memories(
+    payload: MergeRequest,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    compressor = _tenant_compressor(x_tenant_id)
     try:
         return await compressor.merge_memories(payload.memory_ids, preview_only=payload.preview_only)
     except ValueError as exc:
@@ -212,21 +262,34 @@ def get_memory_detail(memory_id: str, x_tenant_id: Optional[str] = Header(defaul
 
 
 @router.put("/{memory_id}")
-def update_memory(memory_id: str, payload: UpdateMemoryRequest, x_tenant_id: Optional[str] = Header(default="default")):
+def update_memory(
+    memory_id: str,
+    payload: UpdateMemoryRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     db = _require_db()
-    ok = db.update_memory(memory_id, payload.content, tenant_id=x_tenant_id or "default")
+    tenant_id = x_tenant_id or "default"
+    ok = db.update_memory(memory_id, payload.content, tenant_id=tenant_id)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
-    memory = db.get_memory(memory_id, tenant_id=x_tenant_id or "default")
+    _audit_memory_write("write", memory_id, tenant_id, http_request)
+    memory = db.get_memory(memory_id, tenant_id=tenant_id)
     return _memory_to_dict(memory)
 
 
 @router.delete("/{memory_id}")
-def delete_memory(memory_id: str, x_tenant_id: Optional[str] = Header(default="default")):
+def delete_memory(
+    memory_id: str,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     db = _require_db()
-    ok = db.delete_memory(memory_id, tenant_id=x_tenant_id or "default")
+    tenant_id = x_tenant_id or "default"
+    ok = db.delete_memory(memory_id, tenant_id=tenant_id)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
+    _audit_memory_write("delete", memory_id, tenant_id, http_request)
     return {"success": True}
 
 
@@ -240,11 +303,17 @@ def pin_memory(memory_id: str, payload: PinRequest, x_tenant_id: Optional[str] =
 
 
 @router.post("/{memory_id}/promote")
-def promote_memory(memory_id: str, x_tenant_id: Optional[str] = Header(default="default")):
+def promote_memory(
+    memory_id: str,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     db = _require_db()
-    memory = db.promote_memory(memory_id, tenant_id=x_tenant_id or "default")
+    tenant_id = x_tenant_id or "default"
+    memory = db.promote_memory(memory_id, tenant_id=tenant_id)
     if memory is None:
         raise HTTPException(status_code=404, detail="memory not found")
+    _audit_memory_write("promote", memory_id, tenant_id, http_request)
     return _memory_to_dict(memory)
 
 
@@ -256,6 +325,7 @@ class ScopeUpdateRequest(BaseModel):
 def update_memory_scope(
     memory_id: str,
     payload: ScopeUpdateRequest,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(default="default"),
     x_user_role: Optional[str] = Header(default="user"),
 ):
@@ -263,7 +333,9 @@ def update_memory_scope(
     if x_user_role != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可修改记忆 scope")
     db = _require_db()
-    ok = db.set_memory_scope(memory_id, payload.scope, tenant_id=x_tenant_id or "default")
+    tenant_id = x_tenant_id or "default"
+    ok = db.set_memory_scope(memory_id, payload.scope, tenant_id=tenant_id)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
+    _audit_memory_write("scope", memory_id, tenant_id, http_request)
     return {"success": True, "memory_id": memory_id, "scope": payload.scope}

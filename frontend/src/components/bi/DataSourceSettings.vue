@@ -23,7 +23,7 @@
         </div>
         <div class="card-body">
           <div class="schema-summary">
-            {{ t('bi.tableCount', { count: Object.keys(ds.schema_snapshot.tables || {}).length }) }}
+            {{ t('bi.tableCount', { count: Object.keys(ds.schema_snapshot?.tables || {}).length }) }}
           </div>
           <div v-if="ds.schema_annotations && Object.keys(ds.schema_annotations).length > 0" class="annotations-summary">
             {{ t('bi.annotatedCount', { count: Object.keys(ds.schema_annotations).length }) }}
@@ -122,8 +122,14 @@ async function loadDataSources() {
   try {
     const res = await biApi.listDataSources()
     datasources.value = res.datasources
-  } catch (e) {
-    alert(t('bi.loadFailed'))
+  } catch (e: any) {
+    const detail = e.response?.data?.detail
+    const status = e.response?.status
+    if (status === 404 || status === 503) {
+      alert(t('bi.moduleDisabled'))
+    } else {
+      alert(detail ? `${t('bi.loadFailed')}: ${detail}` : t('bi.loadFailed'))
+    }
   } finally {
     loading.value = false
   }

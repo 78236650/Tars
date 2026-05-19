@@ -152,7 +152,7 @@ def test_invoke_api_accepts_valid_bearer_api_key(tmp_path):
     response = client.post(
         "/api/invoke",
         headers={
-            "X-Tenant-Id": "tenant_auth",
+            "X-Tenant-Id": user.id,
             "Authorization": f"Bearer {user.api_key}",
         },
         json={"message": "ping", "session_id": "sess-auth", "stream": False},
@@ -160,4 +160,4 @@ def test_invoke_api_accepts_valid_bearer_api_key(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["response"] == "pong"
-    assert agent.calls[0]["tenant_id"] == "tenant_auth"
+    assert agent.calls[0]["tenant_id"] == user.id

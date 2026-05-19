@@ -27,6 +27,29 @@ def client(tmp_path, monkeypatch):
     test_db.close()
 
 
+def test_get_all_users_includes_role_template_id(client):
+    from tars.gateway.permission import UserRole
+
+    http, store = client
+    user = store.create_user(
+        username="dev",
+        email="dev@example.com",
+        role=UserRole.USER,
+        password="DevPass123!",
+    )
+    store.update_user(user.id, role_template_id="developer")
+
+    listed = store.get_all_users()
+    match = next(u for u in listed if u.id == user.id)
+    assert match.role_template_id == "developer"
+
+    response = http.get("/api/users")
+    assert response.status_code == 200
+    payload = response.json()["users"]
+    api_user = next(u for u in payload if u["id"] == user.id)
+    assert api_user["role_template_id"] == "developer"
+
+
 def test_create_user_requires_password(client):
     http, _ = client
 

@@ -80,6 +80,14 @@ class TestAuditLogger:
         assert t1_logs[0].resource_id == "weather"
         assert t2_logs[0].resource_id == "shell"
 
+    def test_list_all_tenants_when_unfiltered(self, db_with_audit):
+        db, logger = db_with_audit
+        logger.log_tool_call("weather", tenant_id="t1", user_id="u1")
+        logger.log_tool_call("shell", tenant_id="t2", user_id="u2")
+        logs, total = logger.list()
+        assert total == 2
+        assert {log.resource_id for log in logs} == {"weather", "shell"}
+
     def test_pagination(self, db_with_audit):
         db, logger = db_with_audit
         for i in range(5):
@@ -100,6 +108,16 @@ class TestAuditLogger:
         # Should not raise (try/except catches the error)
         logger.log_tool_call("test", "t1", "u1")
 
+    def test_log_login_and_user_event(self, db_with_audit):
+        db, logger = db_with_audit
+        logger.log_login(user_id="u1", tenant_id="u1", success=True, detail="admin")
+        logger.log_user_event("user_create", "u2", actor_id="u1", tenant_id="u1")
+        logs, total = logger.list()
+        assert total == 2
+        actions = {log.action for log in logs}
+        assert "login" in actions
+        assert "user_create" in actions
+
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
@@ -112,3 +130,52 @@ def db_with_audit(tmp_path):
     logger = AuditLogger(db)
     yield db, logger
     db.close()
+
+
+@pytest.fixture
+def audit_client(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from tars.api.audit import router as audit_router, init_audit_api
+
+    db = Database(str(tmp_path / "audit_api.db"))
+    init_audit_api(db)
+    app = FastAPI()
+    app.include_router(audit_router)
+    return TestClient(app), db
+
+
+class TestAuditApi:
+    def test_admin_can_list_all_tenants(self, audit_client):
+        client, db = audit_client
+        db.add_audit_log("permission_denied", "tool", tenant_id="user-a", user_id="u1", resource_id="shell")
+        db.add_audit_log("permission_denied", "tool", tenant_id="user-b", user_id="u2", resource_id="weather")
+
+        resp = client.get("/api/audit/logs", headers={"X-User-Role": "admin"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+        assert data["items"][0]["timestamp"]
+        assert data["items"][0]["resource"] == "tool:weather"
+        assert data["items"][0]["ip_address"] == ""
+
+    def test_non_admin_forbidden(self, audit_client):
+        client, _ = audit_client
+        resp = client.get("/api/audit/logs", headers={"X-User-Role": "user"})
+        assert resp.status_code == 403
+
+    def test_filter_by_tenant_id(self, audit_client):
+        client, db = audit_client
+        db.add_audit_log("tool_call:success", "tool", tenant_id="tenant-a", user_id="u1", resource_id="a")
+        db.add_audit_log("tool_call:success", "tool", tenant_id="tenant-b", user_id="u2", resource_id="b")
+
+        resp = client.get(
+            "/api/audit/logs",
+            headers={"X-User-Role": "admin"},
+            params={"tenant_id": "tenant-a"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["resource_id"] == "a"

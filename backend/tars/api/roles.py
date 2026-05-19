@@ -1,11 +1,20 @@
 """角色模板 REST API — v4.0.2."""
 from typing import Optional
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
-from ..gateway.role_template import role_template_manager, RoleTemplate as RoleTemplateModel
+from ..gateway import role_template as _rt_module
+from ..gateway.role_template import RoleTemplate as RoleTemplateModel
+from ..security.audit import safe_audit, client_ip_from_request
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
+
+
+def _mgr():
+    m = _rt_module.role_template_manager
+    if not m:
+        raise HTTPException(status_code=503, detail="Role template manager not initialized")
+    return m
 
 
 def _require_admin(role: str):
@@ -26,16 +35,12 @@ def _template_to_dict(t: RoleTemplateModel) -> dict:
 
 @router.get("")
 def list_roles():
-    if not role_template_manager:
-        raise HTTPException(status_code=503)
-    return [_template_to_dict(t) for t in role_template_manager.list_templates()]
+    return [_template_to_dict(t) for t in _mgr().list_templates()]
 
 
 @router.get("/{role_id}")
 def get_role(role_id: str):
-    if not role_template_manager:
-        raise HTTPException(status_code=503)
-    t = role_template_manager.get_template(role_id)
+    t = _mgr().get_template(role_id)
     if not t:
         raise HTTPException(status_code=404, detail="角色模板不存在")
     return _template_to_dict(t)
@@ -53,40 +58,80 @@ class CreateRoleRequest(BaseModel):
 
 
 @router.post("")
-def create_role(body: CreateRoleRequest, x_user_role: Optional[str] = Header(default="user")):
+def create_role(
+    body: CreateRoleRequest,
+    http_request: Request,
+    x_user_role: Optional[str] = Header(default="user"),
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     _require_admin(x_user_role)
-    if not role_template_manager:
-        raise HTTPException(status_code=503)
-    if role_template_manager.get_template(body.id):
+    if _mgr().get_template(body.id):
         raise HTTPException(status_code=409, detail="角色 ID 已存在")
-    t = role_template_manager.create_template(
+    t = _mgr().create_template(
         id=body.id, name=body.name, description=body.description,
         allowed_tools=body.allowed_tools, denied_tools=body.denied_tools,
         allowed_modules=body.allowed_modules, max_concurrent=body.max_concurrent,
         workspace_restriction=body.workspace_restriction,
     )
+    actor_id = x_tenant_id or "default"
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id=f"role:{body.id}",
+            tenant_id=actor_id,
+            user_id=actor_id,
+            detail=f"action=role_create,name={body.name}",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
     return {"success": True, "template": _template_to_dict(t)}
 
 
 @router.put("/{role_id}")
-def update_role(role_id: str, body: dict, x_user_role: Optional[str] = Header(default="user")):
+def update_role(
+    role_id: str,
+    body: dict,
+    http_request: Request,
+    x_user_role: Optional[str] = Header(default="user"),
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     _require_admin(x_user_role)
-    if not role_template_manager:
-        raise HTTPException(status_code=503)
-    ok = role_template_manager.update_template(role_id, **body)
+    ok = _mgr().update_template(role_id, **body)
     if not ok:
         raise HTTPException(status_code=400, detail="更新失败（预置模板不可修改或模板不存在）")
-    return {"success": True, "template": _template_to_dict(role_template_manager.get_template(role_id))}
+    actor_id = x_tenant_id or "default"
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id=f"role:{role_id}",
+            tenant_id=actor_id,
+            user_id=actor_id,
+            detail="action=role_update",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
+    return {"success": True, "template": _template_to_dict(_mgr().get_template(role_id))}
 
 
 @router.delete("/{role_id}")
-def delete_role(role_id: str, x_user_role: Optional[str] = Header(default="user")):
+def delete_role(
+    role_id: str,
+    http_request: Request,
+    x_user_role: Optional[str] = Header(default="user"),
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     _require_admin(x_user_role)
-    if not role_template_manager:
-        raise HTTPException(status_code=503)
-    ok = role_template_manager.delete_template(role_id)
+    ok = _mgr().delete_template(role_id)
     if not ok:
         raise HTTPException(status_code=400, detail="删除失败（预置模板不可删除或模板不存在）")
+    actor_id = x_tenant_id or "default"
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id=f"role:{role_id}",
+            tenant_id=actor_id,
+            user_id=actor_id,
+            detail="action=role_delete",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
     return {"success": True}
 
 
@@ -105,29 +150,46 @@ class AssignRoleRequest(BaseModel):
 
 
 @router.post("/users/{user_id}/role")
-def assign_user_role(user_id: str, body: AssignRoleRequest, x_user_role: Optional[str] = Header(default="user")):
+def assign_user_role(
+    user_id: str,
+    body: AssignRoleRequest,
+    http_request: Request,
+    x_user_role: Optional[str] = Header(default="user"),
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     _require_admin(x_user_role)
-    if not role_template_manager or not _user_store:
+    if not _user_store:
         raise HTTPException(status_code=503)
-    t = role_template_manager.get_template(body.role_template_id)
+    t = _mgr().get_template(body.role_template_id)
     if not t:
         raise HTTPException(status_code=404, detail="角色模板不存在")
     from ..gateway.permission import UserRole
     role_map = {"admin": UserRole.ADMIN, "readonly": UserRole.GUEST}
     user_role = role_map.get(body.role_template_id, UserRole.USER)
     _user_store.update_user(user_id, role=user_role, role_template_id=body.role_template_id)
+    actor_id = x_tenant_id or "default"
+    safe_audit(
+        lambda lg: lg.log_user_event(
+            action="user_update",
+            target_user_id=user_id,
+            actor_id=actor_id,
+            tenant_id=actor_id,
+            detail=f"role_template_id={body.role_template_id}",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
     return {"success": True, "user_id": user_id, "role_template_id": body.role_template_id}
 
 
 @router.get("/users/{user_id}/permissions")
 def get_user_permissions(user_id: str):
-    if not role_template_manager or not _user_store:
+    if not _user_store:
         raise HTTPException(status_code=503)
     user = _user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     template_id = getattr(user, "role_template_id", None) or _role_to_template(getattr(user, "role", None))
-    return role_template_manager.get_user_permissions(template_id)
+    return _mgr().get_user_permissions(template_id)
 
 
 def _role_to_template(role) -> str:

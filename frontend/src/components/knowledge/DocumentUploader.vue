@@ -76,10 +76,19 @@ async function uploadFiles(files: File[]) {
     uploading.value.push({ id, name: file.name, status: 'uploading' })
 
     try {
-      await knowledgeApi.uploadDocument(props.collectionId, file)
+      const result = await knowledgeApi.uploadDocument(props.collectionId, file)
       const item = uploading.value.find(u => u.id === id)
-      if (item) item.status = 'completed'
-      emit('uploaded', props.collectionId)
+      if (item) {
+        if (result.document?.status === 'indexed') {
+          item.status = 'completed'
+        } else {
+          item.status = 'failed'
+          item.error = result.document?.status || 'index_failed'
+        }
+      }
+      if (result.document?.status === 'indexed') {
+        emit('uploaded', props.collectionId)
+      }
     } catch (e: any) {
       const item = uploading.value.find(u => u.id === id)
       if (item) {

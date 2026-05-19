@@ -14,11 +14,11 @@ modules:
   # Optional modules (enable/disable per deployment)
   optional:
     meeting:
-      enabled: false
+      enabled: true
       description: "会议助手（录音转写 + 摘要）"
       routes: ["/api/meeting"]
     bi:
-      enabled: false
+      enabled: true
       description: "BI 工作台（数据分析 + 可视化）"
       routes: ["/api/bi"]
     knowledge:

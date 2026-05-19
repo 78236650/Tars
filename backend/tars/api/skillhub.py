@@ -1,9 +1,11 @@
 """TARS API - SkillHub 商店路由"""
 import json
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header, Request
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
+
+from ..security.audit import safe_audit, client_ip_from_request
 
 router = APIRouter(prefix="/api/skillhub", tags=["SkillHub 商店"])
 
@@ -12,13 +14,21 @@ _client = None
 _installer = None
 _skill_registry = None
 _catalog_path = None
+_local_catalog = None
 
 
-def init_skillhub_api(client, installer, skill_registry=None, catalog_path: str = None):
-    global _client, _installer, _skill_registry, _catalog_path
+def init_skillhub_api(
+    client,
+    installer,
+    skill_registry=None,
+    catalog_path: str = None,
+    local_catalog=None,
+):
+    global _client, _installer, _skill_registry, _catalog_path, _local_catalog
     _client = client
     _installer = installer
     _skill_registry = skill_registry
+    _local_catalog = local_catalog
     if catalog_path:
         _catalog_path = Path(catalog_path)
 
@@ -63,7 +73,9 @@ def _annotate_installed(packages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _load_catalog() -> List[Dict[str, Any]]:
-    """加载本地技能目录"""
+    """加载本地技能目录（catalog.json + bundled 自动发现）"""
+    if _local_catalog:
+        return _local_catalog.load_entries()
     if not _catalog_path or not _catalog_path.exists():
         return []
     try:
@@ -74,10 +86,21 @@ def _load_catalog() -> List[Dict[str, Any]]:
         return []
 
 
+def _enrich_package(pkg: Dict[str, Any]) -> Dict[str, Any]:
+    """补充 catalog 元数据到 API 响应"""
+    for key in ("usage", "example_prompt", "featured", "source"):
+        if key in pkg and pkg[key] is not None:
+            continue
+    return pkg
+
+
 @router.get("/catalog")
-async def get_catalog():
+async def get_catalog(featured: bool = False):
     """获取本地技能目录（已标注安装状态）"""
     packages = _load_catalog()
+    if featured:
+        packages = [p for p in packages if p.get("featured")]
+    packages = [_enrich_package(p) for p in packages]
     return {
         "success": True,
         "count": len(packages),
@@ -87,11 +110,10 @@ async def get_catalog():
 
 @router.get("/search")
 async def search_skills(q: str = ""):
-    """搜索 SkillHub 技能（先查本地目录，再查 GitHub）"""
-    if not _client:
+    """搜索 SkillHub 技能（本地目录优先，GitHub 补充）"""
+    if not _client and not _local_catalog:
         raise HTTPException(status_code=503, detail="SkillHub 未初始化")
 
-    # 1. 先查本地目录
     catalog = _load_catalog()
     local_results = []
     if q:
@@ -100,18 +122,22 @@ async def search_skills(q: str = ""):
             name = pkg.get("name", "").lower()
             desc = pkg.get("description", "").lower()
             tags = " ".join(pkg.get("tags", [])).lower()
-            if q_lower in name or q_lower in desc or q_lower in tags:
+            pkg_id = pkg.get("id", "").lower()
+            if q_lower in name or q_lower in desc or q_lower in tags or q_lower in pkg_id:
                 local_results.append(pkg)
     else:
         local_results = catalog
 
-    # 2. 本地结果标注已安装状态
-    results = _annotate_installed(local_results)
+    results = _annotate_installed([_enrich_package(p) for p in local_results])
+    seen_ids = {p.get("id") for p in results}
 
-    # 3. 如果本地不够，补充 GitHub 搜索
-    if not results:
+    if _client and (not q or len(results) < 10):
         github_results = await _client.search(q)
-        results = _annotate_installed([r.to_dict() for r in github_results])
+        for pkg in github_results:
+            d = pkg.to_dict()
+            if d.get("id") not in seen_ids:
+                results.append(_annotate_installed([d])[0])
+                seen_ids.add(d.get("id"))
 
     return {
         "success": True,
@@ -147,13 +173,27 @@ async def get_skill_detail(skill_id: str):
 
 
 @router.post("/install")
-async def install_skill(request: InstallRequest):
+async def install_skill(
+    request: InstallRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     """安装技能"""
     if not _installer:
         raise HTTPException(status_code=503, detail="SkillHub 未初始化")
 
     result = await _installer.install(request.skill_id, confirm_permissions=request.confirm_permissions)
     if result.get("success"):
+        tenant_id = x_tenant_id or "default"
+        safe_audit(
+            lambda lg: lg.log_skill_event(
+                action="skill_install",
+                skill_id=request.skill_id,
+                tenant_id=tenant_id,
+                user_id=tenant_id,
+                client_ip=client_ip_from_request(http_request),
+            )
+        )
         return result
     if result.get("needs_confirmation"):
         return result
@@ -161,13 +201,27 @@ async def install_skill(request: InstallRequest):
 
 
 @router.post("/uninstall")
-async def uninstall_skill(request: UninstallRequest):
+async def uninstall_skill(
+    request: UninstallRequest,
+    http_request: Request,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
     """卸载技能"""
     if not _installer:
         raise HTTPException(status_code=503, detail="SkillHub 未初始化")
 
     result = _installer.uninstall(request.skill_id)
     if result.get("success"):
+        tenant_id = x_tenant_id or "default"
+        safe_audit(
+            lambda lg: lg.log_skill_event(
+                action="skill_uninstall",
+                skill_id=request.skill_id,
+                tenant_id=tenant_id,
+                user_id=tenant_id,
+                client_ip=client_ip_from_request(http_request),
+            )
+        )
         return result
     raise HTTPException(status_code=400, detail=result.get("error", "卸载失败"))
 

@@ -2,9 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { authApi, rolesApi, type RoleTemplate } from '@/api'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
+import UserEditDrawer from './UserEditDrawer.vue'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types'
+import { resolveTemplateId, roleBadgeClass, templateDisplayName } from '@/utils/roleDisplay'
 
 const authStore = useAuthStore()
 const { locale, t } = useI18n()
@@ -12,6 +14,8 @@ const users = ref<User[]>([])
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
 const deletingUserId = ref('')
+const editingUser = ref<User | null>(null)
+const showEditDrawer = ref(false)
 
 // v4.0.2: 角色模板
 const roleTemplates = ref<RoleTemplate[]>([])
@@ -22,7 +26,7 @@ const newUser = ref({
   username: '',
   email: '',
   password: '',
-  role: 'user',
+  role: 'standard',
 })
 
 const deletingUser = computed(() => users.value.find((user) => user.id === deletingUserId.value) ?? null)
@@ -37,7 +41,6 @@ const loadUsers = async () => {
 }
 
 const loadRoleTemplates = async () => {
-  if (!isAdmin.value) return
   try {
     roleTemplates.value = await rolesApi.list()
   } catch {
@@ -45,15 +48,12 @@ const loadRoleTemplates = async () => {
   }
 }
 
-const getRoleTemplateName = (user: User): string => {
-  if (!user.role_template_id) return roleLabel(user.role)
-  const tmpl = roleTemplates.value.find((t) => t.id === user.role_template_id)
-  return tmpl?.name || user.role_template_id
-}
+const displayRoleName = (user: User): string =>
+  templateDisplayName(resolveTemplateId(user), t, roleTemplates.value)
 
 const openRoleAssign = (user: User) => {
   assignTargetUserId.value = user.id
-  assigningRoleId.value = user.role_template_id || user.role || 'standard'
+  assigningRoleId.value = resolveTemplateId(user)
   showRoleAssign.value = true
 }
 
@@ -135,8 +135,6 @@ const formatDate = (dateString: string) => {
   return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-const roleLabel = (role: string) => t(`userSettings.roles.${role}`)
-
 onMounted(() => {
   loadUsers()
   loadRoleTemplates()
@@ -163,7 +161,6 @@ onMounted(() => {
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.user') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.email') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.role') }}</th>
-              <th v-if="isAdmin" class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.roleTemplate') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.created') }}</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.lastLogin') }}</th>
               <th class="text-right py-3 px-4 text-sm font-medium text-slate-400">{{ t('userSettings.columns.actions') }}</th>
@@ -190,18 +187,9 @@ onMounted(() => {
               <td class="py-4 px-4">
                 <span
                   class="px-2 py-1 rounded-full text-xs font-medium"
-                  :class="{
-                    'bg-red-900/50 text-red-400': user.role === 'admin',
-                    'bg-blue-900/50 text-blue-400': user.role === 'user',
-                    'bg-gray-900/50 text-gray-400': user.role === 'guest'
-                  }"
+                  :class="roleBadgeClass(user)"
                 >
-                  {{ roleLabel(user.role) }}
-                </span>
-              </td>
-              <td v-if="isAdmin" class="py-4 px-4">
-                <span class="px-2 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300">
-                  {{ getRoleTemplateName(user) }}
+                  {{ displayRoleName(user) }}
                 </span>
               </td>
               <td class="py-4 px-4 text-slate-400 text-sm">{{ formatDate(user.created_at) }}</td>
@@ -212,10 +200,10 @@ onMounted(() => {
                 <div class="flex items-center justify-end gap-2">
                   <button
                     v-if="isAdmin"
-                    @click="openRoleAssign(user)"
+                    @click="editingUser = user; showEditDrawer = true"
                     class="text-sm text-amber-400 hover:text-amber-300 transition-colors"
                   >
-                    {{ t('userSettings.switchRole') }}
+                    {{ t('common.edit') }}
                   </button>
                   <button
                     @click="requestDelete(user.id)"
@@ -277,14 +265,17 @@ onMounted(() => {
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('userSettings.role') }}</label>
+            <label class="block text-sm font-medium text-slate-300 mb-2">{{ t('role.selectTemplate') }}</label>
             <select
               v-model="newUser.role"
               class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="user">{{ t('userSettings.roles.user') }}</option>
-              <option value="admin">{{ t('userSettings.roles.admin') }}</option>
-              <option value="guest">{{ t('userSettings.roles.guest') }}</option>
+              <option v-for="tmpl in roleTemplates" :key="tmpl.id" :value="tmpl.id">
+                {{ t(`role.${tmpl.id}`) !== `role.${tmpl.id}` ? t(`role.${tmpl.id}`) : tmpl.name }}
+              </option>
+              <option v-if="!roleTemplates.length" value="user">{{ t('userSettings.roles.user') }}</option>
+              <option v-if="!roleTemplates.length" value="admin">{{ t('userSettings.roles.admin') }}</option>
+              <option v-if="!roleTemplates.length" value="guest">{{ t('userSettings.roles.guest') }}</option>
             </select>
           </div>
       </div>
@@ -399,5 +390,12 @@ onMounted(() => {
         </div>
       </template>
     </AppSurfaceDialog>
+
+    <UserEditDrawer
+      :open="showEditDrawer"
+      :user="editingUser"
+      @close="showEditDrawer = false; editingUser = null"
+      @saved="showEditDrawer = false; editingUser = null; loadUsers()"
+    />
   </div>
 </template>

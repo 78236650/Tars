@@ -280,6 +280,10 @@ class TestKnowledgeIndexer:
             def __init__(self):
                 self.collection = MockCollection()
 
+            @property
+            def is_available(self):
+                return True
+
             def get_collection(self, collection_name, tenant_id="default"):
                 assert collection_name == "knowledge_coll1"
                 return self.collection
@@ -307,12 +311,56 @@ class TestKnowledgeIndexer:
         cursor.execute("SELECT id FROM document_files WHERE id = ?", ("doc1",))
         assert cursor.fetchone() is None
 
+    def test_index_document_sqlite_fallback_when_chroma_unavailable(self, tmp_path):
+        from tars.database import Database
+        from tars.knowledge.indexer import KnowledgeIndexer
+        from tars.memory.embeddings import DeterministicEmbeddingProvider
+
+        class UnavailableVectorStore:
+            @property
+            def is_available(self):
+                return False
+
+        db = Database(db_path=str(tmp_path / "sqlite_kb.db"))
+        indexer = KnowledgeIndexer(
+            UnavailableVectorStore(),
+            DeterministicEmbeddingProvider(dim=64),
+            db=db,
+            chunk_size=80,
+        )
+        result = indexer.index_document(
+            text="SQLite 回退索引测试。包含足够长度用于分块。",
+            doc_id="doc-sqlite",
+            collection_id="coll-sqlite",
+            file_name="note.txt",
+            tenant_id="default",
+        )
+        assert result["status"] == "indexed"
+        assert result.get("backend") == "sqlite"
+        assert result["chunk_count"] > 0
+
+        from tars.knowledge.sqlite_store import search_chunks
+
+        hits = search_chunks(
+            db,
+            DeterministicEmbeddingProvider(dim=64),
+            query="SQLite",
+            collection_ids=["coll-sqlite"],
+            tenant_id="default",
+            top_k=3,
+        )
+        assert len(hits) >= 1
+
     def test_index_file_uses_document_parser_for_markdown(self, tmp_path):
         from tars.knowledge.indexer import KnowledgeIndexer
 
         class MockVectorStore:
             def add_documents(self, **kwargs):
                 return kwargs["ids"]
+
+            @property
+            def is_available(self):
+                return True
 
         file_path = tmp_path / "guide.md"
         file_path.write_text("# 标题\n\n- 第一项\n- 第二项", encoding="utf-8")

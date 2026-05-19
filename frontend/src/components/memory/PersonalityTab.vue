@@ -18,12 +18,15 @@ const coreBlocks = ref<Record<string, string>>({
 })
 const saving = ref(false)
 const saveMessage = ref('')
-const coreBlockTitles = computed<Record<string, string>>(() => ({
-  persona: t('personalityTab.coreBlock.persona'),
-  user_profile: t('personalityTab.coreBlock.user_profile'),
-  project_context: t('personalityTab.coreBlock.project_context'),
-  working_principles: t('personalityTab.coreBlock.working_principles'),
-}))
+const coreBlockKeys = ['persona', 'user_profile', 'project_context', 'working_principles'] as const
+
+const coreBlockTitles = computed<Record<string, string>>(() =>
+  Object.fromEntries(coreBlockKeys.map((key) => [key, t(`personalityTab.coreBlock.${key}`)])),
+)
+
+const coreBlockHints = computed<Record<string, string>>(() =>
+  Object.fromEntries(coreBlockKeys.map((key) => [key, t(`personalityTab.coreBlock.${key}.hint`)])),
+)
 
 const presetPersonalities = computed(() => [
   { name: t('personalitySettings.presets.professional'), params: { honesty: 0.9, humor: 0.3, initiative: 0.8, empathy: 0.6, formality: 0.8, creativity: 0.5, conciseness: 0.8, technical_depth: 0.9, curiosity: 0.7, skepticism: 0.6 } },
@@ -72,9 +75,23 @@ const saveSettings = async () => {
       saveMessage.value = t('personalityTab.saveFailed')
       return
     }
-    await Promise.all(
-      Object.entries(coreBlocks.value).map(([block, content]) => memoryApi.updateCoreBlock(block, content))
+    const results = await Promise.allSettled(
+      Object.entries(coreBlocks.value).map(([block, content]) =>
+        memoryApi.updateCoreBlock(block, content ?? ''),
+      ),
     )
+    const failed = results.find((item) => item.status === 'rejected')
+    if (failed) {
+      saveMessage.value = t('personalityTab.coreBlocksSaveFailed')
+      return
+    }
+    const blocks = await memoryApi.getCoreBlocks()
+    coreBlocks.value = {
+      persona: blocks.blocks.persona || '',
+      user_profile: blocks.blocks.user_profile || '',
+      project_context: blocks.blocks.project_context || '',
+      working_principles: blocks.blocks.working_principles || '',
+    }
     saveMessage.value = t('personalityTab.saveSuccess')
   } catch (error) {
     console.error(error)
@@ -174,16 +191,19 @@ onMounted(() => {
       <div>
         <h2 class="text-lg font-semibold text-white">{{ t('personalityTab.coreBlocksTitle') }}</h2>
         <p class="mt-1 text-sm text-slate-400">{{ t('personalityTab.coreBlocksSubtitle') }}</p>
+        <p class="mt-2 text-xs text-amber-200/80">{{ t('personalityTab.coreBlocksTenantNote') }}</p>
       </div>
       <div class="mt-6 space-y-5">
-        <div v-for="(content, key) in coreBlocks" :key="key" class="rounded-2xl bg-slate-950 p-4">
-          <label class="mb-3 block text-sm font-medium text-slate-300">
+        <div v-for="key in coreBlockKeys" :key="key" class="rounded-2xl bg-slate-950 p-4">
+          <label class="mb-1 block text-sm font-medium text-slate-300">
             {{ coreBlockTitles[key] || key }}
           </label>
+          <p class="mb-3 text-xs text-slate-500">{{ coreBlockHints[key] }}</p>
           <textarea
             v-model="coreBlocks[key]"
             :rows="key === 'persona' ? 6 : 4"
             class="w-full rounded-2xl border border-slate-600 bg-slate-900 px-4 py-4 text-sm leading-6 text-white outline-none focus:border-blue-500"
+            :placeholder="coreBlockHints[key]"
           />
         </div>
       </div>

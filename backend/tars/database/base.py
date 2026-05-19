@@ -2065,7 +2065,7 @@ class Database:
 
     def list_audit_logs(
         self,
-        tenant_id: str = "default",
+        tenant_id: str = "",
         user_id: str = "",
         action: str = "",
         resource_type: str = "",
@@ -2074,8 +2074,11 @@ class Database:
     ) -> tuple[list[AuditLog], int]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        conditions = ["tenant_id = ?"]
-        params = [tenant_id]
+        conditions: list[str] = []
+        params: list = []
+        if tenant_id:
+            conditions.append("tenant_id = ?")
+            params.append(tenant_id)
         if user_id:
             conditions.append("user_id = ?")
             params.append(user_id)
@@ -2086,7 +2089,7 @@ class Database:
             conditions.append("resource_type = ?")
             params.append(resource_type)
 
-        where = " WHERE " + " AND ".join(conditions)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
         # total
         cursor.execute(f"SELECT COUNT(*) FROM audit_logs{where}", params)

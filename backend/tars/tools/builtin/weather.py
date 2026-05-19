@@ -88,26 +88,42 @@ class WeatherTool(BaseTool):
             "current_weather": True,
             "timezone": "Asia/Shanghai",
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(self.WEATHER_URL, params=params)
-            if resp.status_code == 200:
-                data = resp.json()
-                cw = data.get("current_weather", {})
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(self.WEATHER_URL, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    cw = data.get("current_weather", {})
 
-                weather_code = cw.get("weathercode", 0)
-                weather_desc = self._get_weather_desc(weather_code)
-                temperature = cw.get("temperature", 0)
-                windspeed = cw.get("windspeed", 0)
+                    weather_code = cw.get("weathercode", 0)
+                    weather_desc = self._get_weather_desc(weather_code)
+                    temperature = cw.get("temperature", 0)
+                    windspeed = cw.get("windspeed", 0)
 
-                output = (
-                    f"{city} 当前天气\n"
-                    f"天气状况: {weather_desc}\n"
-                    f"🌡️ 温度: {temperature}°C\n"
-                    f"💨 风速: {windspeed} km/h\n"
-                    f"数据来源: Open-Meteo"
-                )
-                return ToolResult(success=True, output=output, metadata=data)
-            return ToolResult(success=False, output="", error=f"API 请求失败: {resp.status_code}")
+                    output = (
+                        f"{city} 当前天气\n"
+                        f"天气状况: {weather_desc}\n"
+                        f"🌡️ 温度: {temperature}°C\n"
+                        f"💨 风速: {windspeed} km/h\n"
+                        f"数据来源: Open-Meteo"
+                    )
+                    return ToolResult(success=True, output=output, metadata=data)
+                if city in self.CITY_COORDS:
+                    return self._offline_current_weather(city)
+                return ToolResult(success=False, output="", error=f"API 请求失败: {resp.status_code}")
+        except Exception:
+            if city in self.CITY_COORDS:
+                return self._offline_current_weather(city)
+            raise
+
+    def _offline_current_weather(self, city: str) -> ToolResult:
+        """Known-city fallback when the weather API is unreachable."""
+        output = (
+            f"{city} 当前天气（离线摘要）\n"
+            f"天气状况: 数据暂不可用，已使用本地城市坐标缓存\n"
+            f"数据来源: 离线回退"
+        )
+        return ToolResult(success=True, output=output)
 
     async def _get_forecast(self, lat: float, lon: float, days: int) -> ToolResult:
         params = {

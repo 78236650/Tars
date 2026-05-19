@@ -1,4 +1,5 @@
 """Web Fetch 工具 — 获取网页正文（trafilatura 提取）"""
+import re
 from typing import Any, Dict
 
 import httpx
@@ -65,12 +66,17 @@ class WebFetchTool(BaseTool):
             pass
 
         if not extracted:
-            text = f"⚠️ 未能提取正文，返回原始内容:\n\n{html[:max_length]}"
-            return ToolResult(
-                success=True,
-                output=text[:max_length],
-                metadata={"url": url, "status_code": resp.status_code, "extracted": False},
-            )
+            fallback = self._fallback_extract(html)
+            if fallback and len(fallback) >= 50:
+                text = fallback
+                extracted = True
+            else:
+                text = f"⚠️ 未能提取正文，返回原始内容:\n\n{html[:max_length]}"
+                return ToolResult(
+                    success=True,
+                    output=text[:max_length],
+                    metadata={"url": url, "status_code": resp.status_code, "extracted": False},
+                )
 
         if title:
             output = f"{title}\n\n{text}"
@@ -85,3 +91,24 @@ class WebFetchTool(BaseTool):
             output=output,
             metadata={"url": url, "status_code": resp.status_code, "length": len(text), "extracted": True},
         )
+
+    @staticmethod
+    def _fallback_extract(html: str) -> str:
+        """Strip tags and prefer <article> / <main> when trafilatura is unavailable."""
+        for pattern in (
+            r"<article[^>]*>(.*?)</article>",
+            r"<main[^>]*>(.*?)</main>",
+        ):
+            match = re.search(pattern, html, re.DOTALL | re.IGNORECASE)
+            if match:
+                chunk = match.group(1)
+                text = re.sub(r"<script[^>]*>.*?</script>", " ", chunk, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r"<[^>]+>", " ", text)
+                text = re.sub(r"\s+", " ", text).strip()
+                if len(text) >= 50:
+                    return text
+        text = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()

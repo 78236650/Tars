@@ -14,11 +14,14 @@ class TestModuleRegistry:
         for m in ("auth", "chat", "memory", "skills", "tools", "knowledge"):
             assert self.registry.is_enabled(m) is True
 
-    def test_optional_modules_have_default(self):
-        self.registry.load()
-        # Without config file, optional modules should be True (default)
+    def test_optional_modules_have_default(self, tmp_path):
+        import yaml
+        # 无 optional 段时沿用 default_enabled
+        config_path = tmp_path / "modules.yaml"
+        config_path.write_text(yaml.dump({"default_enabled": True, "modules": {}}))
+        self.registry.load(str(config_path))
         assert self.registry.is_enabled("bi") is True
-        assert self.registry.is_enabled("admin") is True
+        assert self.registry.is_enabled("meeting") is True
 
     def test_list_modules(self):
         self.registry.load()
@@ -43,6 +46,23 @@ class TestModuleRegistry:
                 "bi": True,
             }
         }))
+        self.registry.load(str(config_path))
+        assert self.registry.is_enabled("meeting") is False
+        assert self.registry.is_enabled("bi") is True
+
+    def test_load_config_nested_optional_format(self, tmp_path):
+        import yaml
+        config_path = tmp_path / "modules.yaml"
+        config_path.write_text(
+            yaml.dump({
+                "modules": {
+                    "optional": {
+                        "meeting": {"enabled": False},
+                        "bi": {"enabled": True},
+                    }
+                }
+            })
+        )
         self.registry.load(str(config_path))
         assert self.registry.is_enabled("meeting") is False
         assert self.registry.is_enabled("bi") is True

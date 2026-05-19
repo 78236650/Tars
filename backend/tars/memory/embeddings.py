@@ -1,4 +1,6 @@
 """嵌入向量 Provider"""
+import hashlib
+import math
 import struct
 from abc import ABC, abstractmethod
 from typing import List, Optional
@@ -17,6 +19,34 @@ class EmbeddingProvider(ABC):
         pass
 
 
+def _sentence_transformers_available() -> bool:
+    try:
+        import sentence_transformers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+class DeterministicEmbeddingProvider(EmbeddingProvider):
+    """Deterministic hash-based vectors for tests and offline fallback (no ML deps)."""
+
+    def __init__(self, dim: int = 512):
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def encode(self, texts: List[str]) -> List[List[float]]:
+        vectors: List[List[float]] = []
+        for text in texts:
+            digest = hashlib.sha256(text.encode("utf-8")).digest()
+            raw = [digest[i % len(digest)] / 255.0 for i in range(self._dim)]
+            norm = math.sqrt(sum(v * v for v in raw)) or 1.0
+            vectors.append([v / norm for v in raw])
+        return vectors
+
+
 class LocalEmbeddingProvider(EmbeddingProvider):
     """本地 sentence-transformers 模型（默认 bge-small-zh-v1.5）。
 
@@ -33,6 +63,11 @@ class LocalEmbeddingProvider(EmbeddingProvider):
 
     def _ensure_loaded(self):
         if self._model is None:
+            if not _sentence_transformers_available():
+                raise ImportError(
+                    "sentence-transformers is not installed; "
+                    "install it or use DeterministicEmbeddingProvider for offline mode"
+                )
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
             self._dim = self._model.get_embedding_dimension()

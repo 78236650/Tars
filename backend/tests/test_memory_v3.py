@@ -124,10 +124,14 @@ class TestCoreMemoryTools:
         from tars.database import Database
         from tars.memory.core_memory import CoreMemoryManager, CoreMemoryAppendTool
         db = Database(db_path=str(tmp_path / "t.db"))
-        cm = CoreMemoryManager(db)
+        cm = CoreMemoryManager(db, tenant_id="tenant-a")
         cm.set("user_profile", "")
-        tool = CoreMemoryAppendTool(cm)
-        result = await tool.execute(block="user_profile", content="用户使用 Mac M1")
+        tool = CoreMemoryAppendTool(db)
+        result = await tool.execute(
+            block="user_profile",
+            content="用户使用 Mac M1",
+            tenant_id="tenant-a",
+        )
         assert result.success is True
         assert "Mac M1" in cm.get("user_profile")
 
@@ -138,8 +142,13 @@ class TestCoreMemoryTools:
         db = Database(db_path=str(tmp_path / "t.db"))
         cm = CoreMemoryManager(db)
         cm.set("user_profile", "用户使用 Python")
-        tool = CoreMemoryReplaceTool(cm)
-        result = await tool.execute(block="user_profile", old="Python", new="Go")
+        tool = CoreMemoryReplaceTool(db)
+        result = await tool.execute(
+            block="user_profile",
+            old="Python",
+            new="Go",
+            tenant_id="default",
+        )
         assert result.success is True
         assert "Go" in cm.get("user_profile")
 
@@ -148,9 +157,8 @@ class TestCoreMemoryTools:
         from tars.database import Database
         from tars.memory.core_memory import CoreMemoryManager, CoreMemoryAppendTool
         db = Database(db_path=str(tmp_path / "t.db"))
-        cm = CoreMemoryManager(db)
-        tool = CoreMemoryAppendTool(cm)
-        result = await tool.execute(block="invalid_block", content="x")
+        tool = CoreMemoryAppendTool(db)
+        result = await tool.execute(block="invalid_block", content="x", tenant_id="default")
         assert result.success is False
 
 

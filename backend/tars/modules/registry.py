@@ -17,6 +17,25 @@ class ModuleRegistry:
         self._modules: dict[str, bool] = {}
         self._default_enabled = True
 
+    def _read_optional_enabled(self, config: dict, module_name: str) -> bool | None:
+        """Parse flat or nested modules.yaml (modules.optional.meeting.enabled)."""
+        modules = config.get("modules") or {}
+        if not isinstance(modules, dict):
+            return None
+
+        flat = modules.get(module_name)
+        if isinstance(flat, bool):
+            return flat
+
+        optional = modules.get("optional")
+        if isinstance(optional, dict):
+            entry = optional.get(module_name)
+            if isinstance(entry, dict) and "enabled" in entry:
+                return bool(entry["enabled"])
+            if isinstance(entry, bool):
+                return entry
+        return None
+
     def load(self, config_path: str = None):
         """Load module switches from modules.yaml."""
         if config_path is None:
@@ -32,7 +51,10 @@ class ModuleRegistry:
                     config = yaml.safe_load(f) or {}
                 self._default_enabled = config.get("default_enabled", True)
                 for m in self.OPTIONAL_MODULES:
-                    self._modules[m] = config.get("modules", {}).get(m, self._default_enabled)
+                    enabled = self._read_optional_enabled(config, m)
+                    self._modules[m] = (
+                        enabled if enabled is not None else self._default_enabled
+                    )
             except Exception:
                 # On parse error, enable all optional modules
                 for m in self.OPTIONAL_MODULES:

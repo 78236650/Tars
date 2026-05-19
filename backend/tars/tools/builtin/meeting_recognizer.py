@@ -1,6 +1,8 @@
 """会议语音识别工具 — 基于 faster-whisper 的音频转录与 LLM 摘要生成"""
+import ast
 import os
 import json
+import re
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Dict, Optional
@@ -30,12 +32,20 @@ def shutdown_whisper_pool():
         _whisper_pool = None
 
 
+# 进程内缓存 Whisper 模型（避免每次转写重新加载，首次仍可能下载模型）
+_worker_models: Dict[str, Any] = {}
+
+
 def _sync_transcribe(file_path: str, language: Optional[str] = None, model_size: str = "base") -> dict:
     """在独立进程中执行 Whisper 转写（CPU 密集型，避免阻塞事件循环）"""
     try:
         from faster_whisper import WhisperModel
 
-        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        model = _worker_models.get(model_size)
+        if model is None:
+            print(f"[MeetingRecognizer] 加载 Whisper 模型 {model_size}（首次较慢，请耐心等待）...")
+            model = WhisperModel(model_size, device="cpu", compute_type="int8")
+            _worker_models[model_size] = model
         segments, info = model.transcribe(file_path, language=language, beam_size=5)
 
         segment_list = []
@@ -55,6 +65,11 @@ def _sync_transcribe(file_path: str, language: Optional[str] = None, model_size:
             "language": info.language,
             "duration": info.duration,
             "segments": segment_list,
+        }
+    except ImportError:
+        return {
+            "success": False,
+            "error": "未安装 faster-whisper，请执行: pip install faster-whisper",
         }
     except Exception as e:
         return {
@@ -125,20 +140,29 @@ class MeetingRecognizerTool(BaseTool):
                 "error": "LLM provider 未配置，无法生成摘要",
             }
 
+        markdown_mode = bool(prompt_override)
         if prompt_override:
             prompt = prompt_override.replace("{duration}", "").replace("{language}", language)
+            if "markdown" not in prompt.lower():
+                prompt += "\n\n请使用 Markdown 格式输出（含 ## 标题、列表、表格等）。"
             prompt += f"\n\n以下是会议转录文本：\n\n{transcript}"
         else:
             prompt = self._build_summary_prompt(transcript, language)
         try:
             from ...models.base import ChatMessage
+            system = (
+                "你是一位专业的会议记录助手。输出必须使用 Markdown 格式，不要使用 JSON。"
+                if markdown_mode
+                else "你是一位专业的会议记录助手。"
+            )
             messages = [
-                ChatMessage(role="system", content="你是一位专业的会议记录助手。"),
+                ChatMessage(role="system", content=system),
                 ChatMessage(role="user", content=prompt),
             ]
             response = await self.provider.chat(messages, temperature=0.7, max_tokens=2000)
-            content = response.content if hasattr(response, "content") else str(response)
-            return self._parse_summary_response(content)
+            raw = response.content if hasattr(response, "content") else str(response)
+            content = self._coerce_llm_text(raw)
+            return self._parse_summary_response(content, markdown_mode=markdown_mode)
         except Exception as e:
             return {
                 "summary": "",
@@ -148,65 +172,184 @@ class MeetingRecognizerTool(BaseTool):
             }
 
     def _build_summary_prompt(self, transcript: str, language: str = "zh") -> str:
-        """构建摘要生成提示词"""
+        """构建摘要生成提示词（Markdown 纪要）"""
         if language == "zh" or language.startswith("zh"):
-            return f"""请对以下会议转录文本生成结构化摘要。
+            return f"""请对以下会议转录整理为专业会议纪要，使用 Markdown 格式输出。
 
-要求：
-1. 用 2-3 句话概括会议整体内容
-2. 列出 3-7 个关键要点（要点应简洁明了）
-3. 按时间线列出主要讨论议题（格式：开始时间 - 议题）
+## 核心摘要
+（2-3 句话概括会议全貌）
 
-输出格式（严格遵循 JSON）：
-{{
-  "summary": "会议整体概括...",
-  "key_points": ["要点1", "要点2", ...],
-  "timeline": [{{"time": "00:00", "content": "开场介绍"}}, ...]
-}}
+## 关键要点
+- 要点 1
+- 要点 2
+
+## 议题与讨论
+### 议题一
+- 讨论要点与结论
+
+## 行动项
+- [ ] 任务描述 @负责人
+
+要求：忠实原文，不编造；专业术语保留原表述。
 
 会议转录文本：
 {transcript}
 """
         else:
-            return f"""Please generate a structured summary of the following meeting transcript.
+            return f"""Summarize the following meeting transcript as professional meeting notes in Markdown.
 
-Requirements:
-1. Summarize the overall meeting in 2-3 sentences
-2. List 3-7 key points
-3. List main discussion topics in timeline format
-
-Output format (strict JSON):
-{{
-  "summary": "Overall summary...",
-  "key_points": ["point 1", "point 2", ...],
-  "timeline": [{{"time": "00:00", "content": "Introduction"}}, ...]
-}}
+## Executive Summary
+## Key Points
+## Discussion Topics
+## Action Items
 
 Meeting transcript:
 {transcript}
 """
 
-    def _parse_summary_response(self, content: str) -> dict:
-        """解析 LLM 返回的摘要 JSON"""
-        try:
-            # 尝试提取 JSON 块
-            json_start = content.find("{")
-            json_end = content.rfind("}")
-            if json_start >= 0 and json_end > json_start:
-                json_str = content[json_start:json_end + 1]
-                data = json.loads(json_str)
-                return {
-                    "summary": data.get("summary", ""),
-                    "key_points": data.get("key_points", []),
-                    "timeline": data.get("timeline", []),
-                }
-        except Exception:
-            pass
+    @staticmethod
+    def _coerce_llm_text(raw: Any) -> str:
+        """Normalize provider output to plain text before parsing."""
+        if raw is None:
+            return ""
+        if isinstance(raw, dict):
+            for key in ("summary", "content", "text", "markdown", "output"):
+                val = raw.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            return json.dumps(raw, ensure_ascii=False)
+        if not isinstance(raw, str):
+            return str(raw).strip()
+        return raw.strip()
 
-        # fallback：返回原始内容作为 summary
+    @staticmethod
+    def _unescape_literal_newlines(text: str) -> str:
+        if "\n" not in text and "\\n" in text:
+            return text.replace("\\n", "\n").replace("\\t", "\t")
+        return text
+
+    @classmethod
+    def _extract_structured_payload(cls, content: str) -> Optional[dict]:
+        text = (content or "").strip()
+        if not text.startswith("{"):
+            return None
+
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                data = parser(text)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+
+        json_start = text.find("{")
+        json_end = text.rfind("}")
+        if json_start >= 0 and json_end > json_start:
+            snippet = text[json_start : json_end + 1]
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    data = parser(snippet)
+                except Exception:
+                    continue
+                if isinstance(data, dict):
+                    return data
+        return None
+
+    @classmethod
+    def _summary_from_payload(cls, data: dict) -> str:
+        for key in ("summary", "content", "text", "markdown", "output"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return cls._unescape_literal_newlines(val.strip())
+        return ""
+
+    @staticmethod
+    def _strip_markdown_fence(content: str) -> str:
+        text = (content or "").strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        return text
+
+    @classmethod
+    def _extract_loose_dict_field(cls, text: str, field: str) -> str:
+        """Best-effort extract when JSON / literal_eval fail (e.g. multiline Python repr)."""
+        stripped = (text or "").strip()
+        patterns = (
+            rf"['\"]{re.escape(field)}['\"]\s*:\s*['\"]([\s\S]*?)['\"]\s*\}}",
+            rf"['\"]{re.escape(field)}['\"]\s*:\s*['\"]([\s\S]*?)['\"]\s*,",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, stripped)
+            if match:
+                value = match.group(1).strip()
+                if value:
+                    return cls._unescape_literal_newlines(value)
+        return ""
+
+    @staticmethod
+    def _looks_like_markdown(content: str) -> bool:
+        text = (content or "").strip()
+        if text.startswith("{"):
+            return False
+        return bool(re.search(r"^#{1,6}\s", text, re.MULTILINE)) or text.startswith("## ")
+
+    @staticmethod
+    def _extract_bullet_key_points(content: str, limit: int = 10) -> list:
+        points: list = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("- ", "* ", "• ")):
+                item = stripped.lstrip("-*• ").strip()
+                if item and item not in points:
+                    points.append(item)
+                if len(points) >= limit:
+                    break
+        return points
+
+    def _parse_summary_response(self, content: str, markdown_mode: bool = False) -> dict:
+        """解析 LLM 摘要：模板/纪要模式保留完整 Markdown；兼容 JSON / content 字段。"""
+        content = self._strip_markdown_fence(self._coerce_llm_text(content))
+
+        payload = self._extract_structured_payload(content)
+        if payload:
+            summary = self._summary_from_payload(payload)
+            if summary:
+                key_points = payload.get("key_points")
+                if not isinstance(key_points, list) or not key_points:
+                    key_points = self._extract_bullet_key_points(summary)
+                return {
+                    "summary": summary,
+                    "key_points": key_points,
+                    "timeline": payload.get("timeline", []) if isinstance(payload.get("timeline"), list) else [],
+                }
+
+        if content.strip().startswith("{"):
+            for key in ("summary", "content", "text", "markdown", "output"):
+                extracted = self._extract_loose_dict_field(content, key)
+                if extracted:
+                    return {
+                        "summary": extracted,
+                        "key_points": self._extract_bullet_key_points(extracted),
+                        "timeline": [],
+                    }
+
+        content = self._unescape_literal_newlines(content)
+
+        if markdown_mode or self._looks_like_markdown(content):
+            return {
+                "summary": content,
+                "key_points": self._extract_bullet_key_points(content),
+                "timeline": [],
+            }
+
         return {
             "summary": content,
-            "key_points": [],
+            "key_points": self._extract_bullet_key_points(content),
             "timeline": [],
         }
 

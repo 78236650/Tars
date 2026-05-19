@@ -1,6 +1,7 @@
 """知识库搜索工具 — 供 Agent 调用"""
-from typing import Any, Dict, List
+from typing import Any, Dict
 
+from tars.knowledge.access import search_knowledge
 from tars.tools.base import BaseTool, ToolResult
 
 
@@ -33,13 +34,15 @@ class KnowledgeSearchTool(BaseTool):
         "required": ["query"],
     }
 
-    def __init__(self, retriever=None):
+    def __init__(self, retriever=None, db=None):
         self._retriever = retriever
+        self._db = db
 
     async def execute(self, **kwargs) -> ToolResult:
         query = kwargs.get("query", "").strip()
         collection_id = kwargs.get("collection_id")
         top_k = kwargs.get("top_k", 5)
+        tenant_id = (kwargs.get("tenant_id") or "default").strip() or "default"
 
         if not query:
             return ToolResult(success=False, output="", error="查询不能为空")
@@ -47,43 +50,22 @@ class KnowledgeSearchTool(BaseTool):
         if self._retriever is None:
             return ToolResult(success=False, output="", error="知识库检索器未初始化")
 
-        try:
-            if collection_id:
-                collection_ids = [collection_id]
-            else:
-                # 未指定时搜索所有 collection
-                from tars.main import db as _db
-                conn = _db._get_conn()
-                cursor = conn.cursor()
-                cursor.execute("SELECT id FROM document_collections WHERE tenant_id = 'default'")
-                collection_ids = [r[0] for r in cursor.fetchall()]
-                if not collection_ids:
-                    return ToolResult(success=True, output="知识库为空，暂无文档。", metadata={"results": []})
+        if self._db is None:
+            return ToolResult(success=False, output="", error="知识库数据库未初始化")
 
-            results = self._retriever.retrieve(
+        try:
+            text, results = search_knowledge(
+                self._db,
+                self._retriever,
                 query=query,
-                collection_ids=collection_ids,
+                tenant_id=tenant_id,
+                collection_id=collection_id,
                 top_k=top_k,
             )
-
-            if not results:
-                return ToolResult(
-                    success=True,
-                    output="未找到相关内容。",
-                    metadata={"results": []},
-                )
-
-            lines = [f"找到 {len(results)} 条相关内容："]
-            for i, r in enumerate(results, 1):
-                source = r.get("source", {})
-                file_name = source.get("file_name", "未知文件")
-                lines.append(f"\n[{i}] 来源: {file_name}")
-                lines.append(f"内容: {r['text'][:300]}...")
-
             return ToolResult(
                 success=True,
-                output="\n".join(lines),
-                metadata={"results": results},
+                output=text,
+                metadata={"results": results, "count": len(results)},
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=f"搜索失败: {e}")
