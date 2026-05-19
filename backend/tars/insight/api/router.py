@@ -37,6 +37,16 @@ def init_insight_api(db: Database, knowledge_indexer=None) -> None:
 
     set_insight_knowledge_indexer(knowledge_indexer)
 
+    # Recover any runs that were pending/running when the previous process died.
+    # BackgroundTasks do not survive restarts, so leaving them stuck blocks future
+    # runs and confuses the UI.
+    try:
+        swept = _run_store.sweep_stuck_runs()
+        if swept:
+            print(f"[Insight] sweep_stuck_runs marked {swept} run(s) as failed")
+    except Exception as e:
+        print(f"[Insight] sweep_stuck_runs failed: {e}")
+
 
 # All routes require an authenticated principal who can access the
 # `insight` module. tenant_id is derived from the principal (admin can
