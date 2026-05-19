@@ -294,10 +294,10 @@ class EntityTreeBuilder:
             """
             SELECT from_entity, to_entity, predicate, confidence, created_at
             FROM relations
-            WHERE from_entity = ? OR to_entity = ?
+            WHERE tenant_id = ? AND (from_entity = ? OR to_entity = ?)
             ORDER BY confidence DESC, created_at DESC
             """,
-            (entity_id, entity_id),
+            (self.tenant_id, entity_id, entity_id),
         )
         rows = cur.fetchall()
         labels = self._load_entity_labels_by_ids(
@@ -541,8 +541,10 @@ class EntityTreeBuilder:
             """
             SELECT from_entity, to_entity, predicate, confidence
             FROM relations
+            WHERE tenant_id = ?
             ORDER BY confidence DESC, created_at DESC
-            """
+            """,
+            (self.tenant_id,),
         )
         edges: List[Dict[str, Any]] = []
         truncated = False
@@ -618,6 +620,6 @@ class EntityTreeBuilder:
     def _count_relations(self) -> int:
         conn = self.db._get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM relations")
+        cur.execute("SELECT COUNT(*) FROM relations WHERE tenant_id = ?", (self.tenant_id,))
         row = cur.fetchone()
         return int(row[0]) if row else 0
