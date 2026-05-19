@@ -11,12 +11,15 @@ import urllib.request
 BASE = os.environ.get("TARS_API_BASE", "http://127.0.0.1:8000")
 TENANT = os.environ.get("TARS_TENANT_ID", "4a863625-6bc1-472d-8ce1-c83511c95e49")
 DS_DEMO = os.environ.get("TARS_INSIGHT_DEMO_DS", "bd565063-1d8b-48bb-94e8-35da70a3c53c")
+API_KEY = os.environ.get("TARS_API_KEY", "")
 
 
 def req(method: str, path: str, body: dict | None = None) -> tuple[int, dict | list | str]:
     url = f"{BASE}{path}"
     data = None
     headers = {"X-Tenant-ID": TENANT, "Content-Type": "application/json"}
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
     if body is not None:
         data = json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, headers=headers, method=method)

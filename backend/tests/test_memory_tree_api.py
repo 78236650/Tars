@@ -59,12 +59,22 @@ def client_and_db(tmp_path):
     from fastapi.testclient import TestClient
 
     from tars.api.memory import init_memory_api, router
+    from tars.api._auth import Principal, require_authenticated_user
     from tars.database import Database
     from tars.memory.manager import MemoryManager
 
     db = Database(db_path=str(tmp_path / "tree.db"))
     manager = MemoryManager(db, provider=StubLLMProvider())
     app = FastAPI()
+
+    # Override auth to return a default principal for tests
+    async def _fake_auth():
+        return Principal(
+            user_id="default", role="admin", role_template_id="admin",
+            tenant_id="default", is_admin=True, api_key="test-key",
+        )
+    app.dependency_overrides[require_authenticated_user] = _fake_auth
+
     app.include_router(router)
     init_memory_api(db, manager)
     return TestClient(app), db
@@ -156,13 +166,18 @@ class TestMemoryTreeAPI:
         assert body["stats"]["memory_count"] >= 1
 
     def test_tree_admin_user_id_forbidden_for_non_admin(self, client_and_db):
-        client, _db = client_and_db
-        resp = client.get(
-            "/api/memory/tree",
-            params={"user_id": "other"},
-            headers={"X-Tenant-Id": "default", "X-User-Role": "user"},
+        """Non-admin principal cannot use user_id to view another tenant."""
+        from fastapi import HTTPException as _HTTPException
+        from tars.api._auth import Principal
+        from tars.api.memory import _resolve_tree_tenant
+
+        non_admin = Principal(
+            user_id="alice", role="user", role_template_id="standard",
+            tenant_id="alice", is_admin=False, api_key="k",
         )
-        assert resp.status_code == 403
+        with pytest.raises(_HTTPException) as exc:
+            _resolve_tree_tenant(non_admin, "other")
+        assert exc.value.status_code == 403
 
     def test_provenance_view(self, client_and_db):
         client, db = client_and_db
