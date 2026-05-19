@@ -44,6 +44,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   quickStart: [text: string]
+  citationClick: [payload: { docId: string; title?: string }]
 }>()
 
 const { t } = useI18n()
@@ -122,6 +123,15 @@ const formatAssistantContent = (msg: ChatMessage, idx: number) =>
 
 onMounted(() => {
   document.addEventListener('click', (e: Event) => {
+    const refLink = (e.target as HTMLElement).closest('.knowledge-ref')
+    if (refLink) {
+      e.preventDefault()
+      const docId = refLink.getAttribute('data-doc-id') || ''
+      const title = refLink.getAttribute('data-doc-title') || undefined
+      if (docId) emit('citationClick', { docId, title })
+      return
+    }
+
     const btn = (e.target as HTMLElement).closest('.code-block-copy')
     if (!btn) return
     const block = btn.closest('.code-block')

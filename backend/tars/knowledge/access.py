@@ -50,7 +50,7 @@ def enrich_hit(hit: Dict[str, Any]) -> Dict[str, Any]:
 
 def format_citation_results(ranked: List[Dict[str, Any]]) -> str:
     lines = [
-        "共检索到 {n} 条知识库片段（引用时在句末标注 [ref:doc_id]）：".format(n=len(ranked))
+        "共检索到 {n} 条知识库片段（引用时在句末标注 [ref:doc_id|文档标题]）：".format(n=len(ranked))
     ]
     for i, r in enumerate(ranked, 1):
         cite = r.get("citation") or {}

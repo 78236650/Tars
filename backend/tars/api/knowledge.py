@@ -397,3 +397,73 @@ async def query_collection(
         "results": results,
         "total": len(results),
     }
+
+
+def _fetch_ref_snippet(cursor, doc_id: str, limit: int = 400) -> str:
+    cursor.execute(
+        """
+        SELECT content FROM knowledge_chunks
+        WHERE doc_id = ?
+        ORDER BY chunk_index ASC
+        LIMIT 1
+        """,
+        (doc_id,),
+    )
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return ""
+    text = str(row[0]).strip()
+    if len(text) > limit:
+        return text[:limit] + "..."
+    return text
+
+
+@router.get("/ref/{doc_id}")
+async def resolve_document_ref(
+    doc_id: str,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    """Resolve a [ref:doc_id] citation to title and preview snippet."""
+    if _db is None:
+        raise HTTPException(status_code=500, detail="数据库未初始化")
+
+    conn = _db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, file_name, collection_id FROM document_files WHERE id = ?",
+        (doc_id,),
+    )
+    row = cursor.fetchone()
+    if row:
+        return {
+            "doc_id": row[0],
+            "title": row[1] or doc_id,
+            "collection_id": row[2],
+            "snippet": _fetch_ref_snippet(cursor, doc_id),
+            "source_type": "document",
+        }
+
+    cursor.execute(
+        """
+        SELECT doc_id, file_name, collection_id, content
+        FROM knowledge_chunks
+        WHERE doc_id = ?
+        ORDER BY chunk_index ASC
+        LIMIT 1
+        """,
+        (doc_id,),
+    )
+    chunk = cursor.fetchone()
+    if chunk:
+        snippet = str(chunk[3] or "").strip()
+        if len(snippet) > 400:
+            snippet = snippet[:400] + "..."
+        return {
+            "doc_id": chunk[0],
+            "title": chunk[1] or doc_id,
+            "collection_id": chunk[2],
+            "snippet": snippet,
+            "source_type": "document",
+        }
+
+    raise HTTPException(status_code=404, detail=f"未找到文档引用: {doc_id}")

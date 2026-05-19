@@ -305,8 +305,15 @@ export const skillhubApi = {
   getCatalog: () => api.get('/skillhub/catalog'),
   search: (query: string) => api.get('/skillhub/search', { params: { q: query } }),
   getDetail: (id: string) => api.get(`/skillhub/detail/${id}`),
-  install: (skillId: string, confirmPermissions = true) =>
-    api.post('/skillhub/install', { skill_id: skillId, confirm_permissions: confirmPermissions }),
+  install: (
+    skillId: string,
+    options?: { confirmPermissions?: boolean; skipDependencyCheck?: boolean },
+  ) =>
+    api.post('/skillhub/install', {
+      skill_id: skillId,
+      confirm_permissions: options?.confirmPermissions ?? true,
+      skip_dependency_check: options?.skipDependencyCheck ?? false,
+    }),
   uninstall: (skillId: string) => api.post('/skillhub/uninstall', { skill_id: skillId }),
   listInstalled: () => api.get('/skillhub/installed'),
   checkUpdates: () => api.get('/skillhub/updates'),
@@ -459,6 +466,11 @@ export const knowledgeApi = {
 
   queryCollection: async (collectionId: string, query: string, top_k?: number): Promise<{ query: string; collection_id: string; results: KnowledgeSearchResult[]; total: number }> => {
     const response = await api.post(`/knowledge/collections/${collectionId}/query`, { query, top_k })
+    return response.data
+  },
+
+  resolveRef: async (docId: string): Promise<{ doc_id: string; title: string; snippet: string; collection_id?: string; source_type?: string }> => {
+    const response = await api.get(`/knowledge/ref/${encodeURIComponent(docId)}`)
     return response.data
   },
 }
