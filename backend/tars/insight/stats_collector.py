@@ -44,6 +44,8 @@ class StatsCollector:
         stats_dialect: str,
         budget: InsightBudget,
     ):
+        from ..utils.url_safety import validate_external_db_url
+        validate_external_db_url(connection_url)
         self.connection_url = connection_url
         self.db_type = db_type
         self.stats_dialect = stats_dialect
