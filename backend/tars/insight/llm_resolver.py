@@ -11,6 +11,15 @@ from .llm_settings_store import InsightLlmSettings
 logger = logging.getLogger(__name__)
 
 
+_db = None
+
+
+def init_llm_resolver(db) -> None:
+    """Inject Database at startup so we don't import tars.main lazily."""
+    global _db
+    _db = db
+
+
 @dataclass
 class ResolvedInsightLlm:
     provider: Any
@@ -54,9 +63,10 @@ def _build_ollama_provider(model: str):
 def _build_endpoint_provider(endpoint_id: str, model: str):
     from ..database import EndpointStore
     from ..models import OpenAICompatProvider
-    from tars.main import db
 
-    store = EndpointStore(db)
+    if _db is None:
+        raise RuntimeError("llm_resolver not initialized; call init_llm_resolver(db) at startup")
+    store = EndpointStore(_db)
     ep = store.get_by_id(endpoint_id)
     if not ep:
         raise ValueError(f"端点不存在: {endpoint_id}")

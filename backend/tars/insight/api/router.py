@@ -37,6 +37,9 @@ def init_insight_api(db: Database, knowledge_indexer=None) -> None:
 
     set_insight_knowledge_indexer(knowledge_indexer)
 
+    from ..llm_resolver import init_llm_resolver
+    init_llm_resolver(db)
+
     # Recover any runs that were pending/running when the previous process died.
     # BackgroundTasks do not survive restarts, so leaving them stuck blocks future
     # runs and confuses the UI.
