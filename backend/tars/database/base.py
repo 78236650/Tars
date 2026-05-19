@@ -437,15 +437,21 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS relations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
                 from_entity TEXT NOT NULL,
                 to_entity TEXT NOT NULL,
                 predicate TEXT NOT NULL,
                 confidence REAL DEFAULT 0.5,
                 source_memory_id INTEGER,
                 created_at TEXT NOT NULL,
-                UNIQUE(from_entity, to_entity, predicate)
+                UNIQUE(tenant_id, from_entity, to_entity, predicate)
             )
         """)
+        try:
+            cursor.execute("ALTER TABLE relations ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        except Exception:
+            pass
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_relations_tenant ON relations(tenant_id)")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS working_contexts (

@@ -324,8 +324,8 @@ class Reflector:
         conn = self.db._get_conn()
         cur = conn.cursor()
         cur.execute(
-            "INSERT OR REPLACE INTO relations(from_entity,to_entity,predicate,confidence,created_at) VALUES(?,?,?,?,?)",
-            (from_id, to_id, pred, conf, now),
+            "INSERT OR REPLACE INTO relations(tenant_id,from_entity,to_entity,predicate,confidence,created_at) VALUES(?,?,?,?,?,?)",
+            (self.tenant_id, from_id, to_id, pred, conf, now),
         )
         conn.commit()
         return True
