@@ -1,15 +1,14 @@
 """InsightForge API — /api/insight (INS-1.0.0)."""
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 
+from ...api._auth import Principal, require_module
 from ...database import Database
 from ...database.bi_store import DataSourceStore
-from ...modules.registry import module_registry
 from ..config import get_insight_config
 from ..job_runner import InsightJobRunner
 from ..store import InsightMetricStore, InsightProfileRunStore
@@ -39,46 +38,11 @@ def init_insight_api(db: Database, knowledge_indexer=None) -> None:
     set_insight_knowledge_indexer(knowledge_indexer)
 
 
-def _check_insight_dependencies() -> None:
-    if not module_registry.is_enabled("insight"):
-        raise HTTPException(
-            status_code=503,
-            detail="InsightForge 未启用 (config/modules.yaml → insight.enabled)",
-        )
-    for dep in module_registry.get_requires("insight"):
-        if not module_registry.is_enabled(dep):
-            raise HTTPException(
-                status_code=503,
-                detail=f"InsightForge 依赖模块 '{dep}' 未启用",
-            )
-
-
-async def require_insight_module(
-    x_user_role: Optional[str] = Header(default=None),
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
-) -> None:
-    _check_insight_dependencies()
-    if x_user_role == "admin":
-        return
-    try:
-        from ...gateway.role_template import role_template_manager
-        from tars.main import user_store
-
-        if role_template_manager is None or user_store is None or not x_api_key:
-            return
-        user = user_store.get_user_by_api_key(x_api_key)
-        if not user:
-            return
-        template_id = getattr(user, "role_template_id", None) or "standard"
-        if not role_template_manager.can_access_module(template_id, "insight"):
-            raise HTTPException(status_code=403, detail="当前角色无权使用 InsightForge 鉴数")
-    except HTTPException:
-        raise
-    except Exception:
-        return
-
-
-router.dependencies = [Depends(require_insight_module)]
+# All routes require an authenticated principal who can access the
+# `insight` module. tenant_id is derived from the principal (admin can
+# impersonate via X-Tenant-Id, non-admin always == user.id).
+_require = require_module("insight")
+router.dependencies = [Depends(_require)]
 
 
 class InsightLlmSelectionBody(BaseModel):
@@ -103,7 +67,7 @@ class StartProfileRequest(BaseModel):
 
 
 @router.get("/llm/options")
-async def insight_llm_options():
+async def insight_llm_options(principal: Principal = Depends(_require)):
     """Same model catalog as Chat (Ollama + endpoints)."""
     from tars.models.config import get_models_root
 
@@ -112,14 +76,13 @@ async def insight_llm_options():
 
 @router.get("/llm/settings")
 async def get_insight_llm_settings(
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     if _llm_settings_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     from ..llm_resolver import get_chat_model_selection, resolve_insight_llm
 
-    tenant_id = x_tenant_id or "default"
-    saved = _llm_settings_store.get(tenant_id)
+    saved = _llm_settings_store.get(principal.tenant_id)
     chat_current = get_chat_model_selection()
     effective = resolve_insight_llm(saved)
     return {
@@ -136,17 +99,16 @@ async def get_insight_llm_settings(
 @router.put("/llm/settings")
 async def put_insight_llm_settings(
     body: InsightLlmSettingsBody,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     if _llm_settings_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     from ..llm_settings_store import InsightLlmSettings
     from ..llm_resolver import get_chat_model_selection, resolve_insight_llm
 
-    tenant_id = x_tenant_id or "default"
     saved = _llm_settings_store.save(
         InsightLlmSettings(
-            tenant_id=tenant_id,
+            tenant_id=principal.tenant_id,
             use_chat_default=body.use_chat_default,
             provider=body.provider or "ollama",
             model=body.model or "",
@@ -167,7 +129,7 @@ async def put_insight_llm_settings(
 
 
 @router.get("/version")
-async def insight_version():
+async def insight_version(principal: Principal = Depends(_require)):
     cfg = get_insight_config()
     return {
         "capability": CAPABILITY_NAME,
@@ -184,12 +146,12 @@ async def start_profile(
     datasource_id: str,
     body: StartProfileRequest,
     background_tasks: BackgroundTasks,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     if _run_store is None or _ds_store is None or _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    tenant_id = principal.tenant_id
     ds = _ds_store.get(datasource_id, tenant_id)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
@@ -246,12 +208,11 @@ async def start_profile(
 @router.get("/datasources/{datasource_id}/profile/runs")
 async def list_profile_runs(
     datasource_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     if _run_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    tenant_id = x_tenant_id or "default"
-    runs = _run_store.list_by_datasource(datasource_id, tenant_id)
+    runs = _run_store.list_by_datasource(datasource_id, principal.tenant_id)
     return {
         "runs": [
             {
@@ -271,12 +232,11 @@ async def list_profile_runs(
 @router.get("/profile/runs/{run_id}")
 async def get_profile_run(
     run_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     if _run_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    tenant_id = x_tenant_id or "default"
-    run = _run_store.get(run_id, tenant_id)
+    run = _run_store.get(run_id, principal.tenant_id)
     if not run:
         raise HTTPException(status_code=404, detail="任务不存在")
     return {
@@ -297,12 +257,12 @@ async def get_profile_run(
 @router.get("/datasources/{datasource_id}/brief")
 async def get_datasource_brief(
     datasource_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     """工作台用：合并数据源、最新建档、标注与指标。"""
     if _run_store is None or _ds_store is None or _metric_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    tenant_id = x_tenant_id or "default"
+    tenant_id = principal.tenant_id
     ds = _ds_store.get(datasource_id, tenant_id)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
@@ -366,12 +326,11 @@ async def get_datasource_brief(
 @router.get("/datasources/{datasource_id}/metrics")
 async def list_metrics(
     datasource_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require),
 ):
     if _metric_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    tenant_id = x_tenant_id or "default"
-    metrics = _metric_store.list_by_datasource(datasource_id, tenant_id)
+    metrics = _metric_store.list_by_datasource(datasource_id, principal.tenant_id)
     return {
         "metrics": [
             {
