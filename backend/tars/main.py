@@ -65,9 +65,12 @@ from tars.cron import CronRuntime
 app = FastAPI(title="TARS Agent", version="4.0.0")
 
 # CORS 配置
+_cors_origins = os.environ.get(
+    "TARS_CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in _cors_origins if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
