@@ -4,6 +4,7 @@ import ToolCard from '@/components/tools/ToolCard.vue'
 import ToolDetailModal from '@/components/tools/ToolDetailModal.vue'
 import AddToolModal from '@/components/tools/AddToolModal.vue'
 import TrySkillButton from '@/components/tools/TrySkillButton.vue'
+import SkillInstallWizard, { type InstallWizardState } from '@/components/tools/SkillInstallWizard.vue'
 import { toolsApi, skillsApi, skillhubApi } from '@/api'
 import { useI18n } from '@/i18n'
 import type { Tool, SkillItem, SkillHubPackage } from '@/types'
@@ -85,6 +86,8 @@ const hubSearching = ref(false)
 const hubLoaded = ref(false)
 const installingId = ref<string | null>(null)
 const installMessage = ref<{ id: string; success: boolean; message: string; examplePrompt?: string } | null>(null)
+const installWizardOpen = ref(false)
+const installWizardState = ref<InstallWizardState | null>(null)
 const hubFilter = ref<'all' | 'plugin' | 'prompt' | 'featured'>('all')
 
 // 弹窗
@@ -171,30 +174,50 @@ const searchHub = async () => {
   }
 }
 
-const installFromHub = async (skillId: string, confirmPermissions = true) => {
+const pkgNameFor = (skillId: string) => {
+  const pkg = hubResults.value.find(p => p.id === skillId)
+  return pkg?.name || skillId.split('/').pop() || skillId
+}
+
+const installFromHub = async (
+  skillId: string,
+  options?: { confirmPermissions?: boolean; skipDependencyCheck?: boolean },
+) => {
   installingId.value = skillId
   installMessage.value = null
   try {
-    const resp = await skillhubApi.install(skillId, confirmPermissions)
+    const resp = await skillhubApi.install(skillId, options)
     const data = resp.data
     if (data.needs_confirmation) {
-      const perms = (data.permissions || []).join(', ')
-      installMessage.value = {
-        id: skillId,
+      installWizardState.value = {
+        skillId,
+        skillName: pkgNameFor(skillId),
         success: false,
-        message: `${t('tools.permissionConfirm')}: ${perms}`,
+        needsConfirmation: true,
+        permissions: data.permissions || [],
       }
+      installWizardOpen.value = true
       return
     }
     if (data.needs_setup) {
-      const hints = (data.install_hints || []).join('; ')
-      installMessage.value = {
-        id: skillId,
+      installWizardState.value = {
+        skillId,
+        skillName: pkgNameFor(skillId),
         success: false,
-        message: `${t('tools.needsSetup')}: ${hints}`,
+        needsSetup: true,
+        installHints: data.install_hints || [],
       }
+      installWizardOpen.value = true
       return
     }
+    installWizardState.value = {
+      skillId,
+      skillName: pkgNameFor(skillId),
+      success: true,
+      usage: data.usage || t('tools.installSuccess'),
+      examplePrompt: data.example_prompt || '',
+    }
+    installWizardOpen.value = true
     installMessage.value = {
       id: skillId,
       success: true,
@@ -205,14 +228,39 @@ const installFromHub = async (skillId: string, confirmPermissions = true) => {
     await refreshCatalogStatus()
   } catch (e: any) {
     const detail = e?.response?.data?.detail
+    const message = typeof detail === 'string' ? detail : (detail?.error || t('tools.installFailed'))
+    installWizardState.value = {
+      skillId,
+      skillName: pkgNameFor(skillId),
+      success: false,
+      errorMessage: message,
+    }
+    installWizardOpen.value = true
     installMessage.value = {
       id: skillId,
       success: false,
-      message: typeof detail === 'string' ? detail : (detail?.error || t('tools.installFailed')),
+      message,
     }
   } finally {
     installingId.value = null
   }
+}
+
+const closeInstallWizard = () => {
+  installWizardOpen.value = false
+  installWizardState.value = null
+}
+
+const confirmWizardPermissions = () => {
+  const skillId = installWizardState.value?.skillId
+  if (!skillId) return
+  installFromHub(skillId, { confirmPermissions: true })
+}
+
+const skipSetupAndInstall = () => {
+  const skillId = installWizardState.value?.skillId
+  if (!skillId) return
+  installFromHub(skillId, { skipDependencyCheck: true })
 }
 
 const sourceLabel = (source?: string) => {
@@ -563,5 +611,13 @@ onMounted(() => {
 
     <ToolDetailModal v-if="selectedTool" :tool="selectedTool" @close="handleCloseDetail" />
     <AddToolModal v-if="showAddModal" @close="showAddModal = false; loadSkills()" />
+    <SkillInstallWizard
+      :open="installWizardOpen"
+      :state="installWizardState"
+      :installing="Boolean(installingId)"
+      @close="closeInstallWizard"
+      @confirm-permissions="confirmWizardPermissions"
+      @skip-setup-install="skipSetupAndInstall"
+    />
   </div>
 </template>

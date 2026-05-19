@@ -36,6 +36,13 @@ describe('chatMarkdown', () => {
     expect(html).toContain('hljs')
   })
 
+  it('renders knowledge ref citations with optional title', () => {
+    const html = renderChatMarkdown('根据 [ref:doc1|会议纪要] 可知。')
+    expect(html).toContain('knowledge-ref')
+    expect(html).toContain('会议纪要')
+    expect(html).toContain('data-doc-id="doc1"')
+  })
+
   it('renders knowledge ref citations as links', () => {
     const html = renderChatMarkdown('根据会议纪要 [ref:doc_meeting_1] 可知。')
     expect(html).toContain('knowledge-ref')

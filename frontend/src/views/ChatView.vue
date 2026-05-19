@@ -8,6 +8,8 @@ import { useWsStore } from '@/stores/wsStore'
 import { sessionsApi } from '@/api'
 import { useI18n } from '@/i18n'
 import ChatPanel from '@/components/chat/ChatPanel.vue'
+import ActiveSkillsBar from '@/components/chat/ActiveSkillsBar.vue'
+import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
 import QueueStatus from '@/components/chat/QueueStatus.vue'
 import WarningBanner from '@/components/chat/WarningBanner.vue'
 
@@ -21,6 +23,10 @@ const messages = ref<{ id: string, role: string, content: string, timestamp: str
 const messagesLoading = ref(false)
 const inputMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+const activeSkills = ref<{ id: string; name: string }[]>([])
+const citationOpen = ref(false)
+const citationDocId = ref('')
+const citationTitleHint = ref('')
 
 const MESSAGE_CACHE_PREFIX = 'tars_chat_messages:'
 
@@ -277,6 +283,11 @@ const setupWsHandler = () => {
         messages.value = []
         void loadSessionMessages(data.new_session_id)
       }
+    } else if (data.type === 'skills_active') {
+      if (chatStore.currentSessionId && data.session_id !== chatStore.currentSessionId) {
+        return
+      }
+      activeSkills.value = Array.isArray(data.skills) ? data.skills : []
     } else if (data.type === 'confirmation_required') {
       const ok = confirm(t('chat.confirmationRequired', { message: data.message }))
       wsStore.send({
@@ -368,6 +379,8 @@ const sendMessage = async () => {
   if ((!inputMessage.value.trim() && attachments.value.length === 0) || !wsStore.isConnected) return
   if (!chatStore.currentSessionId) return
 
+  activeSkills.value = []
+
   const sessionId = chatStore.currentSessionId
   const messageContent = inputMessage.value
   const isFirstMessage = messages.value.length === 0
@@ -445,6 +458,7 @@ watch(messages, () => {
 }, { deep: true })
 
 watch(() => chatStore.currentSessionId, async (newId, oldId) => {
+  activeSkills.value = []
   if (newId && newId !== oldId) {
     await loadSessionMessages(newId)
   } else if (!newId) {
@@ -456,6 +470,18 @@ onUnmounted(() => {
   unsubscribe()
   document.removeEventListener('keydown', handleKeydown)
 })
+
+const openCitation = (payload: { docId: string; title?: string }) => {
+  citationDocId.value = payload.docId
+  citationTitleHint.value = payload.title || ''
+  citationOpen.value = true
+}
+
+const closeCitation = () => {
+  citationOpen.value = false
+  citationDocId.value = ''
+  citationTitleHint.value = ''
+}
 </script>
 
 <template>
@@ -494,11 +520,21 @@ onUnmounted(() => {
         </div>
       </header>
 
+      <ActiveSkillsBar :skills="activeSkills" />
+
       <ChatPanel
         :messages="messages"
         :is-generating="wsStore.isGenerating"
         :loading-history="messagesLoading"
         @quick-start="quickStart"
+        @citation-click="openCitation"
+      />
+
+      <KnowledgeCitationPanel
+        :open="citationOpen"
+        :doc-id="citationDocId"
+        :title-hint="citationTitleHint"
+        @close="closeCitation"
       />
 
       <!-- v4.0.0: 排队状态和权限拒绝提示 -->

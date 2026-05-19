@@ -3,72 +3,120 @@ import { useI18n } from '@/i18n'
 
 const { t } = useI18n()
 
-const newFeatures = [
-  'settings.changelog.feature1',
-  'settings.changelog.feature2',
-  'settings.changelog.feature3',
-  'settings.changelog.feature4',
-  'settings.changelog.feature5',
-  'settings.changelog.feature6',
-]
+interface VersionSection {
+  version: string
+  subtitle: string
+  releaseDateKey: string
+  features: string[]
+  improvements: string[]
+}
 
-const improvements = [
-  'settings.changelog.improvement1',
-  'settings.changelog.improvement2',
-  'settings.changelog.improvement3',
-  'settings.changelog.improvement4',
-  'settings.changelog.improvement5',
-  'settings.changelog.improvement6',
+const versions: VersionSection[] = [
+  {
+    version: 'v4.1.1',
+    subtitle: 'Experience Layer',
+    releaseDateKey: 'settings.changelog.v411ReleaseDate',
+    features: [
+      'settings.changelog.v411.feature1',
+      'settings.changelog.v411.feature2',
+      'settings.changelog.v411.feature3',
+      'settings.changelog.v411.feature4',
+    ],
+    improvements: [
+      'settings.changelog.v411.improvement1',
+      'settings.changelog.v411.improvement2',
+    ],
+  },
+  {
+    version: 'v4.1.0',
+    subtitle: 'Skill Ecosystem',
+    releaseDateKey: 'settings.changelog.v410ReleaseDate',
+    features: [
+      'settings.changelog.v410.feature1',
+      'settings.changelog.v410.feature2',
+      'settings.changelog.v410.feature3',
+      'settings.changelog.v410.feature4',
+      'settings.changelog.v410.feature5',
+      'settings.changelog.v410.feature6',
+    ],
+    improvements: [
+      'settings.changelog.v410.improvement1',
+      'settings.changelog.v410.improvement2',
+      'settings.changelog.v410.improvement3',
+    ],
+  },
+  {
+    version: 'v4.0.0',
+    subtitle: 'Hardened Base',
+    releaseDateKey: 'settings.changelog.releaseDate',
+    features: [
+      'settings.changelog.feature1',
+      'settings.changelog.feature2',
+      'settings.changelog.feature3',
+      'settings.changelog.feature4',
+      'settings.changelog.feature5',
+      'settings.changelog.feature6',
+    ],
+    improvements: [
+      'settings.changelog.improvement1',
+      'settings.changelog.improvement2',
+      'settings.changelog.improvement3',
+      'settings.changelog.improvement4',
+      'settings.changelog.improvement5',
+      'settings.changelog.improvement6',
+    ],
+  },
 ]
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 max-w-3xl">
-    <!-- 新增功能 -->
-    <section>
-      <h2 class="flex items-center gap-2 text-lg font-semibold text-stone-100 mb-3">
-        <span class="text-emerald-400 text-base">✦</span>
-        {{ t('settings.changelog.newFeatures') }}
-      </h2>
-      <div class="rounded-2xl border border-amber-100/10 bg-white/[0.03] divide-y divide-amber-100/5">
-        <div
-          v-for="(key, idx) in newFeatures"
-          :key="idx"
-          class="px-5 py-3.5 flex items-start gap-3"
-        >
-          <span class="mt-0.5 w-5 h-5 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-            {{ idx + 1 }}
-          </span>
-          <span class="text-sm text-stone-300 leading-relaxed">{{ t(key) }}</span>
+  <div class="flex flex-col gap-8 max-w-3xl">
+    <section v-for="section in versions" :key="section.version" class="space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold text-stone-100">
+          TARS {{ section.version }}
+          <span class="ml-2 text-sm font-normal text-stone-500">{{ section.subtitle }}</span>
+        </h2>
+        <p class="mt-1 text-xs text-stone-500">{{ t(section.releaseDateKey) }}</p>
+      </div>
+
+      <div>
+        <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-200">
+          <span class="text-emerald-400">✦</span>
+          {{ t('settings.changelog.newFeatures') }}
+        </h3>
+        <div class="rounded-2xl border border-amber-100/10 bg-white/[0.03] divide-y divide-amber-100/5">
+          <div
+            v-for="(key, idx) in section.features"
+            :key="`${section.version}-f-${idx}`"
+            class="px-5 py-3.5 flex items-start gap-3"
+          >
+            <span class="mt-0.5 w-5 h-5 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+              {{ idx + 1 }}
+            </span>
+            <span class="text-sm text-stone-300 leading-relaxed">{{ t(key) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-200">
+          <span class="text-amber-400">↻</span>
+          {{ t('settings.changelog.improvements') }}
+        </h3>
+        <div class="rounded-2xl border border-amber-100/10 bg-white/[0.03] divide-y divide-amber-100/5">
+          <div
+            v-for="(key, idx) in section.improvements"
+            :key="`${section.version}-i-${idx}`"
+            class="px-5 py-3.5 flex items-start gap-3"
+          >
+            <span class="mt-0.5 w-5 h-5 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+              {{ idx + 1 }}
+            </span>
+            <span class="text-sm text-stone-300 leading-relaxed">{{ t(key) }}</span>
+          </div>
         </div>
       </div>
     </section>
-
-    <!-- 改进变更 -->
-    <section>
-      <h2 class="flex items-center gap-2 text-lg font-semibold text-stone-100 mb-3">
-        <span class="text-amber-400 text-base">↻</span>
-        {{ t('settings.changelog.improvements') }}
-      </h2>
-      <div class="rounded-2xl border border-amber-100/10 bg-white/[0.03] divide-y divide-amber-100/5">
-        <div
-          v-for="(key, idx) in improvements"
-          :key="idx"
-          class="px-5 py-3.5 flex items-start gap-3"
-        >
-          <span class="mt-0.5 w-5 h-5 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-            {{ idx + 1 }}
-          </span>
-          <span class="text-sm text-stone-300 leading-relaxed">{{ t(key) }}</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <div class="mt-2 pt-4 border-t border-amber-100/10">
-      <p class="text-xs text-stone-500">
-        TARS v4.0.0 — Hardened Base · {{ t('settings.changelog.releaseDate') }}
-      </p>
-    </div>
   </div>
 </template>

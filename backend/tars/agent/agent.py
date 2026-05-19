@@ -341,6 +341,16 @@ class AgentV2:
         # 4.5 自动检索知识库（不依赖模型是否主动调用 knowledge_search）
         knowledge_context = await self._build_knowledge_context(user_content, tenant_id, channel, session_id)
 
+        # 4.9 每轮消息重新路由技能（不可缓存，需实时匹配）
+        matched_skills = self._route_skills_for_message(user_content, tenant_id) or []
+        self._current_matched_skills = matched_skills
+        skills_payload = [{"id": s.id, "name": s.name} for s, _ in matched_skills]
+        if not skills_payload and getattr(self, "_active_skill_id", None):
+            active_skill = self.skill_registry.get(self._active_skill_id, tenant_id)
+            if active_skill:
+                skills_payload = [{"id": active_skill.id, "name": active_skill.name}]
+        self._last_routed_skills = skills_payload
+
         # 5. 构建 system prompt（含人格 + 记忆 + 渐进披露技能 + 命令提示词）
         # v4.0.0: cache static parts (persona + tools + skills), rebuild memory per query
         try:
@@ -367,6 +377,15 @@ class AgentV2:
                 memory_context, scoped_memory_manager, cmd_result,
                 knowledge_context=knowledge_context,
             )
+
+        skills_payload = list(getattr(self, "_last_routed_skills", []) or [])
+        await channel.send(session_id, {
+            "type": "skills_active",
+            "session_id": session_id,
+            "skills": skills_payload,
+            "timestamp": now_iso(),
+        })
+        self._last_routed_skills = []
 
         # 6. 构建消息列表
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -758,7 +777,9 @@ class AgentV2:
             if disclosure:
                 sp += f"\n\n{disclosure}"
 
-            matched = self._route_skills_for_message(user_content, tenant_id)
+            matched = getattr(self, "_current_matched_skills", None)
+            if matched is None:
+                matched = self._route_skills_for_message(user_content, tenant_id)
             if matched:
                 injection = self._build_skill_injection(matched)
                 if injection:
@@ -778,7 +799,7 @@ class AgentV2:
             "\n\n## 知识库使用规则\n"
             "回答用户问题前，如果问题涉及项目信息、历史决策、会议内容、技术方案或业务知识，"
             "请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。\n"
-            "引用知识库内容时，在相关陈述句末标注 [ref:doc_id]（doc_id 来自检索结果中的 ref: 字段）。"
+            "引用知识库内容时，在相关陈述句末标注 [ref:doc_id|文档标题]（doc_id 与标题来自检索结果中的 ref: 与来源字段）。"
         )
 
         # TaskDetector

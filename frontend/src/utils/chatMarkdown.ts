@@ -84,14 +84,15 @@ export function shouldRenderAsInlineCode(code: string): boolean {
   return true
 }
 
-/** 将 [ref:doc_id] 转为可点击的知识库引用卡片 */
+/** 将 [ref:doc_id] 或 [ref:doc_id|标题] 转为可点击的知识库引用卡片 */
 export function replaceKnowledgeRefs(text: string): string {
-  return text.replace(/\[ref:([^\]\s]+)\]/g, (_match, docId: string) => {
-    const safe = escapeHtml(docId)
-    const href = `/knowledge?doc_id=${encodeURIComponent(docId)}`
+  return text.replace(/\[ref:([^\]|]+)(?:\|([^\]]+))?\]/g, (_match, docId: string, docTitle?: string) => {
+    const safeId = escapeHtml(docId.trim())
+    const label = escapeHtml((docTitle || docId).trim())
+    const href = `/knowledge?doc_id=${encodeURIComponent(docId.trim())}`
     return (
-      `<a href="${href}" class="knowledge-ref" data-doc-id="${safe}" title="${safe}">` +
-      `<span class="knowledge-ref-icon">📎</span><span class="knowledge-ref-label">${safe}</span></a>`
+      `<a href="${href}" class="knowledge-ref" data-doc-id="${safeId}" data-doc-title="${label}" title="${label}">` +
+      `<span class="knowledge-ref-icon">📎</span><span class="knowledge-ref-label">${label}</span></a>`
     )
   })
 }
