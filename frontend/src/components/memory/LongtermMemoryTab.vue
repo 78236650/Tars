@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { memoryApi } from '@/api'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import type { LongtermMemoryGroup, MemoryItem, MemoryMergeResponse } from '@/types'
 import { useI18n } from '@/i18n'
 import MemoryCard from './MemoryCard.vue'
 import MergePreviewDialog from './MergePreviewDialog.vue'
+
+const props = defineProps<{
+  focusGroupName?: string | null
+}>()
 
 const emit = defineEmits<{
   (e: 'changed'): void
@@ -56,6 +60,16 @@ const toggleSelected = (id: string) => {
     : [...selectedIds.value, id]
 }
 
+const applyFocusGroup = () => {
+  const focus = props.focusGroupName?.trim()
+  if (!focus) return
+  for (const group of groups.value) {
+    if (group.group_name === focus || group.group_name.includes(focus)) {
+      collapsedGroups.value = collapsedGroups.value.filter((item) => item !== group.group_name)
+    }
+  }
+}
+
 const loadGroups = async () => {
   loading.value = true
   try {
@@ -63,6 +77,7 @@ const loadGroups = async () => {
     total.value = response.total
     if (page.value === 1) {
       groups.value = response.groups
+      applyFocusGroup()
       return
     }
 
@@ -145,6 +160,11 @@ const confirmMerge = async () => {
     mergeLoading.value = false
   }
 }
+
+watch(
+  () => props.focusGroupName,
+  () => applyFocusGroup()
+)
 
 onMounted(() => {
   void loadGroups()

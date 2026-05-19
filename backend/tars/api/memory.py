@@ -11,6 +11,7 @@ from ..database import Database
 from ..memory.compressor import MemoryCompressor
 from ..memory.core_memory import BLOCK_NAMES
 from ..memory.manager import MemoryManager
+from ..memory.tree_builder import EntityTreeBuilder
 from ..security.audit import safe_audit, client_ip_from_request
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -297,6 +298,66 @@ async def save_memories_from_turn(
         "saved": [_memory_to_dict(memory) for memory in result["saved"]],
         "skipped": result["skipped"],
     }
+
+
+def _resolve_tree_tenant(
+    user_id: str,
+    x_tenant_id: Optional[str],
+    x_user_role: Optional[str],
+) -> str:
+    tenant_id = (user_id or x_tenant_id or "default").strip() or "default"
+    if user_id and x_user_role != "admin" and tenant_id != (x_tenant_id or "default"):
+        raise HTTPException(status_code=403, detail="无权查看其他租户记忆树")
+    return tenant_id
+
+
+@router.get("/tree")
+def get_memory_tree(
+    view: str = "entity",
+    max_per_bucket: int = 30,
+    include_core: bool = True,
+    include_orphan: bool = True,
+    user_id: str = "",
+    x_tenant_id: Optional[str] = Header(default="default"),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    if view not in ("entity", "provenance"):
+        raise HTTPException(status_code=400, detail="unsupported view")
+    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id, max_per_bucket=max_per_bucket)
+    if view == "provenance":
+        return builder.build_provenance()
+    return builder.build(include_core=include_core, include_orphan=include_orphan)
+
+
+@router.get("/tree/search")
+def search_memory_tree(
+    q: str = "",
+    limit: int = 20,
+    view: str = "entity",
+    user_id: str = "",
+    x_tenant_id: Optional[str] = Header(default="default"),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    if view not in ("entity", "provenance"):
+        raise HTTPException(status_code=400, detail="unsupported view")
+    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
+    return builder.search(q, limit=min(max(limit, 1), 50), view=view)
+
+
+@router.get("/tree/relations")
+def get_memory_tree_relations(
+    entity_id: str,
+    user_id: str = "",
+    x_tenant_id: Optional[str] = Header(default="default"),
+    x_user_role: Optional[str] = Header(default="user"),
+):
+    if not entity_id.strip():
+        raise HTTPException(status_code=400, detail="entity_id required")
+    tenant_id = _resolve_tree_tenant(user_id, x_tenant_id, x_user_role)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
+    return builder.get_relations(entity_id.strip())
 
 
 @router.get("/export")

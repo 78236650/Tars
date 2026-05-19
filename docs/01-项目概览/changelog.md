@@ -1,5 +1,20 @@
 # Changelog
 
+## v4.1.4 "Memory Entity Tree" (2026-05-19)
+
+记忆管理新增实体树可视化（Phase 1–3）。
+
+### 记忆实体树
+- ✅ **`GET /api/memory/tree`** — 实体视图 / 压缩谱系视图（`view=entity|provenance`）
+- ✅ **`GET /api/memory/tree/relations`** — 实体关系边
+- ✅ **`GET /api/memory/tree/search`** — 树内搜索与路径展开
+- ✅ **实体 Tab** — 左树右详情；搜索、Admin 用户联动、跳转长期记忆
+- ✅ **谱系视图** — 压缩记忆与 `compressed_from` 来源/已归档
+- ✅ **关系迷你图** — 选中实体 SVG 邻接图，点击跳转对应实体
+- ✅ **大树优化** — 节点 >120 默认仅展开顶层
+
+---
+
 ## v4.1.3 "Chat Polish & Remember" (2026-05-19)
 
 聊天体验精简与手动「记住要点」能力。

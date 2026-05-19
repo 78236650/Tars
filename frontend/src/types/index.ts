@@ -130,6 +130,72 @@ export interface MemoryMergeResponse {
   memory?: MemoryItem
 }
 
+export type MemoryTreeNodeKind =
+  | 'system'
+  | 'type_group'
+  | 'entity'
+  | 'bucket'
+  | 'memory'
+  | 'core_block'
+  | 'more'
+  | 'compressed'
+  | 'archived'
+
+export interface MemoryTreeNode {
+  id: string
+  kind: MemoryTreeNodeKind
+  label: string
+  meta: Record<string, unknown>
+  children: MemoryTreeNode[]
+}
+
+export interface MemoryTreeStats {
+  entity_count: number
+  memory_count: number
+  orphan_count: number
+  ghost_entity_count: number
+  relation_count: number
+  core_filled_blocks: number
+  compressed_count?: number
+  source_count?: number
+  archived_count?: number
+  tree_node_count?: number
+}
+
+export interface MemoryTreeResponse {
+  view: string
+  tenant_id: string
+  stats: MemoryTreeStats
+  nodes: MemoryTreeNode[]
+}
+
+export interface EntityRelationEdge {
+  peer_entity: string
+  peer_label: string
+  predicate: string
+  confidence: number
+  direction: 'outgoing' | 'incoming'
+}
+
+export interface EntityRelationsResponse {
+  entity_id: string
+  entity_label: string
+  outgoing: EntityRelationEdge[]
+  incoming: EntityRelationEdge[]
+}
+
+export interface MemoryTreeSearchHit {
+  node_id: string
+  kind: MemoryTreeNodeKind
+  label: string
+  path: string[]
+}
+
+export interface MemoryTreeSearchResponse {
+  query: string
+  items: MemoryTreeSearchHit[]
+}
+
 export interface SubAgent {
   type: string
   name: string

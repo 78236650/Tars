@@ -8,6 +8,7 @@ import PersonalityTab from '@/components/memory/PersonalityTab.vue'
 import RecentMemoryTab from '@/components/memory/RecentMemoryTab.vue'
 import LongtermMemoryTab from '@/components/memory/LongtermMemoryTab.vue'
 import AllMemoryTab from '@/components/memory/AllMemoryTab.vue'
+import MemoryTreeTab from '@/components/memory/MemoryTreeTab.vue'
 import CompressDialog from '@/components/memory/CompressDialog.vue'
 
 const authStore = useAuthStore()
@@ -20,6 +21,7 @@ const tabs = computed(() => {
     { key: 'personality', label: t('memory.tab.personality') },
     { key: 'recent', label: t('memory.tab.recent') },
     { key: 'longterm', label: t('memory.tab.longterm') },
+    { key: 'tree', label: t('memory.tab.entity') },
     { key: 'all', label: t('memory.tab.all') },
   ]
   if (isAdmin.value) {
@@ -28,7 +30,7 @@ const tabs = computed(() => {
   return base
 })
 
-const activeTab = ref<'personality' | 'recent' | 'longterm' | 'all' | 'admin'>('personality')
+const activeTab = ref<'personality' | 'recent' | 'longterm' | 'tree' | 'all' | 'admin'>('personality')
 const stats = ref<MemoryStats | null>(null)
 
 // v4.0.0: Admin 记忆管理
@@ -44,10 +46,20 @@ const adminCreatingShared = ref(false)
 const compressStatus = ref<MemoryCompressionStatus | null>(null)
 const compressDialogOpen = ref(false)
 const compressing = ref(false)
+const longtermFocusGroup = ref<string | null>(null)
 
 const pendingBadgeVisible = computed(() => (stats.value?.pending_compression || 0) > 0)
 
-const selectTab = (key: 'personality' | 'recent' | 'longterm' | 'all' | 'admin') => {
+const onOpenLongtermFromTree = (entityId: string) => {
+  longtermFocusGroup.value = entityId
+  activeTab.value = 'longterm'
+}
+
+const onOpenPersonalityFromTree = () => {
+  activeTab.value = 'personality'
+}
+
+const selectTab = (key: 'personality' | 'recent' | 'longterm' | 'tree' | 'all' | 'admin') => {
   activeTab.value = key
   if (key === 'admin') {
     loadAdminUsers()
@@ -206,9 +218,26 @@ onMounted(() => {
         </div>
 
         <section class="mt-6">
+          <div
+            v-if="isAdmin && adminSelectedUserId && (activeTab === 'tree' || activeTab === 'longterm')"
+            class="mb-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-2 text-sm text-amber-200"
+          >
+            {{ t('memory.tree.viewingUser', { user: adminSelectedUserId }) }}
+          </div>
           <PersonalityTab v-if="activeTab === 'personality'" />
           <RecentMemoryTab v-else-if="activeTab === 'recent'" @changed="loadStats" />
-          <LongtermMemoryTab v-else-if="activeTab === 'longterm'" @changed="loadStats" />
+          <LongtermMemoryTab
+            v-else-if="activeTab === 'longterm'"
+            :focus-group-name="longtermFocusGroup"
+            @changed="loadStats"
+          />
+          <MemoryTreeTab
+            v-else-if="activeTab === 'tree'"
+            :admin-user-id="isAdmin ? adminSelectedUserId : null"
+            @changed="loadStats"
+            @open-longterm="onOpenLongtermFromTree"
+            @open-personality="onOpenPersonalityFromTree"
+          />
           <AllMemoryTab v-else-if="activeTab === 'all'" @changed="loadStats" />
           <!-- v4.0.0: Admin 记忆管理面板 -->
           <div v-else-if="activeTab === 'admin'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">

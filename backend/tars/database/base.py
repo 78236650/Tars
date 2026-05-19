@@ -1382,6 +1382,24 @@ class Database:
         items = [self._memory_from_row(row) for row in cursor.fetchall()]
         return items, total
 
+    def list_memories_for_tree(self, tenant_id: str = "default", limit: int = 5000) -> List[Memory]:
+        """Load tenant memories for entity tree assembly (bounded)."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, tenant_id, content, category, importance, created_at, updated_at,
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope
+            FROM memories
+            WHERE tenant_id = ?
+            ORDER BY pinned DESC, importance DESC, updated_at DESC
+            LIMIT ?
+            """,
+            (tenant_id, limit),
+        )
+        return [self._memory_from_row(row) for row in cursor.fetchall()]
+
     def decay_importance(self):
         """重要性自然衰减：未被访问的记忆重要性随时间微降"""
         conn = self._get_conn()
