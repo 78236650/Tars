@@ -14,6 +14,7 @@ from .config import InsightConfig, get_insight_config
 from .metric_answer import MetricAnswer, MetricAnswerError
 from .models import InsightMetric
 from .question_log_store import InsightQuestionLogStore
+from .sql_quoting import apply_tables_quoting
 from .store import InsightMetricStore
 from .workflow_service import InsightWorkflowService
 
@@ -169,10 +170,36 @@ class MetricQaEngine:
                 ),
             )
 
+        if decision.branch in ("adhoc", "miss"):
+            return self._finish(
+                datasource_id,
+                tenant_id,
+                user_id,
+                question,
+                MetricAnswer(
+                    value=None,
+                    branch=decision.branch,
+                    caliber_tier="adhoc",
+                    definition="",
+                    sql="",
+                    filters_summary=self._filters_summary(question, as_of_date),
+                    confidence=decision.confidence,
+                    reasoning=decision.reasoning,
+                    open_questions=decision.open_questions
+                    or ["请从已鉴数指标中选择，或补充 metric_key 后重试"],
+                    error=MetricAnswerError(
+                        "INSIGHT_ADHOC_SQL_NOT_AVAILABLE",
+                        "未命中可执行口径，暂不支持自动生成 SQL（请勿将占位结果当作业务数值）",
+                    ),
+                ),
+                outcome="error",
+            )
+
         sql, metric, tier = await self._resolve_sql(
             datasource_id,
             tenant_id,
             ds.connection_url,
+            ds.db_type,
             question,
             decision,
             metrics,
@@ -363,6 +390,7 @@ class MetricQaEngine:
         datasource_id: str,
         tenant_id: str,
         connection_url: str,
+        db_type: str,
         question: str,
         decision: RouteDecision,
         metrics: List[InsightMetric],
@@ -389,15 +417,13 @@ class MetricQaEngine:
             if not metric or not metric.sql_template.strip():
                 raise InsightQaError("INSIGHT_METRIC_SQL_MISSING", "指标缺少 SQL 模板")
             sql = self._fill_sql_template(metric.sql_template, as_of_date)
+            sql = apply_tables_quoting(sql, metric.tables_json, db_type)
             return sql, metric, tier
 
-        tables = list((schema_snapshot.get("tables") or {}).keys())
-        if tables:
-            first_table = tables[0]
-            sql = f"SELECT COUNT(*) AS value FROM {first_table}"
-        else:
-            sql = "SELECT 1 AS value"
-        return sql, None, tier
+        raise InsightQaError(
+            "INSIGHT_ADHOC_SQL_NOT_AVAILABLE",
+            "未命中可执行口径，暂不支持自动生成 SQL",
+        )
 
     def _fill_sql_template(self, template: str, as_of_date: Optional[str]) -> str:
         as_of = as_of_date or (date.today() - timedelta(days=1)).isoformat()

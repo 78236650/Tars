@@ -10,6 +10,8 @@ These tests assert the contract for `resolve_authenticated_principal`:
 import pytest
 from fastapi import HTTPException
 
+from tars.gateway.permission import UserRole
+
 from tars.api._auth import resolve_authenticated_principal
 
 
@@ -98,3 +100,19 @@ def test_user_store_uninitialized_returns_503(store):
             api_key="key-alice", role_header=None, tenant_header=None, user_store=None
         )
     assert exc.value.status_code == 503
+
+
+def test_admin_role_enum_accepted_with_admin_header():
+    """UserStore returns UserRole enum — must not 403 when frontend sends X-User-Role: admin."""
+    enum_store = StubStore({
+        "key-admin-enum": StubUser("admin-enum", role=UserRole.ADMIN, role_template_id="admin"),
+    })
+    p = resolve_authenticated_principal(
+        api_key="key-admin-enum",
+        role_header="admin",
+        tenant_header="tenant-x",
+        user_store=enum_store,
+    )
+    assert p.is_admin
+    assert p.role == "admin"
+    assert p.tenant_id == "tenant-x"

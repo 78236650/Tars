@@ -1,0 +1,275 @@
+# InsightForge INS-2.0 完整 workflow 测试用例集
+# 运行:
+#   pytest tests/insight/test_insight_workflow_suite.py -v
+#   pytest -m insight_smoke tests/insight/test_insight_smoke_e2e.py -v
+#   pytest tests/insight/ -v
+version: "1"
+suite: insightforge-ins2-workflow
+description: 订单电商案例 (case_orders_shop) — workflow / 问数 / 采纳 / 反馈
+
+cases:
+  # ---------- Workflow 状态机 ----------
+  - id: workflow_needs_forge_block_ask
+    layer: service
+    tags: [workflow, guard]
+    setup:
+      workflow_state: needs_forge
+    action: ask
+    question: "昨日 GMV"
+    route_profile: hit_gmv
+    expect_error: INSIGHT_NOT_PROFILED
+    expect_workflow:
+      datasource_state: needs_forge
+      show_workflow_strip: true
+
+  - id: workflow_forging_to_ready
+    layer: service
+    tags: [workflow, lifecycle]
+    setup:
+      workflow_state: forging
+    action: profile_complete
+    expect_workflow:
+      datasource_state: ready
+      show_workflow_strip: false
+
+  - id: workflow_session_no_source_strip
+    layer: service
+    tags: [workflow, session]
+    setup:
+      workflow_state: ready
+    action: check_session_unbound
+    expect_workflow:
+      session_state: no_source
+      show_workflow_strip: true
+
+  - id: workflow_pending_question_consume
+    layer: service
+    tags: [workflow, pending_question]
+    setup:
+      workflow_state: forging
+    action: pending_question_lifecycle
+    pending_text: "昨日 GMV 多少？"
+    expect_pending_consumed: true
+
+  - id: workflow_h5_auto_ask
+    layer: service
+    tags: [workflow, pending_question, h5]
+    setup:
+      workflow_state: forging
+    action: auto_ask_pending
+    pending_text: "昨日 GMV"
+    expect_auto_ask: true
+
+  # ---------- 问数分支 ----------
+  - id: qa_hit_approved_gmv
+    layer: service
+    tags: [qa, hit_approved]
+    setup:
+      workflow_state: ready
+    action: ask
+    question: "昨日 GMV 是多少？"
+    route_profile: hit_gmv
+    expect:
+      branch: hit_approved
+      metric_key: gmv
+      caliber_tier: official
+      value: 128800.5
+      sql_contains: SUM
+
+  - id: qa_hit_approved_order_count
+    layer: service
+    tags: [qa, hit_approved]
+    setup:
+      workflow_state: ready
+    action: ask
+    question: "昨日订单量"
+    route_profile: hit_order_count
+    expect:
+      branch: hit_approved
+      metric_key: order_count
+      value: 42
+
+  - id: qa_hit_partial
+    layer: service
+    tags: [qa, hit_partial]
+    setup:
+      workflow_state: ready
+    action: ask
+    question: "GMV 口径"
+    route_profile: hit_partial
+    expect:
+      branch: hit_partial
+      has_candidates: true
+
+  - id: qa_adhoc_error
+    layer: service
+    tags: [qa, adhoc]
+    setup:
+      workflow_state: ready
+    action: ask
+    question: "新客占比"
+    route_profile: adhoc
+    expect:
+      branch: adhoc
+      error_code: INSIGHT_ADHOC_SQL_NOT_AVAILABLE
+
+  - id: qa_miss_error
+    layer: service
+    tags: [qa, miss]
+    setup:
+      workflow_state: ready
+    action: ask
+    question: "火星人口"
+    route_profile: miss
+    expect:
+      branch: miss
+      error_code: INSIGHT_ADHOC_SQL_NOT_AVAILABLE
+
+  # ---------- 治理：采纳 / H3 ----------
+  - id: gov_adopt_draft
+    layer: service
+    tags: [governance, adopt]
+    setup:
+      workflow_state: ready
+      include_draft: true
+    action: adopt_draft
+    metric_key: gmv_draft
+    expect:
+      status: approved
+
+  - id: gov_h3_downgrade
+    layer: service
+    tags: [governance, feedback, h3]
+    setup:
+      workflow_state: ready
+    action: feedback_downgrade
+    metric_key: gmv
+    negative_count: 3
+    expect:
+      metric_status: deprecated
+
+  # ---------- 隔离 API（insight router）----------
+  - id: api_workflow_composite
+    layer: api
+    tags: [api, workflow]
+    setup:
+      workflow_state: ready
+    action: http_workflow
+    expect:
+      datasource_state: ready
+      session_state: idle
+      show_workflow_strip: false
+      datasource_name: case_orders_shop
+
+  - id: api_ask_feedback
+    layer: api
+    tags: [api, qa]
+    setup:
+      workflow_state: ready
+    action: http_ask_feedback
+    question: "昨日 GMV"
+    expect:
+      branch: hit_approved
+      metric_key: gmv
+
+  - id: api_adopt_metric
+    layer: api
+    tags: [api, adopt]
+    setup:
+      workflow_state: ready
+      include_draft: true
+    action: http_adopt
+    metric_key: gmv_draft
+    expect:
+      status: approved
+
+  - id: api_forge_pending_question
+    layer: api
+    tags: [api, forge]
+    setup:
+      workflow_state: needs_forge
+    action: http_forge_pending
+    pending_text: "鉴数完成后自动问：昨日 GMV"
+    expect_pending_prefix: "鉴数完成后"
+
+  # ---------- 基础设施 ----------
+  - id: infra_sse_events
+    layer: service
+    tags: [sse]
+    action: sse_smoke
+    expect_sse_events: [progress, completed]
+
+  # ---------- 全栈冒烟（主应用 TestClient）----------
+  - id: smoke_version_and_workflow
+    layer: smoke
+    tags: [smoke, workflow]
+    steps:
+      - method: GET
+        path: /api/insight/version
+        expect_status: 200
+        expect_json:
+          capability: insight-forge
+          version: INS-2.0.0
+      - method: GET
+        path: /api/insight/datasources/{datasource_id}/workflow
+        query:
+          session_id: "{session_id}"
+        expect_status: 200
+        expect_json:
+          datasource_state: ready
+          session_state: idle
+
+  - id: smoke_ask_feedback_adopt_brief
+    layer: smoke
+    tags: [smoke, journey]
+    steps:
+      - method: POST
+        path: /api/insight/datasources/{datasource_id}/ask
+        json:
+          question: "昨日 GMV"
+          session_id: "{session_id}"
+        expect_status: 200
+        expect_json:
+          branch: hit_approved
+          metric_key: gmv
+        save_as: ask_result
+      - method: POST
+        path: /api/insight/ask/{question_log_id}/feedback
+        json:
+          feedback: 1
+        expect_status: 200
+      - method: POST
+        path: /api/insight/metrics/{metric_id_gmv_draft}/adopt
+        json:
+          definition: "冒烟正式 GMV"
+        expect_status: 200
+        expect_json:
+          status: approved
+      - method: GET
+        path: /api/insight/datasources/{datasource_id}/brief
+        expect_status: 200
+        expect_json_keys:
+          - datasource
+          - insight_snapshot
+          - phase
+
+  - id: smoke_forge_run_list
+    layer: smoke
+    tags: [smoke, forge]
+    setup:
+      workflow_state: needs_forge
+    steps:
+      - method: POST
+        path: /api/insight/datasources/{datasource_id}/forge
+        json:
+          pending_question: "鉴数后问 GMV"
+          session_id: "{session_id}"
+        expect_status: 200
+        expect_json:
+          success: true
+        save_as: forge_result
+      - method: GET
+        path: /api/insight/datasources/{datasource_id}/profile/runs
+        expect_status: 200
+        expect_json_nonempty:
+          - runs

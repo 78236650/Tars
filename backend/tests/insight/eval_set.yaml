@@ -34,11 +34,13 @@ cases:
     branch: miss
     question: "火星人口"
     expect_branch: miss
+    expect_error_code: INSIGHT_ADHOC_SQL_NOT_AVAILABLE
 
   - id: adhoc_fallback
     branch: adhoc
     question: "随便一个数"
     expect_branch: adhoc
+    expect_error_code: INSIGHT_ADHOC_SQL_NOT_AVAILABLE
 
   - id: hit_approved_revenue
     branch: hit_approved

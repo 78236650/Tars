@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from ..database.base import Database, get_local_now
+from ..database.sqlite_retry import run_sqlite_with_retry
 
 
 def _estimate_tokens(text: str) -> int:
@@ -35,33 +36,36 @@ class InsightQuestionLogStore:
         metric_key: Optional[str] = None,
         feedback: Optional[int] = None,
     ) -> str:
-        log_id = str(uuid.uuid4())
-        conn = self.db._get_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO insight_question_log (
-                id, datasource_id, tenant_id, question, question_embedding,
-                metric_key, sql, branch, outcome, feedback, caliber_tier, user_id, created_at
-            ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                log_id,
-                datasource_id,
-                tenant_id,
-                question,
-                metric_key,
-                sql,
-                branch,
-                outcome,
-                feedback,
-                caliber_tier,
-                user_id,
-                self._now(),
-            ),
-        )
-        conn.commit()
-        return log_id
+        def _insert() -> str:
+            log_id = str(uuid.uuid4())
+            conn = self.db._get_conn()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO insight_question_log (
+                    id, datasource_id, tenant_id, question, question_embedding,
+                    metric_key, sql, branch, outcome, feedback, caliber_tier, user_id, created_at
+                ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    log_id,
+                    datasource_id,
+                    tenant_id,
+                    question,
+                    metric_key,
+                    sql,
+                    branch,
+                    outcome,
+                    feedback,
+                    caliber_tier,
+                    user_id,
+                    self._now(),
+                ),
+            )
+            conn.commit()
+            return log_id
+
+        return run_sqlite_with_retry(_insert)
 
     def list_fewshot_candidates(
         self,
@@ -180,15 +184,18 @@ class InsightQuestionLogStore:
         return {"down": down, "up": up}
 
     def update_feedback(self, log_id: str, tenant_id: str, feedback: int) -> bool:
-        conn = self.db._get_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE insight_question_log
-            SET feedback = ?
-            WHERE id = ? AND tenant_id = ?
-            """,
-            (feedback, log_id, tenant_id),
-        )
-        conn.commit()
-        return cursor.rowcount > 0
+        def _update() -> bool:
+            conn = self.db._get_conn()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE insight_question_log
+                SET feedback = ?
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (feedback, log_id, tenant_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+        return run_sqlite_with_retry(_update)

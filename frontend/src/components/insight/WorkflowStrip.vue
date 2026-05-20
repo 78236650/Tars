@@ -24,6 +24,7 @@ const loading = ref(false)
 const forging = ref(false)
 const continueQuestion = ref('')
 const showContinueInput = ref(false)
+const collapsed = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -41,6 +42,22 @@ const stepLabel = computed(() => {
 
 const progressPercent = computed(() => workflow.value?.forge_progress?.percent ?? 0)
 const progressMessage = computed(() => workflow.value?.forge_progress?.message || '')
+
+const hintText = computed(() => {
+  const w = workflow.value
+  if (!w) return ''
+  if (w.session_state === 'no_source') return t('insight.workflow.pickSourceHint')
+  if (w.datasource_state === 'needs_forge') return t('insight.workflow.needsForgeHint')
+  if (w.datasource_state === 'forging') {
+    return progressMessage.value
+      ? `${progressMessage.value} (${progressPercent.value}%)`
+      : `${t('bi.insightProfiling')} (${progressPercent.value}%)`
+  }
+  if (w.datasource_state === 'forge_failed') {
+    return w.block_reason || t('insight.workflow.forgeFailed')
+  }
+  return ''
+})
 
 async function refreshWorkflow() {
   if (!props.datasourceId) return
@@ -119,64 +136,110 @@ watch(
 </script>
 
 <template>
-  <div v-if="visible" class="workflow-strip">
-    <div class="strip-head">
-      <span class="strip-title">{{ t('insight.workflow.title') }}</span>
-      <span class="strip-step">{{ stepLabel }}</span>
-      <span v-if="workflow?.datasource_name" class="strip-ds">{{ workflow.datasource_name }}</span>
-    </div>
+  <div v-if="visible" class="workflow-strip" :class="{ 'is-collapsed': collapsed }">
+    <div class="strip-row">
+      <div class="strip-meta" :title="hintText">
+        <span class="strip-badge">{{ t('insight.workflow.title') }}</span>
+        <span class="strip-step">{{ stepLabel }}</span>
+        <span v-if="workflow?.datasource_name" class="strip-ds">{{ workflow.datasource_name }}</span>
+        <span v-if="collapsed && workflow?.datasource_state === 'forging'" class="strip-pct">
+          {{ progressPercent }}%
+        </span>
+      </div>
 
-    <div v-if="workflow?.session_state === 'no_source' && datasources?.length" class="strip-body">
-      <p class="strip-hint">{{ t('insight.workflow.pickSourceHint') }}</p>
-      <select
-        class="strip-select"
-        :value="datasourceId"
-        @change="onPickDatasource(($event.target as HTMLSelectElement).value)"
+      <button
+        type="button"
+        class="strip-toggle"
+        :aria-expanded="!collapsed"
+        :title="collapsed ? t('insight.workflow.expand') : t('insight.workflow.collapse')"
+        @click="collapsed = !collapsed"
       >
-        <option value="">{{ t('insight.selectDatasource') }}</option>
-        <option v-for="ds in datasources" :key="ds.id" :value="ds.id">{{ ds.name }}</option>
-      </select>
-    </div>
-
-    <div v-else-if="workflow?.datasource_state === 'needs_forge'" class="strip-body">
-      <p class="strip-hint">{{ t('insight.workflow.needsForgeHint') }}</p>
-      <div class="strip-actions">
-        <button type="button" class="btn-primary" :disabled="forging" @click="startForge()">
-          {{ forging ? t('bi.insightProfiling') : t('insight.workflow.startForge') }}
-        </button>
-        <button type="button" class="btn-secondary" :disabled="forging" @click="showContinueInput = !showContinueInput">
-          {{ t('insight.workflow.forgeAndContinue') }}
-        </button>
-      </div>
-      <div v-if="showContinueInput" class="continue-box">
-        <input
-          v-model="continueQuestion"
-          type="text"
-          class="continue-input"
-          :placeholder="t('insight.workflow.continuePlaceholder')"
-        />
-        <button
-          type="button"
-          class="btn-primary"
-          :disabled="forging || !continueQuestion.trim()"
-          @click="startForge(continueQuestion.trim())"
+        <svg
+          class="strip-toggle-icon"
+          viewBox="0 0 16 16"
+          width="14"
+          height="14"
+          aria-hidden="true"
         >
-          {{ t('insight.workflow.forgeAndContinue') }}
-        </button>
+          <path fill="currentColor" d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+
+      <div v-if="!collapsed" class="strip-main">
+        <template v-if="workflow?.session_state === 'no_source' && datasources?.length">
+          <select
+            class="strip-select"
+            :value="datasourceId"
+            :title="t('insight.workflow.pickSourceHint')"
+            @change="onPickDatasource(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">{{ t('insight.selectDatasource') }}</option>
+            <option v-for="ds in datasources" :key="ds.id" :value="ds.id">{{ ds.name }}</option>
+          </select>
+        </template>
+
+        <template v-else-if="workflow?.datasource_state === 'needs_forge'">
+          <div class="strip-actions">
+            <button
+              type="button"
+              class="btn-primary"
+              :title="t('insight.workflow.needsForgeHint')"
+              :disabled="forging"
+              @click="startForge()"
+            >
+              {{ forging ? t('bi.insightProfiling') : t('insight.workflow.startForge') }}
+            </button>
+            <button
+              type="button"
+              class="btn-ghost"
+              :disabled="forging"
+              @click="showContinueInput = !showContinueInput"
+            >
+              {{ t('insight.workflow.forgeAndContinue') }}
+            </button>
+          </div>
+        </template>
+
+        <template v-else-if="workflow?.datasource_state === 'forging'">
+          <div class="strip-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: `${progressPercent}%` }" />
+            </div>
+            <span class="strip-pct">{{ progressPercent }}%</span>
+          </div>
+        </template>
+
+        <template v-else-if="workflow?.datasource_state === 'forge_failed'">
+          <button
+            type="button"
+            class="btn-primary"
+            :title="workflow.block_reason || t('insight.workflow.forgeFailed')"
+            :disabled="forging"
+            @click="startForge()"
+          >
+            {{ t('insight.retry') }}
+          </button>
+        </template>
       </div>
     </div>
 
-    <div v-else-if="workflow?.datasource_state === 'forging'" class="strip-body">
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: `${progressPercent}%` }" />
-      </div>
-      <p class="strip-hint">{{ progressMessage || t('bi.insightProfiling') }} ({{ progressPercent }}%)</p>
-    </div>
-
-    <div v-else-if="workflow?.datasource_state === 'forge_failed'" class="strip-body strip-error">
-      <p class="strip-hint">{{ workflow.block_reason || t('insight.workflow.forgeFailed') }}</p>
-      <button type="button" class="btn-primary" :disabled="forging" @click="startForge()">
-        {{ t('insight.retry') }}
+    <div
+      v-if="!collapsed && workflow?.datasource_state === 'needs_forge' && showContinueInput"
+      class="strip-row strip-row--secondary"
+    >
+      <input
+        v-model="continueQuestion"
+        type="text"
+        class="continue-input"
+        :placeholder="t('insight.workflow.continuePlaceholder')"
+      />
+      <button
+        type="button"
+        class="btn-primary"
+        :disabled="forging || !continueQuestion.trim()"
+        @click="startForge(continueQuestion.trim())"
+      >
+        {{ t('insight.workflow.forgeAndContinue') }}
       </button>
     </div>
   </div>
@@ -184,70 +247,122 @@ watch(
 
 <style scoped>
 .workflow-strip {
-  margin: 0 16px 8px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(251, 191, 36, 0.2);
-  background: rgba(251, 191, 36, 0.06);
+  margin: 0 12px 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  background: rgba(251, 191, 36, 0.05);
 }
-.strip-head {
+.strip-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  min-height: 28px;
 }
-.strip-title {
-  font-size: 12px;
+.strip-row--secondary {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.strip-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.strip-badge {
+  flex-shrink: 0;
+  font-size: 10px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: #fbbf24;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(251, 191, 36, 0.12);
 }
 .strip-step {
-  font-size: 13px;
+  font-size: 12px;
   color: #e7e5e4;
+  white-space: nowrap;
 }
 .strip-ds {
-  font-size: 12px;
+  font-size: 11px;
   color: #a8a29e;
-  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
 }
-.strip-body {
+.strip-pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #fbbf24;
+}
+.strip-toggle {
+  flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #a8a29e;
+  cursor: pointer;
 }
-.strip-hint {
-  font-size: 13px;
-  color: #d6d3d1;
-  margin: 0;
+.strip-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e7e5e4;
+}
+.strip-toggle-icon {
+  transition: transform 0.15s ease;
+}
+.is-collapsed .strip-toggle-icon {
+  transform: rotate(-90deg);
+}
+.strip-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .strip-actions {
   display: flex;
+  align-items: center;
+  gap: 6px;
   flex-wrap: wrap;
-  gap: 8px;
 }
 .strip-select,
 .continue-input {
-  width: 100%;
-  max-width: 360px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.25);
+  min-width: 0;
+  flex: 1;
+  max-width: 200px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
   color: #f5f5f4;
-  font-size: 13px;
+  font-size: 12px;
+  height: 28px;
 }
-.continue-box {
+.continue-input {
+  max-width: none;
+}
+.strip-progress {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
+  min-width: 120px;
 }
 .progress-bar {
-  height: 6px;
-  border-radius: 3px;
+  flex: 1;
+  width: 80px;
+  height: 4px;
+  border-radius: 2px;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
@@ -256,26 +371,45 @@ watch(
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
   transition: width 0.3s ease;
 }
-.strip-error .strip-hint {
-  color: #fecaca;
-}
 .btn-primary {
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 4px 10px;
+  height: 28px;
+  border-radius: 6px;
   background: #f59e0b;
   color: #1c1917;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .btn-primary:disabled {
   opacity: 0.5;
 }
-.btn-secondary {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+.btn-ghost {
+  padding: 4px 8px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   background: transparent;
-  color: #e7e5e4;
-  font-size: 13px;
+  color: #d6d3d1;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+.is-collapsed {
+  padding: 4px 8px;
+}
+.is-collapsed .strip-row {
+  min-height: 24px;
+}
+@media (max-width: 640px) {
+  .strip-main {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .strip-row {
+    flex-wrap: wrap;
+  }
 }
 </style>

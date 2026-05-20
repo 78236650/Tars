@@ -141,6 +141,35 @@ async def test_hit_partial_returns_candidates(qa_context):
 
 
 @pytest.mark.asyncio
+async def test_adhoc_returns_error_not_stub_count(qa_context):
+    db, ds = qa_context
+
+    async def route(**_kwargs):
+        return {"branch": "adhoc", "confidence": 0.4, "reasoning": "no metric"}
+
+    engine = MetricQaEngine(db, route_fn=route, sql_executor=_mock_sql)
+    ans = await engine.ask(ds.id, "default", "随便一个数")
+    assert ans.branch == "adhoc"
+    assert ans.error is not None
+    assert ans.error.code == "INSIGHT_ADHOC_SQL_NOT_AVAILABLE"
+    assert ans.value is None
+
+
+@pytest.mark.asyncio
+async def test_miss_with_adhoc_allowed_returns_error_not_stub(qa_context):
+    db, ds = qa_context
+
+    async def route(**_kwargs):
+        return {"branch": "miss", "confidence": 0.2, "reasoning": "no match"}
+
+    engine = MetricQaEngine(db, route_fn=route, sql_executor=_mock_sql)
+    ans = await engine.ask(ds.id, "default", "火星人口")
+    assert ans.branch == "miss"
+    assert ans.error is not None
+    assert ans.error.code == "INSIGHT_ADHOC_SQL_NOT_AVAILABLE"
+
+
+@pytest.mark.asyncio
 async def test_needs_forge_blocks_ask(qa_context):
     db, ds = qa_context
     wf = InsightWorkflowService(db)

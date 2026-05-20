@@ -6,6 +6,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..database.base import Database, get_local_now
+from ..database.sqlite_retry import run_sqlite_with_retry
 from .models import InsightMetric, InsightProfileRun
 
 
@@ -211,6 +212,18 @@ class InsightMetricStore:
         can surface candidates that collide with approved rows on the
         UNIQUE(datasource_id, tenant_id, metric_key) constraint.
         """
+
+        def _replace() -> Dict[str, Any]:
+            return self._replace_draft_metrics_tx(datasource_id, tenant_id, candidates)
+
+        return run_sqlite_with_retry(_replace)
+
+    def _replace_draft_metrics_tx(
+        self,
+        datasource_id: str,
+        tenant_id: str,
+        candidates: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         conn = self.db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -394,6 +407,22 @@ class InsightMetricStore:
         sql_template: Optional[str] = None,
     ) -> InsightMetric:
         """Promote draft→approved or bump version when definition changes (row lock)."""
+
+        def _adopt() -> InsightMetric:
+            return self._adopt_metric_tx(
+                metric_id, tenant_id, definition=definition, sql_template=sql_template
+            )
+
+        return run_sqlite_with_retry(_adopt)
+
+    def _adopt_metric_tx(
+        self,
+        metric_id: str,
+        tenant_id: str,
+        *,
+        definition: Optional[str] = None,
+        sql_template: Optional[str] = None,
+    ) -> InsightMetric:
         conn = self.db._get_conn()
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
