@@ -146,9 +146,11 @@ class Database:
     def _get_conn(self):
         """获取数据库连接，保持连接打开用于内存数据库"""
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            busy_ms = int(os.environ.get("TARS_SQLITE_BUSY_MS", "15000"))
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=busy_ms / 1000.0)
             self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA busy_timeout=5000")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute(f"PRAGMA busy_timeout={busy_ms}")
         return self._conn
     
     def close(self):

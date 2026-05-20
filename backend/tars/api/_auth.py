@@ -19,9 +19,23 @@ Auth model:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Optional
 
 from fastapi import Depends, Header, HTTPException
+
+
+def _normalize_role(role: Any) -> str:
+    """Coerce DB enum / string role to lowercase slug (e.g. ``admin``)."""
+    if role is None:
+        return "user"
+    if isinstance(role, Enum):
+        return str(role.value).lower()
+    return str(role).lower()
+
+
+def _is_admin_role(role: Any) -> bool:
+    return _normalize_role(role) == "admin"
 
 
 @dataclass
@@ -56,7 +70,8 @@ def resolve_authenticated_principal(
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    is_admin = (getattr(user, "role", None) == "admin")
+    role_value = _normalize_role(getattr(user, "role", None))
+    is_admin = _is_admin_role(getattr(user, "role", None))
 
     # X-User-Role: admin is client-controlled; only honour it for real admins.
     if role_header == "admin" and not is_admin:
@@ -74,7 +89,7 @@ def resolve_authenticated_principal(
 
     return Principal(
         user_id=user.id,
-        role=getattr(user, "role", "user"),
+        role=role_value,
         role_template_id=getattr(user, "role_template_id", None) or "standard",
         tenant_id=tenant_id,
         is_admin=is_admin,

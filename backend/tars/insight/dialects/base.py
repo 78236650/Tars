@@ -23,6 +23,8 @@ def quote_ident(name: str, dialect: str = "generic") -> str:
         raise ValueError(f"unsafe identifier: {name!r}")
     if dialect in ("mysql", "doris"):
         return f"`{name}`"
+    if dialect == "sqlserver":
+        return f"[{name}]"
     return f'"{name}"'
 
 

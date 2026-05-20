@@ -107,3 +107,7 @@ async def test_insight_eval_case(case):
     assert ans.branch == case["expect_branch"]
     if case.get("expect_value") is not None:
         assert ans.value == case["expect_value"]
+    if case.get("expect_error_code"):
+        assert ans.error is not None
+        assert ans.error.code == case["expect_error_code"]
+        assert ans.value is None

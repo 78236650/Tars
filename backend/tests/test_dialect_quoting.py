@@ -52,3 +52,7 @@ class TestQuoteTable:
 
     def test_chinese_table(self):
         assert quote_table("数据库.用户表", "mysql") == "`数据库`.`用户表`"
+
+    def test_sqlserver_brackets(self):
+        assert quote_ident("order-items", "sqlserver") == "[order-items]"
+        assert quote_table("dbo.orders", "sqlserver") == "[dbo].[orders]"

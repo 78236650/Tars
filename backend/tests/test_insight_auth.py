@@ -99,7 +99,7 @@ def test_insight_version_with_admin_key_succeeds(app_client, admin_key):
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["version"] == "INS-1.0.0"
+    assert body["version"] == "INS-2.0.0"
 
 
 def test_insight_llm_settings_requires_auth(app_client):

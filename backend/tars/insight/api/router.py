@@ -277,7 +277,7 @@ async def forge_events_sse(
     principal: Principal = Depends(_require),
 ):
     """SSE stream for active forge run (in-process buffer; see deploy docs H1)."""
-    from ..workflow_events import acquire_connection, iter_sse
+    from ..workflow_events import acquire_connection, aiter_sse
 
     if _run_store is None or _ds_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
@@ -305,8 +305,9 @@ async def forge_events_sse(
 
     run_id = runs[0].id
 
-    def event_stream():
-        yield from iter_sse(run_id, last_id)
+    async def event_stream():
+        async for chunk in aiter_sse(run_id, last_id):
+            yield chunk
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
