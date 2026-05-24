@@ -31,6 +31,11 @@ def test_set_and_get_document_metadata(db):
     assert meta["metric_ids"] == ["m-uuid-1", "m-uuid-2"]
 
 
+def test_search_docs_by_metric_id_rejects_invalid_pattern(db):
+    hits = search_docs_by_metric_id(db, "default", "%admin")
+    assert hits == []
+
+
 def test_search_docs_by_metric_id(db):
     set_document_metadata(db, "doc1", {"metric_ids": ["m-uuid-1"]})
     hits = search_docs_by_metric_id(db, "default", "m-uuid-1")

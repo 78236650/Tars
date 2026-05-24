@@ -26,6 +26,24 @@ class SubAgentManager:
         self.subagents[SubAgentType.DATA] = DataAgent()
         self.subagents[SubAgentType.RESEARCH] = ResearchAgent()
         self.subagents[SubAgentType.PLAN] = PlanAgent()
+
+    def apply_tenant_overrides(self, tenant_id: str = "default") -> None:
+        """Merge evolution subagents.json overrides for a tenant."""
+        import json
+        from pathlib import Path
+
+        path = Path.home() / ".tars" / "agents" / tenant_id / "subagents.json"
+        if not path.exists():
+            return
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return
+        if not isinstance(config, dict):
+            return
+        for agent_type, cfg in config.items():
+            if isinstance(cfg, dict):
+                self.update_subagent_config(str(agent_type), cfg)
     
     def get_subagent(self, agent_type: SubAgentType) -> Optional[SubAgent]:
         """获取子代理"""
@@ -111,6 +129,9 @@ class SubAgentManager:
         if agent_type is None:
             return await self._handle_direct(task, context)
 
+        tenant_id = (context or {}).get("tenant_id", "default")
+        self.apply_tenant_overrides(tenant_id)
+
         agent = self.subagents.get(agent_type)
         if not agent or not agent.config.enabled:
             return await self._handle_direct(task, context)
@@ -151,6 +172,8 @@ class SubAgentManager:
         """
         try:
             agent_type_enum = SubAgentType(agent_type)
+            tenant_id = (context or {}).get("tenant_id", "default")
+            self.apply_tenant_overrides(tenant_id)
             agent = self.subagents.get(agent_type_enum)
 
             if not agent:

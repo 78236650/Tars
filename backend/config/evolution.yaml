@@ -1,0 +1,15 @@
+# Evolution system configuration — v4.2.1+
+eval_gate:
+  improve_min: 0.10
+  regress_max: -0.05
+
+prompt_writeback:
+  max_tuned_chars: 800
+
+insight_burst:
+  window_days: 7
+  min_downvotes: 3
+
+ingest:
+  save_state_every_n_turns: 5
+  optimize_async: true

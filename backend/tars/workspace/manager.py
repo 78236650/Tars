@@ -124,6 +124,24 @@ class WorkspaceManager:
             return parse_memory_markdown(content)
         return None
 
+    @classmethod
+    def for_tenant(cls, tenant_id: str = "default") -> "WorkspaceManager":
+        """Tenant-scoped workspace aligned with Evolution ApplyEngine paths."""
+        path = Path.home() / ".tars" / "agents" / tenant_id
+        return cls(workspace_path=str(path))
+
+    def load_prompt_overlays(self) -> str:
+        """Load evolution prompt overlays from workspace/prompts/*.md."""
+        prompts_dir = self.workspace_path / "prompts"
+        if not prompts_dir.is_dir():
+            return ""
+        parts: list[str] = []
+        for path in sorted(prompts_dir.glob("*.md")):
+            content = path.read_text(encoding="utf-8").strip()
+            if content:
+                parts.append(f"## Prompt Overlay: {path.stem}\n{content}")
+        return "\n\n".join(parts)
+
     def build_context(self) -> str:
         """构建完整的上下文"""
         parts = []

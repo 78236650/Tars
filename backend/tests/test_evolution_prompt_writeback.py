@@ -86,16 +86,17 @@ def test_orchestrator_writes_tuned_master_prompt_to_workspace(db, tmp_path):
 
 def test_apply_prompt_roundtrip_and_rollback(db, tmp_path):
     engine = ApplyEngine(db, workspace_base=str(tmp_path / "ws"))
-    v1 = "# Master v1\nBe concise."
+    v1 = "Be concise."
     engine.apply_prompt("t1", "master", v1)
-    assert engine.read_prompt("t1", "master") == v1
+    assert "Be concise" in engine.read_prompt("t1", "master")
 
-    v2 = "# Master v2\nBe thorough."
+    v2 = "Be thorough."
     record2 = engine.apply_prompt("t1", "master", v2)
-    assert "v2" in engine.read_prompt("t1", "master")
+    assert "thorough" in engine.read_prompt("t1", "master")
 
     assert engine.rollback(record2.id)
-    assert engine.read_prompt("t1", "master") == v1
+    assert "Be concise" in engine.read_prompt("t1", "master")
+    assert "thorough" not in engine.read_prompt("t1", "master")
 
 
 def test_orchestrator_skips_prompt_writeback_when_scores_high(db, tmp_path):

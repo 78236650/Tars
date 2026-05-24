@@ -216,6 +216,14 @@ def search_docs_by_metric_id(
     *,
     top_k: int = 5,
 ) -> List[Dict[str, Any]]:
+    import logging
+    import re
+
+    logger = logging.getLogger(__name__)
+    if not metric_id or not re.fullmatch(r"[A-Za-z0-9_-]+", metric_id):
+        logger.warning("Invalid metric_id rejected: %r", metric_id)
+        return []
+
     conn = db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
@@ -223,10 +231,10 @@ def search_docs_by_metric_id(
         SELECT df.id, df.file_name, df.metadata_json
         FROM document_files df
         JOIN document_collections dc ON dc.id = df.collection_id
-        WHERE dc.tenant_id = ? AND df.metadata_json LIKE ?
+        WHERE dc.tenant_id = ? AND df.metadata_json LIKE ? ESCAPE '\\'
         LIMIT ?
         """,
-        (tenant_id, f'%{metric_id}%', top_k),
+        (tenant_id, f"%{metric_id.replace('%', '\\%').replace('_', '\\_')}%", top_k),
     )
     hits: List[Dict[str, Any]] = []
     for doc_id, file_name, meta_json in cursor.fetchall():

@@ -854,7 +854,11 @@ class AgentV2:
 
     def _build_static_prompt(self, user_content: str, session_id: str, cmd_result, tenant_id: str = "default") -> str:
         """Build cacheable static parts: persona + tools + skill list."""
-        sp = self.workspace.build_context()
+        ws = WorkspaceManager.for_tenant(tenant_id)
+        sp = ws.build_context()
+        overlay = ws.load_prompt_overlays()
+        if overlay:
+            sp += f"\n\n{overlay}"
 
         # 渐进披露 + SkillRouter 按需注入（tenant 过滤）
         if hasattr(self, 'skill_loader') and hasattr(self.skill_loader, 'get_progressive_disclosure'):

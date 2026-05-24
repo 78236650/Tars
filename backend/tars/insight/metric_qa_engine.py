@@ -252,7 +252,7 @@ class MetricQaEngine:
             branch=decision.branch,
             reasoning=decision.reasoning,
         )
-        answer = self._apply_knowledge_citations(
+        answer = await self._apply_knowledge_citations(
             answer,
             tenant_id=tenant_id,
             datasource_id=datasource_id,
@@ -461,7 +461,7 @@ class MetricQaEngine:
             parts.append(f"as_of={as_of_date}")
         return "; ".join(parts)
 
-    def _apply_knowledge_citations(
+    async def _apply_knowledge_citations(
         self,
         answer: MetricAnswer,
         *,
@@ -473,7 +473,7 @@ class MetricQaEngine:
         if not self._knowledge_bridge:
             return answer
         try:
-            citations = self._knowledge_bridge.retrieve_for_question(
+            citations = await self._knowledge_bridge.retrieve_for_question(
                 tenant_id,
                 datasource_id,
                 question,

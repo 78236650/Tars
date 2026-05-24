@@ -84,8 +84,17 @@ class PromptTuner:
         
         return improved_prompt
     
-    def get_current_prompt(self, prompt_type: str) -> str:
-        """获取当前版本提示词"""
+    def get_current_prompt(
+        self,
+        prompt_type: str,
+        tenant_id: str = "default",
+        apply_engine=None,
+    ) -> str:
+        """Get current prompt — prefer workspace file, fallback to in-memory."""
+        if apply_engine is not None:
+            file_prompt = apply_engine.read_prompt(tenant_id, prompt_type)
+            if file_prompt.strip():
+                return file_prompt
         if prompt_type not in self.prompt_versions:
             return self.default_prompts.get(prompt_type, "")
         
@@ -118,19 +127,16 @@ class PromptTuner:
         return suggestions
     
     def _apply_suggestions(self, prompt: str, suggestions: Dict[str, float]) -> str:
-        """应用改进建议到提示词"""
-        
+        """Apply improvement suggestions to prompt (deduplicated)."""
         improved_prompt = prompt
-        
-        if 'improve_relevance' in suggestions:
-            improved_prompt += "\n\nImportant: Focus on being highly relevant to the user's question."
-        
-        if 'improve_completeness' in suggestions:
-            improved_prompt += "\n\nImportant: Provide complete and comprehensive answers."
-        
-        if 'improve_style' in suggestions:
-            improved_prompt += "\n\nImportant: Maintain consistent and appropriate tone and style."
-        
+        snippets = {
+            "improve_relevance": "\n\nImportant: Focus on being highly relevant to the user's question.",
+            "improve_completeness": "\n\nImportant: Provide complete and comprehensive answers.",
+            "improve_style": "\n\nImportant: Maintain consistent and appropriate tone and style.",
+        }
+        for key, snippet in snippets.items():
+            if key in suggestions and snippet.strip() not in improved_prompt:
+                improved_prompt += snippet
         return improved_prompt
     
     def record_feedback(self, prompt_type: str, evaluation: EvaluationResult):

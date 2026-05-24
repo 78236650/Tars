@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from .apply_engine import ApplyEngine
+from .apply_engine import ApplyEngine, PromptDiffTooLarge
+from .config import get_evolution_config
 from .eval_runner import EvalRunner
 from .feedback_collector import FeedbackCollector
 from .skill_optimizer import SkillOptimizer
@@ -38,8 +39,30 @@ class EvolutionOrchestrator:
         self.min_events = min_events
         self.confidence_threshold = confidence_threshold
 
+    def _insight_burst_metrics(self, tenant_id: str) -> List[str]:
+        burst_cfg = get_evolution_config().insight_burst
+        return self.db.count_insight_downvote_burst_metrics(
+            tenant_id,
+            days=burst_cfg.window_days,
+            min_count=burst_cfg.min_downvotes,
+        )
+
+    def _build_eval_context(self, tenant_id: str) -> Dict[str, Any]:
+        history = self.evaluator.history
+        last = history[-1] if history else None
+        last_ctx = (last.context if last else {}) or {}
+        return {
+            "personality": self.apply_engine.read_personality_params(tenant_id),
+            "prompt_overlay": self.apply_engine.read_prompt(tenant_id, "master"),
+            "tools_used": last_ctx.get("tools_used") or (last.tools_used if last else []),
+            "skill_id": last_ctx.get("skill_id"),
+            "subagent": last_ctx.get("subagent_used") or (last.subagent_used if last else None),
+        }
+
     def optimize(self, tenant_id: str = "default") -> Dict[str, Any]:
-        if self.feedback.count_recent(tenant_id, days=7) < self.min_events:
+        burst_metrics = self._insight_burst_metrics(tenant_id)
+        recent_events = self.feedback.count_recent(tenant_id, days=7)
+        if recent_events < self.min_events and not burst_metrics:
             return {"skipped": True, "reason": "insufficient_events", "tenant_id": tenant_id}
 
         history = self.evaluator.history
@@ -52,11 +75,15 @@ class EvolutionOrchestrator:
             "skill_suggestions": [],
             "apply_records": [],
         }
+        if burst_metrics:
+            results["insight_burst"] = burst_metrics
 
-        before_ctx = {"personality": self.apply_engine.read_personality_params(tenant_id)}
+        before_ctx = self._build_eval_context(tenant_id)
         before_eval = self.eval_runner.run(before_ctx)
+        batch_id = self.apply_engine.begin_batch()
+        results["batch_id"] = batch_id
 
-        if len(history) >= 20:
+        if len(history) >= 20 or burst_metrics:
             current = before_ctx["personality"]
             suggested = self.personality_optimizer.optimize(current, history)
             delta_keys = [
@@ -80,17 +107,23 @@ class EvolutionOrchestrator:
             if subagent_patch:
                 sa_record = self.apply_engine.apply_subagent_config(tenant_id, subagent_patch)
                 results["apply_records"].append(sa_record.id)
-            results["subagent_optimized"] = True
+            results["subagent_optimized"] = bool(subagent_patch)
             results["subagent_weights"] = sa_weights
             results["subagent_personality"] = sa_personality
 
+            prompt_types = ["master", "code", "writing", "data", "research", "plan"]
+            if burst_metrics:
+                prompt_types = ["master", "data"]
             prompt_apply_ids: list[str] = []
-            for prompt_type in ["master", "code", "writing", "data", "research", "plan"]:
-                before = self.prompt_tuner.get_current_prompt(prompt_type)
+            for prompt_type in prompt_types:
+                before_prompt = self.prompt_tuner.get_current_prompt(prompt_type, tenant_id, self.apply_engine)
                 tuned = self.prompt_tuner.tune_system_prompt(history, prompt_type)
-                if tuned and tuned != before:
-                    record = self.apply_engine.apply_prompt(tenant_id, prompt_type, tuned)
-                    prompt_apply_ids.append(record.id)
+                if tuned and tuned != before_prompt:
+                    try:
+                        record = self.apply_engine.apply_prompt(tenant_id, prompt_type, tuned)
+                        prompt_apply_ids.append(record.id)
+                    except PromptDiffTooLarge:
+                        logger.warning("prompt diff too large for %s, skipped", prompt_type)
             if prompt_apply_ids:
                 results["prompts_tuned"] = True
                 results["prompt_apply_records"] = prompt_apply_ids
@@ -125,15 +158,15 @@ class EvolutionOrchestrator:
             results["skill_apply_records"] = skill_apply_ids
             results["apply_records"].extend(skill_apply_ids)
 
-        after_ctx = {"personality": self.apply_engine.read_personality_params(tenant_id)}
+        after_ctx = self._build_eval_context(tenant_id)
         after_eval = self.eval_runner.run(after_ctx)
         comparison = self.eval_runner.compare(before_eval, after_eval)
         results["eval"] = comparison
 
         if comparison.get("should_rollback") and results["apply_records"]:
-            last_id = results["apply_records"][-1]
-            if self.apply_engine.rollback(last_id):
-                results["rolled_back"] = last_id
-                logger.warning("Evolution eval gate rollback apply_id=%s", last_id)
+            rolled = self.apply_engine.rollback_batch(batch_id)
+            if rolled:
+                results["rolled_back"] = rolled
+                logger.warning("Evolution eval gate rollback batch_id=%s count=%s", batch_id, len(rolled))
 
         return results

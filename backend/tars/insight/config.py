@@ -7,6 +7,7 @@ from typing import Any, List
 
 import yaml
 
+from .knowledge_bridge import KnowledgeBridgeSettings
 from .version import INS_VERSION
 
 
@@ -75,6 +76,7 @@ class InsightConfig:
     adoption: InsightAdoptionSettings = field(default_factory=InsightAdoptionSettings)
     feedback: InsightFeedbackSettings = field(default_factory=InsightFeedbackSettings)
     feature_flags: InsightFeatureFlags = field(default_factory=InsightFeatureFlags)
+    knowledge_bridge: KnowledgeBridgeSettings = field(default_factory=KnowledgeBridgeSettings)
     metric_qa: dict = field(default_factory=dict)
     publish: dict = field(default_factory=dict)
 
@@ -117,6 +119,7 @@ def load_insight_config(path: str | Path | None = None) -> InsightConfig:
     adoption_raw = raw.get("adoption") or {}
     feedback_raw = raw.get("feedback") or {}
     flags_raw = raw.get("feature_flags") or {}
+    kb_raw = raw.get("knowledge_bridge") or {}
 
     budget = InsightBudget(
         max_tables=int(prof.get("max_tables", 80)),
@@ -169,6 +172,15 @@ def load_insight_config(path: str | Path | None = None) -> InsightConfig:
         ),
         feature_flags=InsightFeatureFlags(
             chat_first_enabled=bool(flags_raw.get("chat_first_enabled", False)),
+        ),
+        knowledge_bridge=KnowledgeBridgeSettings(
+            enabled=bool(kb_raw.get("enabled", True)),
+            timeout_ms=int(kb_raw.get("timeout_ms", 500)),
+            meeting_collection_prefixes=list(kb_raw.get("meeting_collection_prefixes") or ["meeting"]),
+            max_snippet_chars=int(kb_raw.get("max_snippet_chars", 200)),
+            max_total_chars=int(kb_raw.get("max_total_chars", 1500)),
+            insight_top_k=int(kb_raw.get("insight_top_k", 3)),
+            meeting_top_k=int(kb_raw.get("meeting_top_k", 2)),
         ),
         metric_qa=metric_qa_raw,
         publish=dict(raw.get("publish") or {}),

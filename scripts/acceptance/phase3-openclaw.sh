@@ -27,13 +27,18 @@ $VENV -m pytest tests/test_tool_approval.py -q
 echo "-- §7.1 #5 Subagent handoff --"
 $VENV -m pytest tests/test_subagent_handoff.py -q
 
+echo "-- §7.2 Follow-up queue --"
+$VENV -m pytest tests/test_follow_up_queue.py -q
+
 echo "-- WebSocket routing regression --"
 $VENV -m pytest tests/unit/test_websocket_routing.py tests/unit/test_tenant_websocket.py \
   tests/test_evolution_websocket_feedback.py -q
 
-echo "-- Frontend ApprovalDialog --"
+echo "-- Frontend ApprovalDialog + QueueStatus --"
 if [[ -f "$ROOT/frontend/package.json" ]]; then
-  (cd "$ROOT/frontend" && npm run test:unit -- --run src/components/chat/ApprovalDialog.spec.ts)
+  (cd "$ROOT/frontend" && npm run test:unit -- --run \
+    src/components/chat/ApprovalDialog.spec.ts \
+    src/components/chat/QueueStatus.spec.ts)
 fi
 
 echo ""

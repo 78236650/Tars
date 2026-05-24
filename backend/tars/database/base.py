@@ -825,6 +825,10 @@ class Database:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_evolution_apply_tenant ON evolution_apply_log(tenant_id, created_at DESC)")
+        try:
+            cursor.execute("ALTER TABLE evolution_apply_log ADD COLUMN batch_id TEXT")
+        except Exception:
+            pass
 
         conn.commit()
 
@@ -2604,14 +2608,15 @@ class Database:
         diff_summary: str = "",
         status: str = "applied",
         created_at: str,
+        batch_id: str | None = None,
     ) -> None:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO evolution_apply_log
-            (id, tenant_id, target_type, target_path, before_hash, after_hash, before_content, diff_summary, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, tenant_id, target_type, target_path, before_hash, after_hash, before_content, diff_summary, status, created_at, batch_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 apply_id,
@@ -2624,9 +2629,66 @@ class Database:
                 diff_summary,
                 status,
                 created_at,
+                batch_id,
             ),
         )
         conn.commit()
+
+    def list_evolution_apply_logs_by_batch(self, batch_id: str) -> list:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, tenant_id, target_type, target_path, before_hash, after_hash, before_content, diff_summary, status, created_at, batch_id
+            FROM evolution_apply_log WHERE batch_id = ? ORDER BY created_at DESC
+            """,
+            (batch_id,),
+        )
+        rows = []
+        for row in cursor.fetchall():
+            rows.append({
+                "id": row[0],
+                "tenant_id": row[1],
+                "target_type": row[2],
+                "target_path": row[3],
+                "before_hash": row[4],
+                "after_hash": row[5],
+                "before_content": row[6],
+                "diff_summary": row[7],
+                "status": row[8],
+                "created_at": row[9],
+                "batch_id": row[10] if len(row) > 10 else None,
+            })
+        return rows
+
+    def count_insight_downvote_burst_metrics(
+        self,
+        tenant_id: str = "default",
+        *,
+        days: int = 7,
+        min_count: int = 3,
+    ) -> list[str]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT payload_json FROM evolution_events
+            WHERE tenant_id = ? AND source = 'insight' AND signal = 'metric_downvote'
+              AND created_at >= datetime('now', ?)
+            """,
+            (tenant_id, f"-{days} days"),
+        )
+        counts: dict[str, int] = {}
+        import json as _json
+
+        for (payload_json,) in cursor.fetchall():
+            try:
+                payload = _json.loads(payload_json or "{}")
+            except (_json.JSONDecodeError, TypeError):
+                continue
+            metric_key = payload.get("metric_key") or "unknown"
+            counts[metric_key] = counts.get(metric_key, 0) + 1
+        return [key for key, count in counts.items() if count >= min_count]
 
     def get_evolution_apply_log(self, apply_id: str) -> Optional[dict]:
         conn = self._get_conn()

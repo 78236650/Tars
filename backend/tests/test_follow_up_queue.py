@@ -180,3 +180,40 @@ async def test_router_reader_allows_enqueue_during_long_turn():
 
     queue_events = [e for e in channel_events if e.get("type") == "queue_status"]
     assert any(e.get("pending", 0) >= 1 for e in queue_events)
+
+
+@pytest.mark.asyncio
+async def test_follow_up_queue_no_concurrent_turns_during_drain():
+    from tars.channels.websocket import WebSocketChannel
+
+    channel = WebSocketChannel(websocket=AsyncMock())
+    queue = FollowUpQueue()
+    channel.agent = MagicMock()
+    channel.agent.follow_up_queue = queue
+
+    active = 0
+    max_active = {"value": 0}
+    call_count = {"value": 0}
+
+    async def fake_handle_message(**kwargs):
+        nonlocal active
+        call_count["value"] += 1
+        active += 1
+        max_active["value"] = max(max_active["value"], active)
+        await asyncio.sleep(0.05)
+        active -= 1
+
+    channel.agent.handle_message = fake_handle_message
+
+    async def capture_send(session_id, event):
+        return None
+
+    channel.send = capture_send
+
+    queue.enqueue(FollowUpItem('{"session_id":"sess-1","content":"queued"}', "sess-1", "queued"))
+
+    raw = json.dumps({"session_id": "sess-1", "content": "first"})
+    await channel.handle_message(raw)
+
+    assert max_active["value"] == 1
+    assert call_count["value"] == 2

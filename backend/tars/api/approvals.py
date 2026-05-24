@@ -34,7 +34,7 @@ def _require_service():
 def _authorize_request(principal: Principal, request) -> None:
     if principal.is_admin:
         return
-    if request.user_id != principal.user_id and request.tenant_id != principal.tenant_id:
+    if request.user_id != principal.user_id:
         raise HTTPException(status_code=403, detail="无权审批该请求")
 
 

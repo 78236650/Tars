@@ -1,6 +1,7 @@
 """
 Evolution Manager - 整合所有自进化模块的核心管理器
 """
+import asyncio
 import os
 import json
 from typing import Dict, Any, Optional, Callable
@@ -54,6 +55,7 @@ class EvolutionManager:
         self._auto_optimize = True
         self._optimize_interval = 50  # 每50次对话优化一次
         self._conversation_count = 0
+        self._optimize_lock: Optional[asyncio.Lock] = None
         
         self._load_state()
     
@@ -110,12 +112,33 @@ class EvolutionManager:
             )
         
         if self._auto_optimize and self._enabled and self._conversation_count % self._optimize_interval == 0:
-            self.optimize(tenant_id=context.get("tenant_id", "default"))
+            self._schedule_optimize(context.get("tenant_id", "default"))
         
-        self._save_state()
+        from .config import get_evolution_config
+        if self._conversation_count % max(get_evolution_config().ingest.save_state_every_n_turns, 1) == 0:
+            self._save_state()
         
         return evaluation
     
+    def _schedule_optimize(self, tenant_id: str) -> None:
+        from .config import get_evolution_config
+
+        if not get_evolution_config().ingest.optimize_async:
+            self.optimize(tenant_id=tenant_id)
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.optimize(tenant_id=tenant_id)
+            return
+        loop.create_task(self._async_optimize(tenant_id))
+
+    async def _async_optimize(self, tenant_id: str) -> None:
+        if self._optimize_lock is None:
+            self._optimize_lock = asyncio.Lock()
+        async with self._optimize_lock:
+            self.optimize(tenant_id=tenant_id)
+
     def ingest_turn(
         self,
         tenant_id: str,
@@ -127,6 +150,7 @@ class EvolutionManager:
         tools_used: Optional[list] = None,
         tool_results: Optional[list] = None,
         subagent: Optional[str] = None,
+        skill_id: Optional[str] = None,
     ) -> Optional[EvaluationResult]:
         """Agent 回合结束 — 评估 + 计数 + 可选触发 optimize（工具反馈由 Dispatcher 写入）。"""
         if not self._enabled:
@@ -141,6 +165,7 @@ class EvolutionManager:
             context={
                 "tools_used": tools_used,
                 "subagent_used": subagent,
+                "skill_id": skill_id,
                 "tenant_id": tenant_id,
                 "user_id": user_id,
             },

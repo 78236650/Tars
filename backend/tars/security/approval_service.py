@@ -123,8 +123,10 @@ class ApprovalService:
             return
         try:
             await self.connection_manager.send_personal_message(session_id, event)
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning("approval emit failed", exc_info=exc)
 
     @staticmethod
     def _summarize_arguments(arguments: Optional[Dict[str, Any]]) -> str:

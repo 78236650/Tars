@@ -28,7 +28,7 @@ class ChannelRegistry:
 
     @property
     def use_router(self) -> bool:
-        return bool(self.config.get("channels", {}).get("use_router", False))
+        return bool(self.config.get("channels", {}).get("use_router", True))
 
     def list_adapters(self) -> Dict[str, Dict[str, Any]]:
         return dict(self.config.get("channels", {}).get("adapters", {}))

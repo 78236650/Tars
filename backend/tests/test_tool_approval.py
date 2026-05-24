@@ -165,3 +165,62 @@ async def test_admin_role_skips_approval(db, registry):
 
     assert result.success is True
     assert db.list_pending_approval_requests(session_id="sess-4") == []
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_denies_when_approval_service_missing(db, registry, monkeypatch):
+    import tars.security.approval_service as approval_module
+    import tars.security.execution_policy as policy_module
+    from tars.security.execution_policy import ExecutionPolicy
+
+    approval_module.approval_service = None
+    policy_module.execution_policy = ExecutionPolicy()
+
+    dispatcher = ToolDispatcher(registry)
+    result = await dispatcher.execute_tool(
+        "command",
+        {"command": "ls"},
+        context={
+            "session_id": "sess-5",
+            "tenant_id": "default",
+            "user_id": "user-1",
+            "user_role": "user",
+        },
+    )
+    assert result.success is False
+    assert "拒绝" in (result.error or "")
+
+
+def test_authorize_request_rejects_other_user():
+    from tars.api.approvals import _authorize_request
+    from tars.api._auth import Principal
+    from fastapi import HTTPException
+
+    request = type("Req", (), {"user_id": "user-a", "tenant_id": "default"})()
+    principal = Principal(
+        user_id="user-b",
+        role="user",
+        role_template_id="default",
+        tenant_id="default",
+        is_admin=False,
+        api_key="k",
+    )
+    with pytest.raises(HTTPException) as exc:
+        _authorize_request(principal, request)
+    assert exc.value.status_code == 403
+
+
+def test_authorize_request_allows_admin():
+    from tars.api.approvals import _authorize_request
+    from tars.api._auth import Principal
+
+    request = type("Req", (), {"user_id": "user-a", "tenant_id": "default"})()
+    principal = Principal(
+        user_id="admin-1",
+        role="admin",
+        role_template_id="admin",
+        tenant_id="default",
+        is_admin=True,
+        api_key="k",
+    )
+    _authorize_request(principal, request)

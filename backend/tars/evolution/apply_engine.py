@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -11,6 +12,21 @@ from typing import Any, Dict, Optional
 from ..database.base import Database, get_local_now
 from ..workspace.soul import SoulParameters, parse_soul_markdown
 from .models import ApplyRecord
+
+logger = logging.getLogger(__name__)
+LEGACY_EVOLUTION_BASE = Path("~/.tars/workspaces").expanduser()
+DEFAULT_EVOLUTION_BASE = Path("~/.tars/agents").expanduser()
+
+TUNED_START = "<!-- tars-evolution: tuned -->"
+TUNED_END = "<!-- /tars-evolution -->"
+
+
+class RollbackConflictError(Exception):
+    """Current file content does not match expected after_hash."""
+
+
+class PromptDiffTooLarge(Exception):
+    """Tuned prompt block exceeds configured size limit."""
 
 
 def _file_hash(content: str) -> str:
@@ -50,9 +66,52 @@ def _patch_soul_parameters(content: str, params: Dict[str, float]) -> str:
 
 
 class ApplyEngine:
-    def __init__(self, db: Database, workspace_base: str = "~/.tars/workspaces"):
+    def __init__(self, db: Database, workspace_base: str = "~/.tars/agents"):
         self.db = db
         self.workspace_base = Path(workspace_base).expanduser()
+        self._batch_id: Optional[str] = None
+        if (
+            LEGACY_EVOLUTION_BASE.exists()
+            and LEGACY_EVOLUTION_BASE != self.workspace_base
+            and any(LEGACY_EVOLUTION_BASE.iterdir())
+        ):
+            logger.warning(
+                "检测到旧 Evolution 写回目录 %s；当前使用 %s。"
+                "请运行 scripts/migrate-evolution-workspace.sh 完成迁移。",
+                LEGACY_EVOLUTION_BASE,
+                self.workspace_base,
+            )
+
+    def begin_batch(self) -> str:
+        self._batch_id = str(uuid.uuid4())
+        return self._batch_id
+
+    def _persist_apply_log(self, record: ApplyRecord, before_content: str, *, created_at: str) -> None:
+        self.db.insert_evolution_apply_log(
+            apply_id=record.id,
+            tenant_id=record.tenant_id,
+            target_type=record.target_type,
+            target_path=record.target_path,
+            before_hash=record.before_hash,
+            after_hash=record.after_hash,
+            before_content=before_content,
+            diff_summary=record.diff_summary,
+            status="applied",
+            created_at=created_at,
+            batch_id=self._batch_id,
+        )
+
+    @staticmethod
+    def _merge_tuned_block(before: str, tuned: str, max_chars: int) -> str:
+        tuned_body = tuned.strip()
+        if len(tuned_body) > max_chars:
+            raise PromptDiffTooLarge(f"tuned block {len(tuned_body)} chars exceeds limit {max_chars}")
+        block = f"{TUNED_START}\n{tuned_body}\n{TUNED_END}"
+        if TUNED_START in before:
+            pattern = rf"{re.escape(TUNED_START)}.*?{re.escape(TUNED_END)}"
+            return re.sub(pattern, block, before, count=1, flags=re.DOTALL)
+        base = before.rstrip()
+        return f"{base}\n\n{block}\n" if base else f"{block}\n"
 
     def _tenant_soul_path(self, tenant_id: str) -> Path:
         path = self.workspace_base / tenant_id / "SOUL.md"
@@ -95,49 +154,31 @@ class ApplyEngine:
             after_hash=_file_hash(after),
             diff_summary=f"updated {len(params)} parameters",
         )
-        self.db.insert_evolution_apply_log(
-            apply_id=apply_id,
-            tenant_id=tenant_id,
-            target_type=record.target_type,
-            target_path=record.target_path,
-            before_hash=record.before_hash,
-            after_hash=record.after_hash,
-            before_content=before,
-            diff_summary=record.diff_summary,
-            status="applied",
-            created_at=now,
-        )
+        self._persist_apply_log(record, before, created_at=now)
         return record
 
     def apply_prompt(self, tenant_id: str, prompt_type: str, content: str) -> ApplyRecord:
+        from .config import get_evolution_config
+
         prompt_dir = self.workspace_base / tenant_id / "prompts"
         prompt_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = prompt_dir / f"{prompt_type}.md"
         before = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+        max_chars = get_evolution_config().prompt_writeback.max_tuned_chars
+        after = self._merge_tuned_block(before, content, max_chars)
         apply_id = str(uuid.uuid4())
         now = get_local_now().isoformat()
-        prompt_path.write_text(content, encoding="utf-8")
+        prompt_path.write_text(after, encoding="utf-8")
         record = ApplyRecord(
             id=apply_id,
             tenant_id=tenant_id,
             target_type="prompt",
             target_path=str(prompt_path),
             before_hash=_file_hash(before),
-            after_hash=_file_hash(content),
+            after_hash=_file_hash(after),
             diff_summary=f"prompt {prompt_type}",
         )
-        self.db.insert_evolution_apply_log(
-            apply_id=apply_id,
-            tenant_id=tenant_id,
-            target_type=record.target_type,
-            target_path=record.target_path,
-            before_hash=record.before_hash,
-            after_hash=record.after_hash,
-            before_content=before,
-            diff_summary=record.diff_summary,
-            status="applied",
-            created_at=now,
-        )
+        self._persist_apply_log(record, before, created_at=now)
         return record
 
     def _subagent_config_path(self, tenant_id: str) -> Path:
@@ -185,18 +226,7 @@ class ApplyEngine:
             after_hash=_file_hash(after),
             diff_summary=f"subagent keys: {', '.join(sorted(config.keys()))}",
         )
-        self.db.insert_evolution_apply_log(
-            apply_id=apply_id,
-            tenant_id=tenant_id,
-            target_type=record.target_type,
-            target_path=record.target_path,
-            before_hash=record.before_hash,
-            after_hash=record.after_hash,
-            before_content=before,
-            diff_summary=record.diff_summary,
-            status="applied",
-            created_at=now,
-        )
+        self._persist_apply_log(record, before, created_at=now)
         return record
 
     def read_prompt(self, tenant_id: str, prompt_type: str) -> str:
@@ -205,7 +235,7 @@ class ApplyEngine:
             return ""
         return prompt_path.read_text(encoding="utf-8")
 
-    def rollback(self, apply_id: str) -> bool:
+    def rollback(self, apply_id: str, *, force: bool = False) -> bool:
         log = self.db.get_evolution_apply_log(apply_id)
         if not log:
             return False
@@ -213,9 +243,25 @@ class ApplyEngine:
         if before_content is None:
             return False
         path = Path(log["target_path"])
+        if path.exists():
+            current = path.read_text(encoding="utf-8")
+            expected_after = log.get("after_hash")
+            if expected_after and _file_hash(current) != expected_after and not force:
+                raise RollbackConflictError(f"rollback conflict for {apply_id}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(before_content, encoding="utf-8")
         return True
+
+    def rollback_batch(self, batch_id: str, *, force: bool = False) -> list[str]:
+        rolled_back: list[str] = []
+        for log in self.db.list_evolution_apply_logs_by_batch(batch_id):
+            apply_id = log["id"]
+            try:
+                if self.rollback(apply_id, force=force):
+                    rolled_back.append(apply_id)
+            except RollbackConflictError:
+                logger.warning("Skip rollback apply_id=%s due to conflict", apply_id)
+        return rolled_back
 
     def apply_skill_description(
         self,
@@ -252,18 +298,7 @@ class ApplyEngine:
             after_hash=_file_hash(after),
             diff_summary=f"skill {skill_id} description",
         )
-        self.db.insert_evolution_apply_log(
-            apply_id=apply_id,
-            tenant_id=tenant_id,
-            target_type=record.target_type,
-            target_path=record.target_path,
-            before_hash=record.before_hash,
-            after_hash=record.after_hash,
-            before_content=before,
-            diff_summary=record.diff_summary,
-            status="applied",
-            created_at=now,
-        )
+        self._persist_apply_log(record, before, created_at=now)
         return record
 
     def read_personality_params(self, tenant_id: str) -> Dict[str, float]:

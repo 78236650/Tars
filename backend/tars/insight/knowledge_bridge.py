@@ -1,9 +1,11 @@
 """InsightForge ↔ knowledge base bridge (Phase 1 Data Copilot)."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..knowledge.access import enrich_hit, search_knowledge
 from .knowledge_publisher import KnowledgePublisher
@@ -11,6 +13,9 @@ from .metric_answer import MetricCitation
 from .models import InsightMetric
 
 logger = logging.getLogger(__name__)
+
+_COLLECTION_CACHE: Dict[Tuple[str, str], Tuple[float, List[str]]] = {}
+_COLLECTION_CACHE_TTL_SEC = 60.0
 
 
 @dataclass
@@ -36,7 +41,27 @@ class KnowledgeBridge:
     def collection_id_for(datasource_id: str) -> str:
         return f"insight_{datasource_id}"
 
-    def retrieve_for_question(
+    def _list_collections_by_prefix(self, tenant_id: str, prefix: str) -> List[str]:
+        cache_key = (tenant_id, prefix)
+        now = time.monotonic()
+        cached = _COLLECTION_CACHE.get(cache_key)
+        if cached and now - cached[0] < _COLLECTION_CACHE_TTL_SEC:
+            return list(cached[1])
+
+        if self.db is None:
+            return []
+
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM document_collections WHERE tenant_id = ? AND id LIKE ?",
+            (tenant_id, f"{prefix}%"),
+        )
+        ids = [row[0] for row in cursor.fetchall()]
+        _COLLECTION_CACHE[cache_key] = (now, ids)
+        return ids
+
+    def _retrieve_sync(
         self,
         tenant_id: str,
         datasource_id: str,
@@ -90,21 +115,51 @@ class KnowledgeBridge:
             add_from_hits(insight_hits, "insight_glossary")
 
             for prefix in self.settings.meeting_collection_prefixes:
-                _, meeting_hits = search_knowledge(
-                    self.db,
-                    self.retriever,
-                    question,
-                    tenant_id=tenant_id,
-                    collection_id=prefix,
-                    top_k=self.settings.meeting_top_k,
-                )
-                add_from_hits(meeting_hits, "meeting_summary")
+                for collection_id in self._list_collections_by_prefix(tenant_id, prefix):
+                    _, meeting_hits = search_knowledge(
+                        self.db,
+                        self.retriever,
+                        question,
+                        tenant_id=tenant_id,
+                        collection_id=collection_id,
+                        top_k=self.settings.meeting_top_k,
+                    )
+                    add_from_hits(meeting_hits, "meeting_summary")
 
         if metric_key:
             linked = self._search_by_metric_id(tenant_id, metric_key)
             add_from_hits(linked, "metric_linked")
 
         return citations
+
+    async def retrieve_for_question(
+        self,
+        tenant_id: str,
+        datasource_id: str,
+        question: str,
+        *,
+        metric_key: Optional[str] = None,
+    ) -> List[MetricCitation]:
+        timeout_sec = max(self.settings.timeout_ms, 1) / 1000.0
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(
+                    self._retrieve_sync,
+                    tenant_id,
+                    datasource_id,
+                    question,
+                    metric_key=metric_key,
+                ),
+                timeout=timeout_sec,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "knowledge bridge timeout after %sms for tenant=%s datasource=%s",
+                self.settings.timeout_ms,
+                tenant_id,
+                datasource_id,
+            )
+            return []
 
     def _search_by_metric_id(self, tenant_id: str, metric_key: str) -> List[Dict[str, Any]]:
         from ..knowledge.sqlite_store import search_docs_by_metric_id

@@ -10,6 +10,13 @@ from typing import (
 from .base import BaseTool, ToolResult
 from .registry import ToolRegistry
 
+try:
+    from ..security import approval_service as _approval_module
+    from ..security import execution_policy as _execution_policy_module
+except ImportError:
+    _approval_module = None  # type: ignore[assignment]
+    _execution_policy_module = None  # type: ignore[assignment]
+
 
 NATIVE_TOOL_MODELS = [
     "qwen3", "qwen2.5", "qwen2", "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long",
@@ -119,14 +126,43 @@ class ToolDispatcher:
         except Exception:
             pass  # Security module unavailable → allow
 
-        # v4.3.0: 高危工具执行审批
+        # v4.3.0: 高危工具执行审批（fail-closed）
+        user_role = (context or {}).get("user_role", "user")
+        execution_policy = (
+            _execution_policy_module.execution_policy if _execution_policy_module else None
+        )
+        approval_service = (
+            _approval_module.approval_service if _approval_module else None
+        )
         try:
-            from ..security.execution_policy import execution_policy
-            from ..security.approval_service import approval_service
-
-            user_role = (context or {}).get("user_role", "user")
-            if approval_service and execution_policy.requires_approval(tool_name, arguments, user_role):
-                approved = await approval_service.request_approval(tool_name, arguments, context)
+            if execution_policy is None:
+                if tool_name in ("shell", "command", "file_write", "python_exec"):
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error="审批策略未加载，已拒绝执行高危工具",
+                    )
+                    self._record_evolution_feedback(context, tool_name, False)
+                    return result
+            elif execution_policy.requires_approval(tool_name, arguments, user_role):
+                if approval_service is None:
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error="审批服务不可用，已拒绝执行",
+                    )
+                    self._record_evolution_feedback(context, tool_name, False)
+                    return result
+                try:
+                    approved = await approval_service.request_approval(tool_name, arguments, context)
+                except Exception as exc:
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error=f"审批服务异常，已拒绝执行: {exc}",
+                    )
+                    self._record_evolution_feedback(context, tool_name, False)
+                    return result
                 if not approved:
                     result = ToolResult(
                         success=False,
@@ -135,8 +171,14 @@ class ToolDispatcher:
                     )
                     self._record_evolution_feedback(context, tool_name, False)
                     return result
-        except Exception:
-            pass
+        except Exception as exc:
+            result = ToolResult(
+                success=False,
+                output="",
+                error=f"审批检查失败，已拒绝执行: {exc}",
+            )
+            self._record_evolution_feedback(context, tool_name, False)
+            return result
 
         # v4.0.1: 注入 per-tenant workspace 路径
         try:

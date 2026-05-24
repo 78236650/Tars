@@ -117,3 +117,25 @@ async def test_cron_execute_writes_audit_log(tmp_path):
     assert logs
     assert logs[0].action == "cron_execute"
     assert logs[0].resource_id == job.id
+
+
+@pytest.mark.asyncio
+async def test_prompt_executor_requires_session_id(tmp_path):
+    db = Database(db_path=str(tmp_path / "cron.db"))
+    job = db.create_cronjob(
+        user_id="default",
+        name="prompt missing session",
+        cron_expression="5 14 * * *",
+        task_type="prompt",
+        task_config='{"prompt":"summarize inbox"}',
+    )
+
+    agent = MagicMock()
+    cm = FakeConnectionManager()
+    runtime = CronRuntime(db=db, scheduler=FakeScheduler(), connection_manager=cm, agent=agent)
+
+    with pytest.raises(ValueError, match="session_id"):
+        await runtime.execute_job(job.id)
+
+    assert cm.events
+    assert cm.events[0].get("type") == "cron_prompt_error"

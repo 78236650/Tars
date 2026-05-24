@@ -45,9 +45,9 @@ if [[ -z "$DS_ID" ]]; then
 fi
 
 echo "-- ask metric (expect citations array) --"
-ASK_RESP="$(curl -sf "${AUTH[@]}" -X POST "$BASE/api/insight/ask" \
+ASK_RESP="$(curl -sf "${AUTH[@]}" -X POST "$BASE/api/insight/datasources/$DS_ID/ask" \
   -H "Content-Type: application/json" \
-  -d "{\"datasource_id\":\"$DS_ID\",\"question\":\"昨日 GMV\"}" || echo '{}')"
+  -d "{\"question\":\"昨日 GMV\"}" || echo '{}')"
 
 echo "$ASK_RESP" | python3 -c "
 import sys, json

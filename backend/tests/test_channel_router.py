@@ -34,6 +34,13 @@ async def test_router_send_unknown_channel_raises():
         await router.send("missing", "sess-1", {"type": "token"})
 
 
+def test_registry_use_router_defaults_true(tmp_path):
+    cfg = tmp_path / "channels.yaml"
+    cfg.write_text("channels:\n  adapters:\n    websocket:\n      enabled: true\n", encoding="utf-8")
+    reg = ChannelRegistry.load(cfg)
+    assert reg.use_router is True
+
+
 def test_registry_loads_channels_yaml(tmp_path):
     cfg = tmp_path / "channels.yaml"
     cfg.write_text(

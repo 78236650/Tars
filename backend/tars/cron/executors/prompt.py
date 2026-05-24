@@ -52,7 +52,19 @@ class PromptExecutor(CronTaskExecutor):
             raise RuntimeError("Agent 未配置，无法执行 prompt 定时任务")
 
         prompt = config.get("prompt") or job.description or job.name
-        session_id = config.get("session_id") or "default"
+        session_id = config.get("session_id")
+        if not session_id:
+            await ctx.runtime.deliver_event(
+                None,
+                {
+                    "type": "cron_prompt_error",
+                    "job_id": job.id,
+                    "message": "prompt cron 缺少 session_id",
+                    "timestamp": _now_local().isoformat(),
+                },
+            )
+            raise ValueError("prompt cron 缺少 session_id")
+
         channel = CronPromptChannel(ctx.connection_manager, session_id)
 
         await ctx.agent.handle_message(

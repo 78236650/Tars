@@ -92,10 +92,11 @@ class WebSocketChannel(Channel):
 
             try:
                 await self._execute_agent_turn(raw_message, data)
+                if queue:
+                    await self._drain_follow_up_queue(session_id)
             finally:
                 if queue:
                     queue.mark_idle(session_id)
-                    await self._drain_follow_up_queue(session_id)
         except Exception as e:
             print(f"[WebSocket] 消息处理异常: {type(e).__name__}: {e}")
             traceback.print_exc()
@@ -223,12 +224,8 @@ class WebSocketChannel(Channel):
                 await self._emit_queue_status(session_id, 0)
                 return
             await self._emit_queue_status(session_id, queue.pending(session_id))
-            queue.mark_busy(session_id)
-            try:
-                data = json.loads(item.raw_message)
-                await self._execute_agent_turn(item.raw_message, data)
-            finally:
-                queue.mark_idle(session_id)
+            data = json.loads(item.raw_message)
+            await self._execute_agent_turn(item.raw_message, data)
 
 
 class ConnectionManager:

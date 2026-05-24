@@ -48,11 +48,18 @@ def init_insight_api(db: Database, knowledge_indexer=None, feedback_collector=No
     set_insight_knowledge_indexer(knowledge_indexer)
 
     from ..knowledge_bridge import KnowledgeBridge
+    from ..config import get_insight_config
 
     retriever = None
     if knowledge_indexer is not None:
         retriever = getattr(knowledge_indexer, "retriever", knowledge_indexer)
-    _knowledge_bridge = KnowledgeBridge(db, retriever=retriever, indexer=knowledge_indexer)
+    bridge_settings = get_insight_config().knowledge_bridge
+    _knowledge_bridge = KnowledgeBridge(
+        db,
+        retriever=retriever,
+        indexer=knowledge_indexer,
+        settings=bridge_settings,
+    )
     _feedback_collector = feedback_collector
 
     from ..llm_resolver import init_llm_resolver
