@@ -43,3 +43,49 @@ def test_registry_loads_channels_yaml(tmp_path):
     reg = ChannelRegistry.load(cfg)
     assert reg.use_router is True
     assert reg.is_adapter_enabled("websocket") is True
+
+
+@pytest.mark.asyncio
+async def test_handle_websocket_runs_message_loop_and_disconnects():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from tars.channels.router import ChannelRouter
+    from tars.channels.websocket import ConnectionManager, WebSocketChannel
+
+    router = ChannelRouter()
+    manager = ConnectionManager()
+    agent = MagicMock()
+    manager.set_agent(agent)
+
+    websocket = AsyncMock()
+    websocket.accept = AsyncMock()
+    websocket.receive_text = AsyncMock(
+        side_effect=[
+            '{"session_id":"s1","content":"hi"}',
+            __import__("fastapi").WebSocketDisconnect(),
+        ]
+    )
+
+    handled = []
+
+    async def fake_handle_message(raw):
+        handled.append(raw)
+
+    original_connect = manager.connect
+
+    async def connect_and_patch(*args, **kwargs):
+        channel = await original_connect(*args, **kwargs)
+        channel.handle_message = fake_handle_message
+        return channel
+
+    manager.connect = connect_and_patch  # type: ignore[method-assign]
+
+    await router.handle_websocket(
+        websocket,
+        connection_manager=manager,
+        tenant_context=None,
+        request_context={"transport": "websocket"},
+    )
+
+    assert handled
+    assert not manager.active_connections

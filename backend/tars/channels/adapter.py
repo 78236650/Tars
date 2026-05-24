@@ -15,6 +15,31 @@ class ChannelAdapter(Protocol):
         """Deliver a streaming text chunk to the client/session."""
 
 
+class ConnectionManagerOutboundAdapter:
+    """Route outbound events through ConnectionManager session mapping."""
+
+    channel_id = "websocket"
+
+    def __init__(self, manager: Any):
+        self._manager = manager
+
+    async def deliver_outbound(self, session_id: str, event: dict) -> None:
+        await self._manager.deliver_to_session(session_id, event)
+
+    async def stream_outbound(self, session_id: str, chunk: str) -> None:
+        from .websocket import now_iso
+
+        await self.deliver_outbound(
+            session_id,
+            {
+                "type": "text_chunk",
+                "session_id": session_id,
+                "content": chunk,
+                "timestamp": now_iso(),
+            },
+        )
+
+
 class ChannelInstanceAdapter:
     """Wrap an existing Channel implementation as a router adapter."""
 

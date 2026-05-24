@@ -13,6 +13,7 @@ import yaml
 
 # 导入 TARS 模块
 from tars.channels import ConnectionManager, ChannelRegistry, ChannelRouter
+from tars.channels.adapter import ConnectionManagerOutboundAdapter
 from tars.agent.agent import AgentV2
 from tars.database import Database, UserStore
 from tars.gateway.permission import PermissionManager, UserRole
@@ -293,6 +294,9 @@ connection_manager.set_agent(agent)
 channel_registry = ChannelRegistry.load()
 channel_router = ChannelRouter()
 if channel_registry.is_adapter_enabled("websocket"):
+    if channel_registry.use_router:
+        connection_manager.configure_router(channel_router, use_router=True)
+        channel_router.register("websocket", ConnectionManagerOutboundAdapter(connection_manager))
     print("[Startup] ChannelRegistry loaded (use_router=%s)" % channel_registry.use_router)
 cron_runtime = CronRuntime(db=db, scheduler=get_scheduler(), connection_manager=connection_manager)
 cronjob_tool.set_runtime(cron_runtime)
@@ -1166,28 +1170,17 @@ async def _serve_websocket(websocket: WebSocket, tenant_id: str):
         ws_request_context["user_id"] = ws_user.id
         ws_request_context["user_role"] = role_val
 
-    import uuid
-    connection_id = str(uuid.uuid4())
     tenant_context = tenant_context_cache.get_or_create(
         tenant_id or "default",
         lambda current_tenant: memory_manager.for_tenant(current_tenant),
     )
 
-    await connection_manager.connect(connection_id, websocket, tenant_context=tenant_context, request_context=ws_request_context)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            channel = connection_manager.active_connections.get(connection_id)
-            if channel:
-                try:
-                    await channel.handle_message(data)
-                except Exception as e:
-                    print(f"[WebSocket] 连接 {connection_id[:8]}… 处理异常: {type(e).__name__}: {e}")
-                    traceback.print_exc()
-                    connection_manager.disconnect(connection_id)
-                    break
-    except WebSocketDisconnect:
-        connection_manager.disconnect(connection_id)
+    await channel_router.handle_websocket(
+        websocket,
+        connection_manager=connection_manager,
+        tenant_context=tenant_context,
+        request_context=ws_request_context,
+    )
 
 
 @app.websocket("/ws")

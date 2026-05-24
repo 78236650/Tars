@@ -24,10 +24,16 @@ class WebSocketChannel(Channel):
         self.manager = manager
         self.connection_id = connection_id
         self._request_context = request_context or {"transport": "websocket"}
+        self._router = None
+        self._use_router = False
 
     def set_agent(self, agent):
         """设置 Agent 引用"""
         self.agent = agent
+
+    def set_outbound_router(self, router, use_router: bool = False) -> None:
+        self._router = router
+        self._use_router = use_router
 
     async def receive(self, raw_message: str) -> ChannelMessage:
         """解析 WebSocket 消息"""
@@ -42,6 +48,12 @@ class WebSocketChannel(Channel):
 
     async def send(self, session_id: str, event: dict) -> None:
         """发送完整事件"""
+        if self._use_router and self._router is not None:
+            await self._router.send("websocket", session_id, event)
+            return
+        await self._send_direct(event)
+
+    async def _send_direct(self, event: dict) -> None:
         try:
             await self.websocket.send_json(event)
         except Exception as e:
@@ -153,10 +165,16 @@ class ConnectionManager:
         self.active_connections: dict[str, WebSocketChannel] = {}
         self.session_connections: dict[str, str] = {}
         self.agent = None
+        self._router = None
+        self._use_router = False
 
     def set_agent(self, agent):
         """设置全局 Agent 引用"""
         self.agent = agent
+
+    def configure_router(self, router, use_router: bool = False) -> None:
+        self._router = router
+        self._use_router = use_router
 
     async def connect(self, connection_id: str, websocket: WebSocket, tenant_context=None, request_context: dict = None) -> WebSocketChannel:
         """接受连接并返回通道实例"""
@@ -168,6 +186,7 @@ class ConnectionManager:
             connection_id=connection_id,
             request_context=request_context,
         )
+        channel.set_outbound_router(self._router, self._use_router)
         if self.agent:
             channel.set_agent(self.agent)
         self.active_connections[connection_id] = channel
@@ -193,20 +212,30 @@ class ConnectionManager:
         for session_id in stale_sessions:
             self.unbind_session(session_id)
 
-    async def send_personal_message(self, session_id: str, event: dict) -> bool:
-        """发送个人消息，返回是否成功投递"""
+    async def deliver_to_session(self, session_id: str, event: dict) -> bool:
+        """Deliver directly to the bound WebSocket (bypasses ChannelRouter)."""
         connection_id = self.session_connections.get(session_id, session_id)
         if connection_id in self.active_connections:
-            await self.active_connections[connection_id].send(session_id, event)
+            await self.active_connections[connection_id]._send_direct(event)
             return True
         return False
+
+    async def send_personal_message(self, session_id: str, event: dict) -> bool:
+        """发送个人消息，返回是否成功投递"""
+        if self._use_router and self._router is not None:
+            connection_id = self.session_connections.get(session_id, session_id)
+            if connection_id not in self.active_connections:
+                return False
+            await self._router.send("websocket", session_id, event)
+            return True
+        return await self.deliver_to_session(session_id, event)
 
     async def broadcast(self, event: dict):
         """广播消息到所有活跃连接"""
         stale_ids = []
         for connection_id, channel in list(self.active_connections.items()):
             try:
-                await channel.send(event.get("session_id", "default"), event)
+                await channel._send_direct(event)
             except Exception:
                 stale_ids.append(connection_id)
         for connection_id in stale_ids:
