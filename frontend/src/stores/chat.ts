@@ -27,6 +27,8 @@ function readStoredSessionId(userId?: string | null): string | null {
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref<ChatSession[]>([])
   const currentSessionId = ref<string | null>(null)
+  const externalApprovalCount = ref(0)
+  const externalHandoffCount = ref(0)
 
   const persistSessionId = (id: string | null) => {
     const authStore = useAuthStore()
@@ -100,9 +102,24 @@ export const useChatStore = defineStore('chat', () => {
     messageState.setActiveSkills(sessionId, [])
   }
 
+  const noteExternalApproval = () => {
+    externalApprovalCount.value += 1
+  }
+
+  const noteExternalHandoff = () => {
+    externalHandoffCount.value += 1
+  }
+
+  const clearExternalNotifications = () => {
+    externalApprovalCount.value = 0
+    externalHandoffCount.value = 0
+  }
+
   return {
     sessions,
     currentSessionId,
+    externalApprovalCount,
+    externalHandoffCount,
     loadSessions,
     createSession,
     switchSession,
@@ -118,5 +135,8 @@ export const useChatStore = defineStore('chat', () => {
     appendUserMessage,
     appendMessage: messageState.appendMessage,
     clearActiveSkills,
+    noteExternalApproval,
+    noteExternalHandoff,
+    clearExternalNotifications,
   }
 })

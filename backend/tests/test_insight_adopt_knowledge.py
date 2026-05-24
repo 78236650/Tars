@@ -68,7 +68,8 @@ def test_adopt_publishes_metric_card_metadata(db, tenant_ds, monkeypatch):
     cfg.adoption = InsightAdoptionSettings(publish_to_knowledge=True, require_review=False)
     svc = AdoptionService(db, config=cfg, knowledge_bridge=bridge)
 
-    result = svc.adopt(metric.id, "default", "user1")
+    result = svc.adopt(metric.id, "default", "user1", defer_publish=True)
+    svc.publish_adopted_metric(metric, "default", "user1")
     assert result["status"] == "approved"
     assert "gmv" in published.get("markdown", "")
     assert metric.id in (published.get("metric_ids") or [])

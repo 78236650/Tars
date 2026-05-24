@@ -34,10 +34,11 @@ echo "-- WebSocket routing regression --"
 $VENV -m pytest tests/unit/test_websocket_routing.py tests/unit/test_tenant_websocket.py \
   tests/test_evolution_websocket_feedback.py -q
 
-echo "-- Frontend ApprovalDialog + QueueStatus --"
+echo "-- Frontend ApprovalDialog + HandoffDialog + QueueStatus --"
 if [[ -f "$ROOT/frontend/package.json" ]]; then
   (cd "$ROOT/frontend" && npm run test:unit -- --run \
     src/components/chat/ApprovalDialog.spec.ts \
+    src/components/chat/HandoffDialog.spec.ts \
     src/components/chat/QueueStatus.spec.ts)
 fi
 

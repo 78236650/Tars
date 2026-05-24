@@ -66,9 +66,11 @@ class CronRuntime:
             ctx = CronExecutionContext(self)
             try:
                 await executor.execute(ctx, job, config)
-                self._audit_cron_execute(job, job.task_type, config)
+                self._audit_cron_execute(job, job.task_type, config, extras=ctx.audit_extras)
             except Exception as exc:
-                self._audit_cron_execute(job, job.task_type, config, error=str(exc))
+                self._audit_cron_execute(
+                    job, job.task_type, config, error=str(exc), extras=ctx.audit_extras
+                )
                 raise
         else:
             print(f"[CronRuntime] 未实现的任务类型: {job.task_type}")
@@ -149,15 +151,15 @@ class CronRuntime:
         config: dict[str, Any],
         *,
         error: str = "",
+        extras: Optional[dict[str, Any]] = None,
     ) -> None:
         try:
             from ..security.audit import safe_audit
 
-            detail = json.dumps(
-                {"task_type": task_type, "config": config, "error": error},
-                ensure_ascii=False,
-                default=str,
-            )[:2000]
+            payload = {"task_type": task_type, "config": config, "error": error}
+            if extras:
+                payload.update(extras)
+            detail = json.dumps(payload, ensure_ascii=False, default=str)[:2000]
             safe_audit(
                 lambda logger: logger.log(
                     action="cron_execute",

@@ -65,7 +65,8 @@ describe('ApprovalDialog', () => {
     expect(approvalsApi.approve).toHaveBeenCalledWith('a1')
   })
 
-  it('ignores approval_required for other sessions', async () => {
+  it('ignores approval_required for other sessions and bumps badge count', async () => {
+    const chatStore = useChatStore()
     const wrapper = mount(ApprovalDialog)
     await nextTick()
     wsHandlers[0].onMessage?.({
@@ -77,5 +78,6 @@ describe('ApprovalDialog', () => {
     })
     await nextTick()
     expect(wrapper.text()).not.toContain('shell')
+    expect(chatStore.externalApprovalCount).toBe(1)
   })
 })

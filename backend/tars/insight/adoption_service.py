@@ -41,6 +41,7 @@ class AdoptionService:
         definition: Optional[str] = None,
         sql_template: Optional[str] = None,
         question_log_id: Optional[str] = None,
+        defer_publish: bool = False,
     ) -> Dict[str, Any]:
         metric = self.metric_store.get_by_id(metric_id, tenant_id) if metric_id else None
         if not metric and question_log_id:
@@ -76,34 +77,49 @@ class AdoptionService:
                 "status": approved.status,
             },
         )
-        if self.config.adoption.publish_to_knowledge and self._knowledge_bridge:
-            try:
-                ds = DataSourceStore(self.db).get(approved.datasource_id, tenant_id)
-                ds_name = ds.name if ds else approved.datasource_id
-                doc_id = self._knowledge_bridge.publish_metric_card(
-                    approved.datasource_id,
-                    ds_name,
-                    tenant_id,
-                    approved,
-                )
-                if not doc_id:
-                    self._audit(
-                        tenant_id,
-                        user_id,
-                        "knowledge_publish_failed",
-                        approved.id,
-                        {"metric_key": approved.metric_key},
-                    )
-            except Exception as exc:
-                logger.warning("publish_metric_card failed: %s", exc)
+        if (
+            self.config.adoption.publish_to_knowledge
+            and self._knowledge_bridge
+            and not defer_publish
+        ):
+            self.publish_adopted_metric(approved, tenant_id, user_id)
+        return {"metric": self._metric_dict(approved), "status": "approved"}
+
+    def publish_adopted_metric(
+        self,
+        metric: InsightMetric,
+        tenant_id: str,
+        user_id: str,
+    ) -> None:
+        """Publish an adopted metric card to knowledge (may run in BackgroundTasks)."""
+        if not self._knowledge_bridge:
+            return
+        try:
+            ds = DataSourceStore(self.db).get(metric.datasource_id, tenant_id)
+            ds_name = ds.name if ds else metric.datasource_id
+            doc_id = self._knowledge_bridge.publish_metric_card(
+                metric.datasource_id,
+                ds_name,
+                tenant_id,
+                metric,
+            )
+            if not doc_id:
                 self._audit(
                     tenant_id,
                     user_id,
                     "knowledge_publish_failed",
-                    approved.id,
-                    {"error": str(exc)},
+                    metric.id,
+                    {"metric_key": metric.metric_key},
                 )
-        return {"metric": self._metric_dict(approved), "status": "approved"}
+        except Exception as exc:
+            logger.warning("publish_metric_card failed: %s", exc)
+            self._audit(
+                tenant_id,
+                user_id,
+                "knowledge_publish_failed",
+                metric.id,
+                {"error": str(exc)},
+            )
 
     def _bootstrap_from_log(self, question_log_id: str, tenant_id: str) -> InsightMetric:
         log = self.question_log.get_log(question_log_id, tenant_id)

@@ -528,6 +528,7 @@ def _adopt_metric_impl(
     metric_id: Optional[str],
     body: AdoptMetricRequest,
     principal: Principal,
+    background_tasks: Optional[BackgroundTasks] = None,
 ):
     from ..adoption_service import AdoptionService
     from ..store import AdoptionConflictError
@@ -536,6 +537,12 @@ def _adopt_metric_impl(
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     mid = (metric_id or body.metric_id or "").strip()
     service = AdoptionService(_db, knowledge_bridge=_knowledge_bridge, feedback_collector=_feedback_collector)
+    cfg = get_insight_config()
+    defer_publish = bool(
+        background_tasks
+        and cfg.adoption.publish_to_knowledge
+        and _knowledge_bridge
+    )
     try:
         result = service.adopt(
             mid,
@@ -544,6 +551,7 @@ def _adopt_metric_impl(
             definition=body.definition,
             sql_template=body.sql_template,
             question_log_id=body.question_log_id,
+            defer_publish=defer_publish,
         )
     except AdoptionConflictError:
         raise HTTPException(
@@ -565,24 +573,37 @@ def _adopt_metric_impl(
                 "adoption_id": result.get("adoption_id"),
             },
         )
+    if defer_publish and background_tasks and result.get("metric"):
+        from ..store import InsightMetricStore
+
+        approved = InsightMetricStore(_db).get_by_id(result["metric"]["id"], principal.tenant_id)
+        if approved:
+            background_tasks.add_task(
+                service.publish_adopted_metric,
+                approved,
+                principal.tenant_id,
+                principal.user_id,
+            )
     return {"success": True, **result}
 
 
 @router.post("/metrics/adopt")
 async def adopt_metric_body(
     body: AdoptMetricRequest,
+    background_tasks: BackgroundTasks,
     principal: Principal = Depends(_require),
 ):
-    return _adopt_metric_impl(None, body, principal)
+    return _adopt_metric_impl(None, body, principal, background_tasks)
 
 
 @router.post("/metrics/{metric_id}/adopt")
 async def adopt_metric(
     metric_id: str,
     body: AdoptMetricRequest,
+    background_tasks: BackgroundTasks,
     principal: Principal = Depends(_require),
 ):
-    return _adopt_metric_impl(metric_id, body, principal)
+    return _adopt_metric_impl(metric_id, body, principal, background_tasks)
 
 
 @router.get("/metrics/pending_adoption")

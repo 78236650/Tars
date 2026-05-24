@@ -17,6 +17,7 @@ import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue
 import QueueStatus from '@/components/chat/QueueStatus.vue'
 import WarningBanner from '@/components/chat/WarningBanner.vue'
 import ApprovalDialog from '@/components/chat/ApprovalDialog.vue'
+import HandoffDialog from '@/components/chat/HandoffDialog.vue'
 
 defineOptions({ name: 'ChatView' })
 
@@ -31,6 +32,9 @@ const route = useRoute()
 const messages = computed(() => chatStore.currentMessages)
 const activeSkills = computed(() => chatStore.currentActiveSkills)
 const messagesLoading = computed(() => chatStore.messagesLoading)
+const externalNotificationCount = computed(
+  () => chatStore.externalApprovalCount + chatStore.externalHandoffCount,
+)
 
 const inputMessage = ref('')
 const insightMetricQaEnabled = ref(false)
@@ -361,8 +365,15 @@ const onInsightClarify = async (payload: {
       />
 
       <QueueStatus />
+      <p
+        v-if="externalNotificationCount > 0"
+        class="mx-4 mb-2 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+      >
+        {{ t('chat.externalNotifications', { count: externalNotificationCount }) }}
+      </p>
       <WarningBanner />
       <ApprovalDialog />
+      <HandoffDialog />
 
       <footer class="border-t border-amber-100/10 px-6 py-4">
         <div

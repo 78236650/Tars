@@ -39,7 +39,11 @@ const matchesCurrentSession = (sessionId: string) => {
 
 const showApproval = (data: Record<string, unknown>) => {
   const sessionId = String(data.session_id || '')
-  if (!matchesCurrentSession(sessionId)) return
+  if (!matchesCurrentSession(sessionId)) {
+    chatStore.noteExternalApproval()
+    toast.info(t('chat.approval.otherSessionToast'))
+    return
+  }
   pending.value = {
     approvalId: String(data.approval_id || ''),
     sessionId,

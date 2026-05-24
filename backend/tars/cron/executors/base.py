@@ -14,6 +14,7 @@ class CronExecutionContext:
         self.db = runtime.db
         self.connection_manager = runtime.connection_manager
         self.agent = runtime.agent
+        self.audit_extras: dict[str, Any] = {}
 
 
 class CronTaskExecutor(ABC):

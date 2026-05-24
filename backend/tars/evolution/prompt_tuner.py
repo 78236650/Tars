@@ -174,8 +174,15 @@ class PromptTuner:
             for v in self.prompt_versions[prompt_type]
         ]
     
-    def rollback_prompt(self, prompt_type: str, version: int) -> bool:
-        """回滚到指定版本"""
+    def rollback_prompt(
+        self,
+        prompt_type: str,
+        version: int,
+        *,
+        tenant_id: str = "default",
+        apply_engine=None,
+    ) -> bool:
+        """回滚到指定版本；若提供 apply_engine 则同步写回 workspace 文件。"""
         
         if prompt_type not in self.prompt_versions:
             return False
@@ -195,5 +202,8 @@ class PromptTuner:
             feedbacks=[]
         )
         versions.append(new_version)
+
+        if apply_engine is not None:
+            apply_engine.apply_prompt(tenant_id, prompt_type, target_version.prompt_text)
         
         return True

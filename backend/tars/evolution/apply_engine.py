@@ -128,6 +128,7 @@ class ApplyEngine:
 - humor: 0.5
 - initiative: 0.7
 - empathy: 0.7
+- conciseness: 0.7
 
 ## Communication Style
 - 简洁专业

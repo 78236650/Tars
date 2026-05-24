@@ -438,6 +438,18 @@ export const approvalsApi = {
   },
 }
 
+export const handoffsApi = {
+  accept: async (handoffId: string): Promise<{ success: boolean; handoff_id: string; status: string }> => {
+    const response = await api.post(`/handoffs/${handoffId}/accept`)
+    return response.data
+  },
+
+  reject: async (handoffId: string): Promise<{ success: boolean; handoff_id: string; status: string }> => {
+    const response = await api.post(`/handoffs/${handoffId}/reject`)
+    return response.data
+  },
+}
+
 // ========= BI Analytics API =========
 
 export const biApi = {

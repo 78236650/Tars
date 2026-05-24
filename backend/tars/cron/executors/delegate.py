@@ -23,6 +23,12 @@ class DelegateExecutor(CronTaskExecutor):
         subagent_type = config.get("subagent_type")
         manager = ctx.agent.subagent_manager
 
+        inferred_subagent_type = subagent_type
+        if not inferred_subagent_type and manager is not None:
+            inferred = manager._determine_agent_type(task)
+            inferred_subagent_type = inferred.value if inferred is not None else None
+        ctx.audit_extras["inferred_subagent_type"] = inferred_subagent_type
+
         if subagent_type:
             result = await manager.invoke_subagent(subagent_type, task, context={"session_id": session_id})
         else:
@@ -32,7 +38,7 @@ class DelegateExecutor(CronTaskExecutor):
             "type": "cron_delegate_result",
             "job_id": job.id,
             "session_id": session_id,
-            "subagent_type": subagent_type,
+            "subagent_type": subagent_type or inferred_subagent_type,
             "task": task,
             "result": result,
             "timestamp": _now_local().isoformat(),
