@@ -90,8 +90,8 @@ const navItems = [
   { name: 'nav.memory', icon: 'database', path: '/memory' },
   { name: 'nav.models', icon: 'cpu', path: '/models' },
   { name: 'nav.tools', icon: 'tools', path: '/tools' },
-  { name: 'nav.bi', icon: 'bar-chart', path: '/bi' },
-  { name: 'nav.insight', icon: 'search', path: '/insight' },
+  { name: 'nav.bi', icon: 'bar-chart', path: '/bi', subtitle: 'nav.bi.subtitle' },
+  { name: 'nav.insight', icon: 'search', path: '/insight', subtitle: 'nav.insight.subtitle' },
   { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
   { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
   { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
@@ -183,7 +183,16 @@ const openReminderNotifications = async () => {
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIconPath(item.icon)" />
             </svg>
-            <span v-if="!collapsed" class="text-sm truncate">{{ t(item.name) }}</span>
+            <div v-if="!collapsed" class="min-w-0 text-left">
+              <span class="text-sm truncate block">{{ t(item.name) }}</span>
+              <span
+                v-if="'subtitle' in item && item.subtitle"
+                class="text-[10px] truncate block opacity-70"
+                :class="isActive(item.path) ? 'text-stone-800' : 'text-stone-500'"
+              >
+                {{ t(item.subtitle) }}
+              </span>
+            </div>
           </button>
         </li>
       </ul>

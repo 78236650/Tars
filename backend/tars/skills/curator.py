@@ -22,25 +22,46 @@ class SkillCurator:
                     skill_id TEXT PRIMARY KEY,
                     total_calls INTEGER NOT NULL DEFAULT 0,
                     last_called REAL NOT NULL DEFAULT 0.0,
-                    state TEXT NOT NULL DEFAULT 'active'
+                    state TEXT NOT NULL DEFAULT 'active',
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    fail_count INTEGER NOT NULL DEFAULT 0
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE skill_usage ADD COLUMN success_count INTEGER NOT NULL DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE skill_usage ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0")
+            except Exception:
+                pass
             conn.commit()
         except Exception:
             pass
 
-    def record_call(self, skill_id: str):
+    def record_call(self, skill_id: str, success: bool = True):
         """Increment call count for a skill."""
         try:
             now = time.time()
             conn = self._db._get_conn()
-            conn.execute("""
-                INSERT INTO skill_usage (skill_id, total_calls, last_called, state)
-                VALUES (?, 1, ?, 'active')
-                ON CONFLICT(skill_id) DO UPDATE SET
-                    total_calls = total_calls + 1,
-                    last_called = excluded.last_called
-            """, (skill_id, now))
+            if success:
+                conn.execute("""
+                    INSERT INTO skill_usage (skill_id, total_calls, last_called, state, success_count, fail_count)
+                    VALUES (?, 1, ?, 'active', 1, 0)
+                    ON CONFLICT(skill_id) DO UPDATE SET
+                        total_calls = total_calls + 1,
+                        last_called = excluded.last_called,
+                        success_count = success_count + 1
+                """, (skill_id, now))
+            else:
+                conn.execute("""
+                    INSERT INTO skill_usage (skill_id, total_calls, last_called, state, success_count, fail_count)
+                    VALUES (?, 1, ?, 'active', 0, 1)
+                    ON CONFLICT(skill_id) DO UPDATE SET
+                        total_calls = total_calls + 1,
+                        last_called = excluded.last_called,
+                        fail_count = fail_count + 1
+                """, (skill_id, now))
             conn.commit()
         except Exception:
             pass

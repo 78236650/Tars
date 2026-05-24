@@ -107,33 +107,12 @@ class KnowledgeBridge:
         return citations
 
     def _search_by_metric_id(self, tenant_id: str, metric_key: str) -> List[Dict[str, Any]]:
+        from ..knowledge.sqlite_store import search_docs_by_metric_id
+
         try:
-            conn = self.db._get_conn()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, file_name, metadata_json FROM documents
-                WHERE tenant_id = ? AND metadata_json LIKE ?
-                LIMIT 5
-                """,
-                (tenant_id, f'%{metric_key}%'),
-            )
-            rows = cursor.fetchall()
+            return search_docs_by_metric_id(self.db, tenant_id, metric_key, top_k=5)
         except Exception:
             return []
-
-        hits: List[Dict[str, Any]] = []
-        for doc_id, file_name, meta_json in rows:
-            hits.append(
-                {
-                    "id": doc_id,
-                    "text": file_name or "",
-                    "score": 0.5,
-                    "source": {"file_name": file_name or doc_id, "doc_id": doc_id},
-                    "metadata": {"doc_id": doc_id, "file_name": file_name},
-                }
-            )
-        return hits
 
     def publish_metric_card(
         self,
@@ -157,13 +136,15 @@ class KnowledgeBridge:
             "```",
         ]
         markdown = "\n".join(lines)
-        return self._publisher.publish(
+        doc_id = self._publisher.publish(
             datasource_id,
             datasource_name,
             tenant_id,
             markdown,
             run_id=metric.id,
+            metric_ids=[metric.id],
         )
+        return doc_id
 
     def enrich_definition(self, definition: str, citations: List[MetricCitation]) -> str:
         if not citations:

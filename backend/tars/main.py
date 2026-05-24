@@ -91,7 +91,7 @@ from tars.api._auth import init_auth, require_admin, Principal
 init_auth(user_store)
 
 permission_manager = PermissionManager()
-evolution_manager = EvolutionManager()
+evolution_manager = EvolutionManager(db=db)
 
 from tars.database import EndpointStore
 from tars.models.config import init_endpoint_store
@@ -341,7 +341,7 @@ if module_registry.is_enabled("insight") and module_registry.check_dependencies(
             _insight_indexer = KnowledgeIndexer(vector_store, embedding_provider, db=db)
         except Exception as _e:
             print(f"[Startup] InsightForge knowledge indexer unavailable: {_e}")
-    init_insight_api(db, knowledge_indexer=_insight_indexer)
+    init_insight_api(db, knowledge_indexer=_insight_indexer, feedback_collector=evolution_manager.feedback_collector)
     from tars.insight.version import INS_VERSION
     print(f"[Startup] InsightForge 鉴数已启用 ({INS_VERSION})")
 elif module_registry.is_enabled("insight"):
@@ -1271,6 +1271,15 @@ async def startup_event():
                 print(f"[Startup] Curator 自动归档 {len(archived)} 个闲置技能: {archived}")
     except Exception as e:
         print(f"[Startup] Curator 自动归档扫描失败: {e}")
+
+    workers = int(os.getenv("WEB_CONCURRENCY", "1") or "1")
+    uvicorn_workers = int(os.getenv("UVICORN_WORKERS", "0") or "0")
+    sticky_ok = os.getenv("TARS_SSE_STICKY", "").lower() in ("1", "true", "yes")
+    if not sticky_ok and max(workers, uvicorn_workers) > 1:
+        print(
+            "[Startup] ERROR: InsightForge SSE requires uvicorn --workers 1 or Ingress sticky session. "
+            "Set TARS_SSE_STICKY=1 if sticky is configured. See docs/04-运维文档/insightforge-deploy.md"
+        )
 
 @app.on_event("shutdown")
 async def shutdown_event():

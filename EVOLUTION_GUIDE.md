@@ -1,6 +1,21 @@
 # TARS 自进化系统使用文档
 
-> **版本：v2.0.0**（自进化系统从 v1.0 延续至今，接口不变）
+> **版本：v4.2.0 Phase 2** — FeedbackCollector → Orchestrator → ApplyEngine 写回闭环
+
+## Phase 2 架构（v4.2.0）
+
+| 组件 | 职责 |
+|------|------|
+| **FeedbackCollector** | 统一 A/B/C/D 反馈入 `evolution_events` |
+| **EvolutionOrchestrator** | 窗口聚合、触发 optimize、EvalRunner 门禁 |
+| **ApplyEngine** | 唯一写回入口（SOUL.md / prompts），audit + rollback |
+| **EvalRunner** | `tests/evolution/eval_set.yaml`（≥20 场景） |
+
+写回目标：`~/.tars/workspaces/{tenant_id}/SOUL.md` 与 `prompts/*.md`。每次写回记录于 `evolution_apply_log`，eval 退步 >5% 自动 rollback。
+
+---
+
+> **历史版本：v2.0.0**（自进化 API 接口保持兼容）
 
 ## 概述
 

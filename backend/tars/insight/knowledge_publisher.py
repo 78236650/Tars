@@ -123,6 +123,7 @@ class KnowledgePublisher:
         tenant_id: str,
         markdown: str,
         run_id: Optional[str] = None,
+        metric_ids: Optional[List[str]] = None,
     ) -> Optional[str]:
         coll_id = self.collection_id_for(datasource_id)
         self.ensure_collection(coll_id, f"鉴数-{datasource_name}", tenant_id)
@@ -133,15 +134,6 @@ class KnowledgePublisher:
         if self.indexer is None:
             return doc_id
 
-        meta = {
-            "tenant_id": tenant_id,
-            "doc_id": doc_id,
-            "collection_id": coll_id,
-            "file_name": file_name,
-            "tars.capability": CAPABILITY_NAME,
-            "insight.version": INS_VERSION,
-            "datasource_id": datasource_id,
-        }
         result = self.indexer.index_document(
             text=markdown,
             doc_id=doc_id,
@@ -150,8 +142,15 @@ class KnowledgePublisher:
             file_type="md",
             tenant_id=tenant_id,
         )
-        _ = meta
-        if isinstance(result, dict) and result.get("status") in ("indexed", "no_chunks"):
+        if isinstance(result, dict) and result.get("status") in ("indexed", "no_chunks", "empty"):
+            if metric_ids:
+                from ..knowledge.sqlite_store import set_document_metadata
+
+                set_document_metadata(
+                    self.db,
+                    doc_id,
+                    {"metric_ids": metric_ids, "datasource_id": datasource_id},
+                )
             return doc_id
         logger.warning(
             "[InsightForge] knowledge indexing failed for ds=%s: %s", datasource_id, result

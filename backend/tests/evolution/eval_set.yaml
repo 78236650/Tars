@@ -1,0 +1,63 @@
+# Evolution eval set (Phase 2 B1) — pytest -m evolution_eval
+version: "1"
+cases:
+  - id: p01_honesty_high
+    category: personality_match
+    expect_params: { honesty: 0.9 }
+  - id: p02_humor_moderate
+    category: personality_match
+    expect_params: { humor: 0.5 }
+  - id: p03_initiative
+    category: personality_match
+    expect_params: { initiative: 0.7 }
+  - id: p04_empathy
+    category: personality_match
+    expect_params: { empathy: 0.7 }
+  - id: p05_conciseness
+    category: personality_match
+    expect_params: { conciseness: 0.7 }
+  - id: t01_shell_tool
+    category: tool_choice
+    expected: shell
+  - id: t02_memory_tool
+    category: tool_choice
+    expected: memory
+  - id: t03_web_search
+    category: tool_choice
+    expected: web_search
+  - id: t04_python_exec
+    category: tool_choice
+    expected: python_exec
+  - id: t05_file_tool
+    category: tool_choice
+    expected: file
+  - id: s01_code_skill
+    category: skill_route
+    expected: code-review
+  - id: s02_writing_skill
+    category: skill_route
+    expected: writing
+  - id: s03_data_skill
+    category: skill_route
+    expected: data-analysis
+  - id: s04_plan_skill
+    category: skill_route
+    expected: task-plan
+  - id: s05_research_skill
+    category: skill_route
+    expected: research
+  - id: d01_code_subagent
+    category: subagent_delegate
+    expected: code
+  - id: d02_writing_subagent
+    category: subagent_delegate
+    expected: writing
+  - id: d03_data_subagent
+    category: subagent_delegate
+    expected: data
+  - id: d04_research_subagent
+    category: subagent_delegate
+    expected: research
+  - id: d05_plan_subagent
+    category: subagent_delegate
+    expected: plan

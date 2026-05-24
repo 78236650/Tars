@@ -2,7 +2,7 @@
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -140,10 +140,26 @@ async def delete_collection(
 
 # ========== Document Management ==========
 
+def _parse_metric_ids(raw: Optional[str]) -> List[str]:
+    if not raw or not raw.strip():
+        return []
+    text = raw.strip()
+    if text.startswith("["):
+        try:
+            import json
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [str(x) for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
 @router.post("/collections/{coll_id}/documents")
 async def upload_document(
     coll_id: str,
     file: UploadFile = File(...),
+    metric_ids: Optional[str] = Form(default=None),
     x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _db is None or _indexer is None:
@@ -194,6 +210,16 @@ async def upload_document(
         )
         conn.commit()
 
+        parsed_metric_ids = _parse_metric_ids(metric_ids)
+        if parsed_metric_ids:
+            from ..knowledge.sqlite_store import set_document_metadata
+
+            set_document_metadata(
+                _db,
+                doc_id,
+                {"metric_ids": parsed_metric_ids, "collection_id": coll_id},
+            )
+
         if result.get("status") != "indexed":
             detail = result.get("error") or result.get("status") or "unknown"
             raise HTTPException(
@@ -208,6 +234,7 @@ async def upload_document(
                 "file_name": file.filename,
                 "chunk_count": result["chunk_count"],
                 "status": result["status"],
+                "metric_ids": parsed_metric_ids,
             },
         }
 

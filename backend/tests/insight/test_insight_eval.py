@@ -6,10 +6,13 @@ from pathlib import Path
 
 import pytest
 import yaml
+from unittest.mock import MagicMock
 
 from tars.database import Database
 from tars.database.bi_store import DataSourceStore
 from tars.insight.config import InsightConfig, InsightFeatureFlags, InsightForgeSettings, InsightQaSettings
+from tars.insight.knowledge_bridge import KnowledgeBridge
+from tars.insight.metric_answer import MetricCitation
 from tars.insight.metric_qa_engine import MetricQaEngine
 from tars.insight.workflow_service import InsightWorkflowService
 
@@ -97,6 +100,23 @@ async def test_insight_eval_case(case):
         feature_flags=InsightFeatureFlags(),
     )
     engine = MetricQaEngine(db, config=cfg, route_fn=route, sql_executor=_mock_sql)
+    if case.get("expect_citations"):
+        bridge = KnowledgeBridge(db=db, retriever=MagicMock())
+
+        def fake_retrieve(tenant_id, datasource_id, question, *, metric_key=None):
+            return [
+                MetricCitation(
+                    doc_id="eval-doc",
+                    title="GMV口径",
+                    snippet="不含退款",
+                    source_type="insight_glossary",
+                    relevance=0.9,
+                )
+            ]
+
+        bridge.retrieve_for_question = fake_retrieve  # type: ignore[method-assign]
+        engine._knowledge_bridge = bridge
+
     ans = await engine.ask(
         ds.id,
         "default",
@@ -111,3 +131,6 @@ async def test_insight_eval_case(case):
         assert ans.error is not None
         assert ans.error.code == case["expect_error_code"]
         assert ans.value is None
+    if case.get("expect_citations"):
+        assert ans.citations
+        assert len(ans.citations) >= 1

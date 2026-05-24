@@ -20,14 +20,35 @@ from .prompt_tuner import PromptTuner
 class EvolutionManager:
     """自进化管理器 - 整合所有自进化功能"""
     
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Optional[Path] = None, db=None):
         self.data_dir = data_dir or Path.home() / '.tars' / 'evolution'
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.db = db
         
         self.evaluator = ResponseEvaluator()
         self.personality_optimizer = PersonalityOptimizer()
         self.subagent_optimizer = SubAgentOptimizer()
         self.prompt_tuner = PromptTuner()
+
+        self._feedback_collector = None
+        self._apply_engine = None
+        self._orchestrator = None
+        if db is not None:
+            from .feedback_collector import FeedbackCollector
+            from .apply_engine import ApplyEngine
+            from .orchestrator import EvolutionOrchestrator
+
+            self._feedback_collector = FeedbackCollector(db)
+            self._apply_engine = ApplyEngine(db)
+            self._orchestrator = EvolutionOrchestrator(
+                db,
+                feedback_collector=self._feedback_collector,
+                apply_engine=self._apply_engine,
+                personality_optimizer=self.personality_optimizer,
+                subagent_optimizer=self.subagent_optimizer,
+                prompt_tuner=self.prompt_tuner,
+                evaluator=self.evaluator,
+            )
         
         self._enabled = True
         self._auto_optimize = True
@@ -95,8 +116,40 @@ class EvolutionManager:
         
         return evaluation
     
-    def optimize(self) -> Dict[str, Any]:
+    def ingest_turn(
+        self,
+        tenant_id: str,
+        user_id: str,
+        session_id: str,
+        query: str,
+        response: str,
+        *,
+        tools_used: Optional[list] = None,
+        subagent: Optional[str] = None,
+    ) -> EvaluationResult:
+        """Agent 回合结束 — 隐式反馈 + 计数 + 可选触发 optimize。"""
+        tools_used = tools_used or []
+        evaluation = self.record_conversation(
+            session_id,
+            query,
+            response,
+            context={"tools_used": tools_used, "subagent_used": subagent, "tenant_id": tenant_id},
+        )
+        if self._feedback_collector:
+            for tool in tools_used:
+                self._feedback_collector.record_tool_result(
+                    tenant_id, user_id, str(tool), success=True, session_id=session_id
+                )
+        return evaluation
+
+    @property
+    def feedback_collector(self):
+        return self._feedback_collector
+
+    def optimize(self, tenant_id: str = "default") -> Dict[str, Any]:
         """触发一次完整的优化流程"""
+        if self._orchestrator:
+            return self._orchestrator.optimize(tenant_id=tenant_id)
         
         results = {
             'timestamp': datetime.now().isoformat(),
@@ -172,7 +225,12 @@ class EvolutionManager:
         return stats
     
     def _get_current_personality(self) -> Optional[Dict[str, float]]:
-        """获取当前人格参数（从工作区或返回默认）"""
+        """获取当前人格参数（从 tenant workspace 或默认）"""
+        if self._apply_engine:
+            try:
+                return self._apply_engine.read_personality_params("default")
+            except Exception:
+                pass
         default_params = {
             'honesty': 0.9,
             'humor': 0.7,
@@ -188,8 +246,9 @@ class EvolutionManager:
         return default_params
     
     def _apply_personality_update(self, new_params: Dict[str, float]):
-        """应用人格参数更新（回调函数，实际应用由外部系统实现）"""
-        pass
+        """应用人格参数更新"""
+        if self._apply_engine:
+            self._apply_engine.apply_personality("default", new_params)
     
     def _save_state(self):
         """保存状态到文件"""

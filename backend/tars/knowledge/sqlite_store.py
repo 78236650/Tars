@@ -1,6 +1,7 @@
 """SQLite BLOB fallback for knowledge chunks when Chroma is unavailable."""
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
@@ -183,3 +184,68 @@ def search_chunks(
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:top_k]]
+
+
+def set_document_metadata(db, doc_id: str, metadata: Dict[str, Any]) -> None:
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE document_files SET metadata_json = ? WHERE id = ?",
+        (json.dumps(metadata, ensure_ascii=False), doc_id),
+    )
+    conn.commit()
+
+
+def get_document_metadata(db, doc_id: str) -> Dict[str, Any]:
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT metadata_json FROM document_files WHERE id = ?", (doc_id,))
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return {}
+    try:
+        return json.loads(row[0])
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def search_docs_by_metric_id(
+    db,
+    tenant_id: str,
+    metric_id: str,
+    *,
+    top_k: int = 5,
+) -> List[Dict[str, Any]]:
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT df.id, df.file_name, df.metadata_json
+        FROM document_files df
+        JOIN document_collections dc ON dc.id = df.collection_id
+        WHERE dc.tenant_id = ? AND df.metadata_json LIKE ?
+        LIMIT ?
+        """,
+        (tenant_id, f'%{metric_id}%', top_k),
+    )
+    hits: List[Dict[str, Any]] = []
+    for doc_id, file_name, meta_json in cursor.fetchall():
+        meta: Dict[str, Any] = {}
+        if meta_json:
+            try:
+                meta = json.loads(meta_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        metric_ids = meta.get("metric_ids") or []
+        if metric_id not in metric_ids and metric_id not in (meta_json or ""):
+            continue
+        hits.append(
+            {
+                "id": doc_id,
+                "text": file_name or "",
+                "score": 0.6,
+                "source": {"file_name": file_name or doc_id, "doc_id": doc_id},
+                "metadata": {"doc_id": doc_id, "file_name": file_name},
+            }
+        )
+    return hits

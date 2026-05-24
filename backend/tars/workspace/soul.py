@@ -66,7 +66,7 @@ def parse_soul_markdown(content: str) -> Soul:
         elif current_section == 'parameters':
             if ':' in line:
                 key, value = line.split(':', 1)
-                key = key.strip()
+                key = key.lstrip('- ').strip()
                 value = float(value.strip())
                 
                 if hasattr(parameters, key):

@@ -69,3 +69,27 @@ cases:
     question: "未知指标 xyz"
     allow_ad_hoc_sql: false
     expect_branch: rejected
+
+  - id: knowledge_gmv_glossary
+    branch: hit_approved
+    question: "GMV 口径是什么"
+    metric_key: gmv
+    sql_template: "SELECT SUM(amount) AS value FROM orders"
+    expect_branch: hit_approved
+    expect_citations: true
+
+  - id: knowledge_meeting_context
+    branch: hit_approved
+    question: "订单总额口径"
+    metric_key: order_total
+    sql_template: "SELECT SUM(total) AS value FROM orders"
+    expect_branch: hit_approved
+    expect_citations: true
+
+  - id: knowledge_adopted_metric
+    branch: hit_approved
+    question: "官方 GMV"
+    metric_key: gmv
+    sql_template: "SELECT SUM(amount) AS value FROM orders"
+    expect_branch: hit_approved
+    expect_citations: true

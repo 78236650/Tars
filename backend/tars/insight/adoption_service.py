@@ -23,12 +23,14 @@ class AdoptionService:
         db: Database,
         config: Optional[InsightConfig] = None,
         knowledge_bridge=None,
+        feedback_collector=None,
     ):
         self.db = db
         self.config = config or get_insight_config()
         self.metric_store = InsightMetricStore(db)
         self.question_log = InsightQuestionLogStore(db)
         self._knowledge_bridge = knowledge_bridge
+        self._feedback_collector = feedback_collector
 
     def adopt(
         self,
@@ -211,6 +213,14 @@ class AdoptionService:
             question_log_id,
             {"feedback": feedback, "metric_key": log.get("metric_key"), "downgraded": downgraded},
         )
+        if feedback < 0 and self._feedback_collector:
+            self._feedback_collector.record_insight_feedback(
+                tenant_id,
+                user_id,
+                question_log_id,
+                feedback,
+                metric_key=log.get("metric_key"),
+            )
         return {"success": True, "downgraded": downgraded}
 
     def _maybe_auto_downgrade(

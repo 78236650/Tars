@@ -687,6 +687,10 @@ class Database:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_files_collection ON document_files(collection_id)")
+        try:
+            cursor.execute("ALTER TABLE document_files ADD COLUMN metadata_json TEXT DEFAULT '{}'")
+        except Exception:
+            pass
 
         # === Meeting Voice Recognition: transcriptions 表 ===
         cursor.execute("""
@@ -758,6 +762,37 @@ class Database:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_usage_tenant ON provider_usage(tenant_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_usage_created ON provider_usage(created_at DESC)")
+
+        # v4.2.0: Evolution events + apply audit
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS evolution_events (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                user_id TEXT NOT NULL DEFAULT 'default',
+                source TEXT NOT NULL,
+                signal TEXT NOT NULL,
+                payload_json TEXT DEFAULT '{}',
+                weight REAL NOT NULL DEFAULT 1.0,
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evolution_events_tenant ON evolution_events(tenant_id, created_at DESC)")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS evolution_apply_log (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                target_type TEXT NOT NULL,
+                target_path TEXT NOT NULL,
+                before_hash TEXT NOT NULL,
+                after_hash TEXT NOT NULL,
+                before_content TEXT,
+                diff_summary TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'applied',
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evolution_apply_tenant ON evolution_apply_log(tenant_id, created_at DESC)")
 
         conn.commit()
 
@@ -2337,3 +2372,126 @@ class Database:
             approved_at=row[17] if len(row) > 17 else None,
             knowledge_doc_id=row[18] if len(row) > 18 else None,
         )
+
+    def insert_evolution_event(
+        self,
+        *,
+        event_id: str,
+        tenant_id: str,
+        user_id: str,
+        source: str,
+        signal: str,
+        payload_json: str = "{}",
+        weight: float = 1.0,
+        created_at: str,
+    ) -> None:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO evolution_events (id, tenant_id, user_id, source, signal, payload_json, weight, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (event_id, tenant_id, user_id, source, signal, payload_json, weight, created_at),
+        )
+        conn.commit()
+
+    def list_evolution_events(self, tenant_id: str = "default", limit: int = 100) -> list:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, tenant_id, user_id, source, signal, payload_json, weight, created_at
+            FROM evolution_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?
+            """,
+            (tenant_id, limit),
+        )
+        return [
+            {
+                "id": r[0],
+                "tenant_id": r[1],
+                "user_id": r[2],
+                "source": r[3],
+                "signal": r[4],
+                "payload_json": r[5],
+                "weight": r[6],
+                "created_at": r[7],
+            }
+            for r in cursor.fetchall()
+        ]
+
+    def count_evolution_events(self, tenant_id: str = "default", days: int = 7) -> int:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM evolution_events
+            WHERE tenant_id = ? AND datetime(created_at) >= datetime('now', ?)
+            """,
+            (tenant_id, f"-{days} days"),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    def insert_evolution_apply_log(
+        self,
+        *,
+        apply_id: str,
+        tenant_id: str,
+        target_type: str,
+        target_path: str,
+        before_hash: str,
+        after_hash: str,
+        before_content: str = "",
+        diff_summary: str = "",
+        status: str = "applied",
+        created_at: str,
+    ) -> None:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO evolution_apply_log
+            (id, tenant_id, target_type, target_path, before_hash, after_hash, before_content, diff_summary, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                apply_id,
+                tenant_id,
+                target_type,
+                target_path,
+                before_hash,
+                after_hash,
+                before_content,
+                diff_summary,
+                status,
+                created_at,
+            ),
+        )
+        conn.commit()
+
+    def get_evolution_apply_log(self, apply_id: str) -> Optional[dict]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, tenant_id, target_type, target_path, before_hash, after_hash, before_content, diff_summary, status, created_at
+            FROM evolution_apply_log WHERE id = ?
+            """,
+            (apply_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "tenant_id": row[1],
+            "target_type": row[2],
+            "target_path": row[3],
+            "before_hash": row[4],
+            "after_hash": row[5],
+            "before_content": row[6] or "",
+            "diff_summary": row[7] or "",
+            "status": row[8],
+            "created_at": row[9],
+        }
