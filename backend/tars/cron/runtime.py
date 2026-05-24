@@ -62,22 +62,26 @@ class CronRuntime:
 
         config = self._load_config(job.task_config)
         executor = self._executors.get(job.task_type)
+        failed = False
+        ctx = CronExecutionContext(self)
         if executor:
-            ctx = CronExecutionContext(self)
             try:
                 await executor.execute(ctx, job, config)
                 self._audit_cron_execute(job, job.task_type, config, extras=ctx.audit_extras)
             except Exception as exc:
+                failed = True
                 self._audit_cron_execute(
                     job, job.task_type, config, error=str(exc), extras=ctx.audit_extras
                 )
-                raise
         else:
+            failed = True
             print(f"[CronRuntime] 未实现的任务类型: {job.task_type}")
 
         now = _now_local()
         next_run = CronExpression(job.cron_expression).next_run(now)
         self.db.update_cronjob(job.id, last_run=now, next_run=next_run)
+        if failed:
+            return
 
     def _load_config(self, raw: Any) -> dict[str, Any]:
         if isinstance(raw, dict):

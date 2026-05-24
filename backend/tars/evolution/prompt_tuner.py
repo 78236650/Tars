@@ -46,11 +46,16 @@ class PromptTuner:
                 )
             ]
     
-    def tune_system_prompt(self, history_records: List[ConversationRecord], 
-                          prompt_type: str = 'master') -> str:
+    def tune_system_prompt(
+        self,
+        history_records: List[ConversationRecord],
+        prompt_type: str = 'master',
+        tenant_id: str = 'default',
+        apply_engine=None,
+    ) -> str:
         """调优系统提示词"""
         
-        current_prompt = self.get_current_prompt(prompt_type)
+        current_prompt = self.get_current_prompt(prompt_type, tenant_id, apply_engine)
         
         if len(history_records) < 20:
             return current_prompt

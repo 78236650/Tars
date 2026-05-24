@@ -15,11 +15,13 @@ from .store import AdoptionConflictError, InsightMetricStore, InsightProfileRunS
 from .workflow_service import InsightWorkflowService
 
 _db: Optional[Database] = None
+_knowledge_bridge = None
 
 
-def init_insight_agent_tools(db: Database) -> List[BaseTool]:
-    global _db
+def init_insight_agent_tools(db: Database, knowledge_bridge=None) -> List[BaseTool]:
+    global _db, _knowledge_bridge
     _db = db
+    _knowledge_bridge = knowledge_bridge
     return [
         InsightGetWorkflowTool(),
         InsightListSourcesTool(),
@@ -216,20 +218,29 @@ class InsightAdoptMetricTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> ToolResult:
+        import asyncio
+
         db = _require_db()
         metric_id = kwargs.get("metric_id", "").strip()
         log_id = kwargs.get("question_log_id")
         if not metric_id and not log_id:
             return ToolResult(success=False, output="", error="需要 metric_id 或 question_log_id")
-        service = AdoptionService(db)
+        from ..config import get_insight_config
+
+        cfg = get_insight_config()
+        service = AdoptionService(db, config=cfg, knowledge_bridge=_knowledge_bridge)
+        tenant_id = kwargs.get("tenant_id", "default")
+        user_id = kwargs.get("user_id", "default")
+        defer_publish = bool(_knowledge_bridge and cfg.adoption.publish_to_knowledge)
         try:
             result = service.adopt(
                 metric_id,
-                kwargs.get("tenant_id", "default"),
-                kwargs.get("user_id", "default"),
+                tenant_id,
+                user_id,
                 definition=kwargs.get("definition"),
                 sql_template=kwargs.get("sql_template"),
                 question_log_id=log_id,
+                defer_publish=defer_publish,
             )
         except AdoptionConflictError:
             return ToolResult(
@@ -239,6 +250,17 @@ class InsightAdoptMetricTool(BaseTool):
             )
         except ValueError as e:
             return ToolResult(success=False, output="", error=str(e))
+        if defer_publish and result.get("metric"):
+            approved = InsightMetricStore(db).get_by_id(result["metric"]["id"], tenant_id)
+            if approved:
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        service.publish_adopted_metric,
+                        approved,
+                        tenant_id,
+                        user_id,
+                    )
+                )
         if result.get("status") == "pending_review":
             return ToolResult(
                 success=True,

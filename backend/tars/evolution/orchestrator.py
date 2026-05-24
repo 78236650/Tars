@@ -84,32 +84,33 @@ class EvolutionOrchestrator:
         results["batch_id"] = batch_id
 
         if len(history) >= 20 or burst_metrics:
-            current = before_ctx["personality"]
-            suggested = self.personality_optimizer.optimize(current, history)
-            delta_keys = [
-                k for k, v in suggested.items()
-                if k in current and abs(float(v) - float(current[k])) >= self.confidence_threshold
-            ]
-            if delta_keys:
-                patch = {k: suggested[k] for k in delta_keys}
-                record = self.apply_engine.apply_personality(tenant_id, patch)
-                results["personality_optimized"] = True
-                results["apply_records"].append(record.id)
-                results["new_personality"] = patch
+            if not burst_metrics:
+                current = before_ctx["personality"]
+                suggested = self.personality_optimizer.optimize(current, history)
+                delta_keys = [
+                    k for k, v in suggested.items()
+                    if k in current and abs(float(v) - float(current[k])) >= self.confidence_threshold
+                ]
+                if delta_keys:
+                    patch = {k: suggested[k] for k in delta_keys}
+                    record = self.apply_engine.apply_personality(tenant_id, patch)
+                    results["personality_optimized"] = True
+                    results["apply_records"].append(record.id)
+                    results["new_personality"] = patch
 
-            sa_weights = self.subagent_optimizer.optimize_task_delegation(history)
-            sa_personality = self.subagent_optimizer.optimize_personality_weights(history)
-            subagent_patch: Dict[str, Any] = {}
-            if sa_weights:
-                subagent_patch["delegation_weights"] = sa_weights
-            if sa_personality:
-                subagent_patch["personality_weights"] = sa_personality
-            if subagent_patch:
-                sa_record = self.apply_engine.apply_subagent_config(tenant_id, subagent_patch)
-                results["apply_records"].append(sa_record.id)
-            results["subagent_optimized"] = bool(subagent_patch)
-            results["subagent_weights"] = sa_weights
-            results["subagent_personality"] = sa_personality
+                sa_weights = self.subagent_optimizer.optimize_task_delegation(history)
+                sa_personality = self.subagent_optimizer.optimize_personality_weights(history)
+                subagent_patch: Dict[str, Any] = {}
+                if sa_weights:
+                    subagent_patch["delegation_weights"] = sa_weights
+                if sa_personality:
+                    subagent_patch["personality_weights"] = sa_personality
+                if subagent_patch:
+                    sa_record = self.apply_engine.apply_subagent_config(tenant_id, subagent_patch)
+                    results["apply_records"].append(sa_record.id)
+                results["subagent_optimized"] = bool(subagent_patch)
+                results["subagent_weights"] = sa_weights
+                results["subagent_personality"] = sa_personality
 
             prompt_types = ["master", "code", "writing", "data", "research", "plan"]
             if burst_metrics:
@@ -117,13 +118,30 @@ class EvolutionOrchestrator:
             prompt_apply_ids: list[str] = []
             for prompt_type in prompt_types:
                 before_prompt = self.prompt_tuner.get_current_prompt(prompt_type, tenant_id, self.apply_engine)
-                tuned = self.prompt_tuner.tune_system_prompt(history, prompt_type)
+                tuned = self.prompt_tuner.tune_system_prompt(
+                    history, prompt_type, tenant_id, self.apply_engine
+                )
                 if tuned and tuned != before_prompt:
                     try:
                         record = self.apply_engine.apply_prompt(tenant_id, prompt_type, tuned)
                         prompt_apply_ids.append(record.id)
                     except PromptDiffTooLarge:
                         logger.warning("prompt diff too large for %s, skipped", prompt_type)
+                        try:
+                            from ..security.audit import safe_audit
+
+                            safe_audit(
+                                lambda logger: logger.log(
+                                    action="prompt_diff_too_large",
+                                    resource_type="prompt",
+                                    resource_id=prompt_type,
+                                    tenant_id=tenant_id,
+                                    user_id="system",
+                                    detail=f"tenant={tenant_id} prompt={prompt_type}",
+                                )
+                            )
+                        except Exception:
+                            pass
             if prompt_apply_ids:
                 results["prompts_tuned"] = True
                 results["prompt_apply_records"] = prompt_apply_ids

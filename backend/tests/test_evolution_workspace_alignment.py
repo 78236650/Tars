@@ -53,6 +53,27 @@ def test_subagent_manager_applies_tenant_overrides(tmp_path, monkeypatch):
     assert mgr.subagents[SubAgentType.CODE].config.enabled is False
 
 
+def test_subagent_manager_applies_delegation_weights(tmp_path, monkeypatch):
+    import json
+
+    agents_home = tmp_path / ".tars" / "agents" / "default"
+    agents_home.mkdir(parents=True)
+    (agents_home / "subagents.json").write_text(
+        json.dumps({"delegation_weights": {"code": 0.1, "data": 2.0}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    from tars.agent.subagent_manager import SubAgentManager
+    from tars.agent.subagents.base import SubAgentType
+
+    mgr = SubAgentManager()
+    mgr.apply_tenant_overrides("default")
+    # Task mentions both code and data keywords; data has higher weight.
+    chosen = mgr._determine_agent_type("analyze python data chart")
+    assert chosen == SubAgentType.DATA
+
+
 def test_workspace_manager_for_tenant_matches_apply_engine_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     ws = WorkspaceManager.for_tenant("acme")

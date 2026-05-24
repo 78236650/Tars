@@ -56,6 +56,7 @@ class EvolutionManager:
         self._optimize_interval = 50  # 每50次对话优化一次
         self._conversation_count = 0
         self._optimize_lock: Optional[asyncio.Lock] = None
+        self._last_state_save_at: Optional[float] = None
         
         self._load_state()
     
@@ -115,10 +116,27 @@ class EvolutionManager:
             self._schedule_optimize(context.get("tenant_id", "default"))
         
         from .config import get_evolution_config
-        if self._conversation_count % max(get_evolution_config().ingest.save_state_every_n_turns, 1) == 0:
-            self._save_state()
+        cfg = get_evolution_config()
+        if self._conversation_count % max(cfg.ingest.save_state_every_n_turns, 1) == 0:
+            self._maybe_save_state()
         
         return evaluation
+    
+    def _maybe_save_state(self) -> None:
+        import time
+        from .config import get_evolution_config
+
+        cfg = get_evolution_config()
+        now = time.monotonic()
+        min_interval = max(getattr(cfg.ingest, "save_state_min_interval_seconds", 0), 0)
+        if (
+            self._last_state_save_at is not None
+            and min_interval > 0
+            and (now - self._last_state_save_at) < min_interval
+        ):
+            return
+        self._save_state()
+        self._last_state_save_at = now
     
     def _schedule_optimize(self, tenant_id: str) -> None:
         from .config import get_evolution_config

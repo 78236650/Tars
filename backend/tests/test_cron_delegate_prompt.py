@@ -134,8 +134,43 @@ async def test_prompt_executor_requires_session_id(tmp_path):
     cm = FakeConnectionManager()
     runtime = CronRuntime(db=db, scheduler=FakeScheduler(), connection_manager=cm, agent=agent)
 
-    with pytest.raises(ValueError, match="session_id"):
-        await runtime.execute_job(job.id)
+    await runtime.execute_job(job.id)
 
+    job_after = db.get_cronjob(job.id)
+    assert job_after.last_run is not None
     assert cm.events
     assert cm.events[0].get("type") == "cron_prompt_error"
+
+
+@pytest.mark.asyncio
+async def test_delegate_executor_records_inferred_subagent_type_in_audit(tmp_path):
+    from tars.security.audit import init_audit_logger
+
+    db = Database(db_path=str(tmp_path / "cron.db"))
+    init_audit_logger(db)
+    job = db.create_cronjob(
+        user_id="default",
+        name="auto delegate",
+        cron_expression="5 14 * * *",
+        task_type="delegate",
+        task_config='{"task":"analyze sales data chart","session_id":"sess-d2"}',
+    )
+
+    from tars.agent.subagent_manager import SubAgentManager
+
+    agent = MagicMock()
+    real_mgr = SubAgentManager()
+    real_mgr.delegate_task = AsyncMock(return_value="data insight")
+    agent.subagent_manager = real_mgr
+
+    cm = FakeConnectionManager()
+    runtime = CronRuntime(db=db, scheduler=FakeScheduler(), connection_manager=cm, agent=agent)
+
+    await runtime.execute_job(job.id)
+
+    logs, _total = db.list_audit_logs(action="cron_execute")
+    assert logs
+    import json
+
+    detail = json.loads(logs[0].detail)
+    assert detail.get("inferred_subagent_type") == "data"

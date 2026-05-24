@@ -17,6 +17,7 @@ class SubAgentManager:
     def __init__(self, master_agent=None):
         self.master_agent = master_agent
         self.subagents: Dict[SubAgentType, SubAgent] = {}
+        self._delegation_weights: Dict[str, float] = {}
         self._load_subagents()
     
     def _load_subagents(self):
@@ -41,7 +42,14 @@ class SubAgentManager:
             return
         if not isinstance(config, dict):
             return
+        delegation_weights = config.get("delegation_weights")
+        if isinstance(delegation_weights, dict):
+            self._delegation_weights = {
+                str(k): float(v) for k, v in delegation_weights.items()
+            }
         for agent_type, cfg in config.items():
+            if agent_type in ("delegation_weights", "personality_weights"):
+                continue
             if isinstance(cfg, dict):
                 self.update_subagent_config(str(agent_type), cfg)
     
@@ -90,28 +98,24 @@ class SubAgentManager:
                             "research", "search", "information"]
         plan_keywords = ["计划", "规划", "任务", "步骤", "安排", 
                          "plan", "schedule", "task", "goal"]
-        
-        for keyword in code_keywords:
-            if keyword in task_lower:
-                return SubAgentType.CODE
-        
-        for keyword in writing_keywords:
-            if keyword in task_lower:
-                return SubAgentType.WRITING
-        
-        for keyword in data_keywords:
-            if keyword in task_lower:
-                return SubAgentType.DATA
-        
-        for keyword in research_keywords:
-            if keyword in task_lower:
-                return SubAgentType.RESEARCH
-        
-        for keyword in plan_keywords:
-            if keyword in task_lower:
-                return SubAgentType.PLAN
-        
-        return None
+
+        keyword_map = {
+            SubAgentType.CODE: code_keywords,
+            SubAgentType.WRITING: writing_keywords,
+            SubAgentType.DATA: data_keywords,
+            SubAgentType.RESEARCH: research_keywords,
+            SubAgentType.PLAN: plan_keywords,
+        }
+        scores: Dict[SubAgentType, float] = {}
+        for agent_type, keywords in keyword_map.items():
+            hits = sum(1 for keyword in keywords if keyword in task_lower)
+            if hits > 0:
+                weight = self._delegation_weights.get(agent_type.value, 1.0)
+                scores[agent_type] = hits * float(weight)
+
+        if not scores:
+            return None
+        return max(scores, key=scores.get)
     
     async def delegate_task(self, task: str, context: Dict[str, Any] = None) -> str:
         """

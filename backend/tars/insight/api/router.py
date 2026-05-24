@@ -68,7 +68,7 @@ def init_insight_api(db: Database, knowledge_indexer=None, feedback_collector=No
     from ..agent_tools import init_insight_agent_tools
     from ...tools import registry as tool_registry
 
-    for tool in init_insight_agent_tools(db):
+    for tool in init_insight_agent_tools(db, knowledge_bridge=_knowledge_bridge):
         tool_registry.register(tool)
 
     # Recover any runs that were pending/running when the previous process died.

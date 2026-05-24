@@ -12,4 +12,5 @@ insight_burst:
 
 ingest:
   save_state_every_n_turns: 5
+  save_state_min_interval_seconds: 5
   optimize_async: true

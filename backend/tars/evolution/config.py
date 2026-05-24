@@ -28,6 +28,7 @@ class InsightBurstSettings:
 @dataclass
 class IngestSettings:
     save_state_every_n_turns: int = 5
+    save_state_min_interval_seconds: int = 5
     optimize_async: bool = True
 
 
@@ -70,6 +71,7 @@ def load_evolution_config(path: str | Path | None = None) -> EvolutionConfig:
         ),
         ingest=IngestSettings(
             save_state_every_n_turns=int(ingest.get("save_state_every_n_turns", 5)),
+            save_state_min_interval_seconds=int(ingest.get("save_state_min_interval_seconds", 5)),
             optimize_async=bool(ingest.get("optimize_async", True)),
         ),
     )
