@@ -426,6 +426,18 @@ export const reminderNotificationsApi = {
   },
 }
 
+export const approvalsApi = {
+  approve: async (approvalId: string): Promise<{ success: boolean; approval_id: string; status: string }> => {
+    const response = await api.post(`/approvals/${approvalId}/approve`)
+    return response.data
+  },
+
+  deny: async (approvalId: string): Promise<{ success: boolean; approval_id: string; status: string }> => {
+    const response = await api.post(`/approvals/${approvalId}/deny`)
+    return response.data
+  },
+}
+
 // ========= BI Analytics API =========
 
 export const biApi = {
