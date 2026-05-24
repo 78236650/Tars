@@ -1,8 +1,12 @@
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
 from ..scheduler import CronExpression
+from .executors.base import CronExecutionContext
+from .executors.delegate import DelegateExecutor
+from .executors.prompt import PromptExecutor
+from .executors.reminder import ReminderExecutor
 
 
 def _now_local() -> datetime:
@@ -10,12 +14,18 @@ def _now_local() -> datetime:
 
 
 class CronRuntime:
-    """负责将 DB 中的 cronjob 同步到 scheduler，并执行 reminder。"""
+    """负责将 DB 中的 cronjob 同步到 scheduler，并通过 executor 注册表执行任务。"""
 
-    def __init__(self, db, scheduler, connection_manager):
+    def __init__(self, db, scheduler, connection_manager, agent=None):
         self.db = db
         self.scheduler = scheduler
         self.connection_manager = connection_manager
+        self.agent = agent
+        self._executors = {
+            ReminderExecutor.task_type: ReminderExecutor(),
+            DelegateExecutor.task_type: DelegateExecutor(),
+            PromptExecutor.task_type: PromptExecutor(),
+        }
 
     async def load_from_db(self) -> None:
         for job in self.db.get_enabled_cronjobs():
@@ -51,8 +61,15 @@ class CronRuntime:
             return
 
         config = self._load_config(job.task_config)
-        if job.task_type == "reminder":
-            await self._run_reminder(job, config)
+        executor = self._executors.get(job.task_type)
+        if executor:
+            ctx = CronExecutionContext(self)
+            try:
+                await executor.execute(ctx, job, config)
+                self._audit_cron_execute(job, job.task_type, config)
+            except Exception as exc:
+                self._audit_cron_execute(job, job.task_type, config, error=str(exc))
+                raise
         else:
             print(f"[CronRuntime] 未实现的任务类型: {job.task_type}")
 
@@ -70,86 +87,89 @@ class CronRuntime:
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    async def _run_reminder(self, job, config: dict[str, Any]) -> None:
-        message = config.get("message") or job.description or job.name
-        triggered_at = _now_local()
-        session_id = config.get("session_id")
-        print(f"[CronRuntime] _run_reminder 开始: job={job.name}, session_id={session_id}")
-        event = {
-            "type": "cron_reminder",
-            "job_id": job.id,
-            "session_id": session_id or "default",
-            "message": message,
-            "timestamp": triggered_at.isoformat(),
-        }
-        summary_logs = [
-            self._build_log_entry("scheduler_matched", "ok", "调度命中"),
-            self._build_log_entry("runtime_executing", "ok", "runtime 开始执行 reminder"),
-            self._build_log_entry("notification_recorded", "ok", "准备写入 reminder 通知记录"),
-        ]
-
+    async def deliver_event(
+        self,
+        session_id: Optional[str],
+        event: dict,
+        *,
+        summary_logs: Optional[list] = None,
+    ) -> tuple[str, Optional[str]]:
+        """Deliver a cron event to session or broadcast. Returns (status, error)."""
         delivery_status = "failed"
         error_message = None
 
         if session_id:
-            summary_logs.append(
-                self._build_log_entry(
-                    "websocket_delivery_attempted",
-                    "ok",
-                    f"向会话 {session_id} 投递通知",
+            if summary_logs is not None:
+                summary_logs.append(
+                    self._build_log_entry(
+                        "websocket_delivery_attempted",
+                        "ok",
+                        f"向会话 {session_id} 投递通知",
+                    )
                 )
-            )
             try:
-                print(f"[CronRuntime] 尝试 send_personal_message: {session_id}")
                 delivered = await self.connection_manager.send_personal_message(session_id, event)
                 if delivered:
                     delivery_status = "delivered"
-                    print(f"[CronRuntime] 投递成功")
                 else:
-                    summary_logs.append(
-                        self._build_log_entry("websocket_delivery_attempted", "broadcast", "会话连接不存在，回退广播")
-                    )
-                    print(f"[CronRuntime] 会话不存在，回退 broadcast")
+                    if summary_logs is not None:
+                        summary_logs.append(
+                            self._build_log_entry(
+                                "websocket_delivery_attempted",
+                                "broadcast",
+                                "会话连接不存在，回退广播",
+                            )
+                        )
                     await self.connection_manager.broadcast(event)
                     delivery_status = "broadcast"
-                    print(f"[CronRuntime] broadcast 完成")
             except Exception as exc:
                 error_message = str(exc)
-                print(f"[CronRuntime] 投递异常: {error_message}")
         else:
             error_message = "缺少 session_id，回退广播路径"
-            summary_logs.append(
-                self._build_log_entry("websocket_delivery_attempted", "broadcast", "通过 broadcast 投递通知")
-            )
+            if summary_logs is not None:
+                summary_logs.append(
+                    self._build_log_entry(
+                        "websocket_delivery_attempted",
+                        "broadcast",
+                        "通过 broadcast 投递通知",
+                    )
+                )
             try:
-                print(f"[CronRuntime] 无 session_id，执行 broadcast")
                 await self.connection_manager.broadcast(event)
                 delivery_status = "broadcast"
-                print(f"[CronRuntime] broadcast 完成")
             except Exception as exc:
                 error_message = str(exc)
-                print(f"[CronRuntime] broadcast 异常: {error_message}")
 
-        print(f"[CronRuntime] 写入通知记录...")
-        summary_logs.append(
-            self._build_log_entry(
-                "delivery_result",
-                delivery_status,
-                error_message or f"通知投递结果: {delivery_status}",
+        return delivery_status, error_message
+
+    def _audit_cron_execute(
+        self,
+        job,
+        task_type: str,
+        config: dict[str, Any],
+        *,
+        error: str = "",
+    ) -> None:
+        try:
+            from ..security.audit import safe_audit
+
+            detail = json.dumps(
+                {"task_type": task_type, "config": config, "error": error},
+                ensure_ascii=False,
+                default=str,
+            )[:2000]
+            safe_audit(
+                lambda logger: logger.log(
+                    action="cron_execute",
+                    resource_type="cronjob",
+                    resource_id=job.id,
+                    tenant_id=getattr(job, "user_id", None) or "default",
+                    user_id=getattr(job, "user_id", None) or "default",
+                    detail=detail,
+                )
             )
-        )
-        self.db.create_reminder_notification(
-            user_id=job.user_id,
-            job_id=job.id,
-            session_id=session_id,
-            task_name=job.name,
-            message=message,
-            delivery_status=delivery_status,
-            error_message=error_message,
-            summary_logs=summary_logs,
-            triggered_at=triggered_at,
-        )
-        print(f"[CronRuntime] _run_reminder 完成: {delivery_status}")
+        except Exception:
+            pass
 
     def _build_log_entry(self, step: str, status: str, message: str) -> dict[str, str]:
         return {

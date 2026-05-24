@@ -298,7 +298,12 @@ if channel_registry.is_adapter_enabled("websocket"):
         connection_manager.configure_router(channel_router, use_router=True)
         channel_router.register("websocket", ConnectionManagerOutboundAdapter(connection_manager))
     print("[Startup] ChannelRegistry loaded (use_router=%s)" % channel_registry.use_router)
-cron_runtime = CronRuntime(db=db, scheduler=get_scheduler(), connection_manager=connection_manager)
+cron_runtime = CronRuntime(
+    db=db,
+    scheduler=get_scheduler(),
+    connection_manager=connection_manager,
+    agent=agent,
+)
 cronjob_tool.set_runtime(cron_runtime)
 memory_scheduler = MemoryScheduler(memory_manager.compressor, get_scheduler())
 memory_scheduler.ensure_started()
