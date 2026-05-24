@@ -343,29 +343,70 @@ Web 工具搜索结果通过反思器自动沉淀为 `source=web` 的 archival �
 
 详见 [docs/superpowers/specs/2026-05-06-memory-v3-letta-design.md](docs/superpowers/specs/2026-05-06-memory-v3-letta-design.md)
 
-## 快速开始
+## 快速开始（v4.3.0）
 
-### 后端启动
+> 前端 dev 默认 `http://localhost:5173`，API/WS 代理到后端 `http://localhost:8000`。
+
+### 1. 环境变量（首次）
+
+```bash
+# 项目根目录 — LLM 等全局配置
+cp .env.example .env
+
+# 后端 — API Key 等（可选，与根目录 .env 二选一或并存）
+cp backend/.env.example backend/.env
+```
+
+编辑 `.env`，至少配置一种 LLM（本地 Ollama 或 OpenRouter 等）。
+
+### 2. 后端启动
 
 ```bash
 cd backend
 
-# 创建虚拟环境并安装依赖
+# 首次：虚拟环境 + 依赖
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-pip install pandas openpyxl Pillow sentence-transformers
 
-# 启动服务
-venv/bin/python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000
+# 开发模式（热重载，推荐）
+source venv/bin/activate
+python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 或等价写法
+python3 -m tars.main
+
+# 生产 / Insight SSE：必须单 worker（或 Ingress sticky session）
+python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
-### 前端启动
+可选：Evolution 旧目录迁移（曾使用 `~/.tars/workspaces` 时）
+
+```bash
+./scripts/migrate-evolution-workspace.sh
+```
+
+验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.0**）。
+
+### 3. 前端启动
 
 ```bash
 cd frontend
-npm install
-npm run dev
+npm install                       # 首次
+npm run dev                       # → http://localhost:5173
+```
+
+生产构建预览：
+
+```bash
+npm run build
+npm run preview                   # → http://localhost:4173（同样代理 8000）
+```
+
+### 4. Phase 3 自动化验收（可选）
+
+```bash
+./scripts/acceptance/phase3-openclaw.sh
 ```
 
 ## API 文档
