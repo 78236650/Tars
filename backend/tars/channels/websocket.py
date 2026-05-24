@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 from .base import Channel, ChannelMessage
+from ..agent.follow_up_queue import FollowUpItem
 
 
 def now_iso():
@@ -78,89 +79,23 @@ class WebSocketChannel(Channel):
         try:
             data = json.loads(raw_message)
 
-            # 用户决策消息（用于 Planner/Executor 的失败决策）
-            if data.get("type") == "user_decision":
-                if self.agent and hasattr(self.agent, "task_executor") and self.agent.task_executor:
-                    self.agent.task_executor.submit_decision(
-                        session_id=data.get("session_id", "default"),
-                        step_id=data.get("step_id"),
-                        decision=data.get("decision", "abort"),
-                    )
+            if self._is_control_message(data):
+                await self._handle_control_message(data)
                 return
 
-            # Chat 显式反馈 👍/👎
-            if data.get("type") == "message_feedback":
-                mgr = getattr(self.agent, "evolution_manager", None) if self.agent else None
-                collector = mgr.feedback_collector if mgr else None
-                if collector:
-                    tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
-                    user_id = data.get("user_id") or self._request_context.get("user_id", "default")
-                    feedback = data.get("feedback") or ("up" if data.get("score", 0) > 0 else "down")
-                    collector.record_explicit_feedback(
-                        tenant_id,
-                        user_id,
-                        data.get("session_id", "default"),
-                        str(feedback),
-                    )
+            session_id = data.get("session_id", "default")
+            queue = getattr(self.agent, "follow_up_queue", None) if self.agent else None
+            if queue and not queue.try_acquire(session_id):
+                pending = queue.enqueue(FollowUpItem.from_raw(raw_message, data))
+                await self._emit_queue_status(session_id, pending)
                 return
 
-            # 子代理 handoff 审查 accept / reject
-            if data.get("type") == "subagent_handoff_action" and self.agent:
-                action = data.get("action", "")
-                handoff_id = data.get("handoff_id", "")
-                session_id = data.get("session_id", "default")
-                tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
-                ok = await self.agent.handle_subagent_handoff_action(
-                    handoff_id,
-                    action,
-                    channel=self,
-                    tenant_id=tenant_id,
-                )
-                if not ok:
-                    await self.send(session_id, {
-                        "type": "error",
-                        "session_id": session_id,
-                        "message": "子代理审查操作失败或 handoff 不存在",
-                        "code": "handoff_error",
-                        "timestamp": now_iso(),
-                    })
-                return
-
-            await self.send("default", {
-                "type": "generation_start",
-                "timestamp": now_iso()
-            })
-
-            message = await self.receive(raw_message)
-            if self.manager and self.connection_id:
-                self.manager.bind_session(message.session_id, self.connection_id)
-            print(f"[WebSocket] 解析后消息内容: {message.content[:200] if message.content else 'empty'}...")
-
-            file_ids = data.get("file_ids")
-
-            if self.agent:
-                await self.agent.handle_message(
-                    session_id=message.session_id,
-                    user_content=message.content,
-                    channel=self,
-                    file_ids=file_ids,
-                    tenant_context=self.tenant_context,
-                    request_context=self._request_context,
-                )
-            else:
-                print(f"[WebSocket] Agent 未设置!")
-                await self.send(message.session_id, {
-                    "type": "error",
-                    "session_id": message.session_id,
-                    "message": "Agent 未初始化",
-                    "code": "agent_not_ready",
-                    "timestamp": now_iso()
-                })
-
-            await self.send(message.session_id, {
-                "type": "generation_end",
-                "timestamp": now_iso()
-            })
+            try:
+                await self._execute_agent_turn(raw_message, data)
+            finally:
+                if queue:
+                    queue.mark_idle(session_id)
+                    await self._drain_follow_up_queue(session_id)
         except Exception as e:
             print(f"[WebSocket] 消息处理异常: {type(e).__name__}: {e}")
             traceback.print_exc()
@@ -178,6 +113,122 @@ class WebSocketChannel(Channel):
                 })
             except Exception as send_err:
                 print(f"[WebSocket] 发送 error 事件失败（连接可能已关闭）: {send_err}")
+
+    def _is_control_message(self, data: dict) -> bool:
+        return data.get("type") in (
+            "user_decision",
+            "message_feedback",
+            "subagent_handoff_action",
+        )
+
+    async def _handle_control_message(self, data: dict) -> None:
+        if data.get("type") == "user_decision":
+            if self.agent and hasattr(self.agent, "task_executor") and self.agent.task_executor:
+                self.agent.task_executor.submit_decision(
+                    session_id=data.get("session_id", "default"),
+                    step_id=data.get("step_id"),
+                    decision=data.get("decision", "abort"),
+                )
+            return
+
+        if data.get("type") == "message_feedback":
+            mgr = getattr(self.agent, "evolution_manager", None) if self.agent else None
+            collector = mgr.feedback_collector if mgr else None
+            if collector:
+                tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
+                user_id = data.get("user_id") or self._request_context.get("user_id", "default")
+                feedback = data.get("feedback") or ("up" if data.get("score", 0) > 0 else "down")
+                collector.record_explicit_feedback(
+                    tenant_id,
+                    user_id,
+                    data.get("session_id", "default"),
+                    str(feedback),
+                )
+            return
+
+        if data.get("type") == "subagent_handoff_action" and self.agent:
+            action = data.get("action", "")
+            handoff_id = data.get("handoff_id", "")
+            session_id = data.get("session_id", "default")
+            tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
+            ok = await self.agent.handle_subagent_handoff_action(
+                handoff_id,
+                action,
+                channel=self,
+                tenant_id=tenant_id,
+            )
+            if not ok:
+                await self.send(session_id, {
+                    "type": "error",
+                    "session_id": session_id,
+                    "message": "子代理审查操作失败或 handoff 不存在",
+                    "code": "handoff_error",
+                    "timestamp": now_iso(),
+                })
+
+    async def _emit_queue_status(self, session_id: str, pending: int) -> None:
+        await self.send(session_id, {
+            "type": "queue_status",
+            "session_id": session_id,
+            "pending": pending,
+            "timestamp": now_iso(),
+        })
+
+    async def _execute_agent_turn(self, raw_message: str, data: dict) -> None:
+        session_id = data.get("session_id", "default")
+
+        await self.send("default", {
+            "type": "generation_start",
+            "timestamp": now_iso()
+        })
+
+        message = await self.receive(raw_message)
+        if self.manager and self.connection_id:
+            self.manager.bind_session(message.session_id, self.connection_id)
+        print(f"[WebSocket] 解析后消息内容: {message.content[:200] if message.content else 'empty'}...")
+
+        file_ids = data.get("file_ids")
+
+        if self.agent:
+            await self.agent.handle_message(
+                session_id=message.session_id,
+                user_content=message.content,
+                channel=self,
+                file_ids=file_ids,
+                tenant_context=self.tenant_context,
+                request_context=self._request_context,
+            )
+        else:
+            print(f"[WebSocket] Agent 未设置!")
+            await self.send(message.session_id, {
+                "type": "error",
+                "session_id": message.session_id,
+                "message": "Agent 未初始化",
+                "code": "agent_not_ready",
+                "timestamp": now_iso()
+            })
+
+        await self.send(message.session_id, {
+            "type": "generation_end",
+            "timestamp": now_iso()
+        })
+
+    async def _drain_follow_up_queue(self, session_id: str) -> None:
+        if not self.agent:
+            return
+        queue = self.agent.follow_up_queue
+        while True:
+            item = queue.pop(session_id)
+            if item is None:
+                await self._emit_queue_status(session_id, 0)
+                return
+            await self._emit_queue_status(session_id, queue.pending(session_id))
+            queue.mark_busy(session_id)
+            try:
+                data = json.loads(item.raw_message)
+                await self._execute_agent_turn(item.raw_message, data)
+            finally:
+                queue.mark_idle(session_id)
 
 
 class ConnectionManager:

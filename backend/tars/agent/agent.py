@@ -45,6 +45,8 @@ class AgentV2:
         self.current_model: str = os.getenv("OLLAMA_MODEL", "llama3.2")
         self.subagent_manager = SubAgentManager(self)
         self.handoff_manager = HandoffManager()
+        from .follow_up_queue import FollowUpQueue
+        self.follow_up_queue = FollowUpQueue()
         self.evolution_manager = evolution_manager
 
         self.tool_registry = tool_registry or global_tool_registry

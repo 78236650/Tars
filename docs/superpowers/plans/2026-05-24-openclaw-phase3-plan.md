@@ -181,11 +181,11 @@ async def test_router_send_routes_to_registered_channel():
 - Create: `backend/tars/agent/follow_up_queue.py`
 - Test: `backend/tests/test_follow_up_queue.py`
 
-- [ ] **Step 1: Enqueue message while agent busy**
+- [x] **Step 1: Enqueue message while agent busy**
 
-- [ ] **Step 2: Drain after turn complete**
+- [x] **Step 2: Drain after turn complete**
 
-- [ ] **Step 3: WS `queue_status`**
+- [x] **Step 3: WS `queue_status`**
 
 - [ ] **Step 4: Commit**
 
