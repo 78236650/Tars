@@ -45,6 +45,7 @@ class InsightQaSettings:
 @dataclass
 class InsightAdoptionSettings:
     require_review: bool = False
+    publish_to_knowledge: bool = True
 
 
 @dataclass
@@ -158,6 +159,7 @@ def load_insight_config(path: str | Path | None = None) -> InsightConfig:
         qa=qa,
         adoption=InsightAdoptionSettings(
             require_review=bool(adoption_raw.get("require_review", False)),
+            publish_to_knowledge=bool(adoption_raw.get("publish_to_knowledge", True)),
         ),
         feedback=InsightFeedbackSettings(
             downgrade_window_days=int(feedback_raw.get("downgrade_window_days", 30)),

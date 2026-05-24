@@ -14,7 +14,11 @@ const showShell = computed(() => route.meta.shell !== false)
 onMounted(async () => {
   try {
     await authStore.initAuth()
-    await settingsStore.loadModels()
+    if (authStore.isAuthenticated) {
+      await settingsStore.initSettings()
+    } else {
+      await settingsStore.loadModels()
+    }
   } catch {
     console.warn('Initialization failed')
   } finally {

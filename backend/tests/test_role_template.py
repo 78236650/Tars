@@ -17,6 +17,8 @@ class TestRoleTemplateManager:
         assert "admin" in ids
         assert "developer" in ids
         assert "analyst" in ids
+        assert "business_analyst" in ids
+        assert "insight_analyst" in ids
         assert "operator" in ids
         assert "standard" in ids
         assert "readonly" in ids

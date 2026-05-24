@@ -115,6 +115,16 @@ const onAdopt = async () => {
       <div class="text-xs text-stone-500 mb-1">{{ t('insight.metric.caliber') }}</div>
       <p class="text-stone-300 leading-relaxed">{{ answer.definition || '—' }}</p>
       <p v-if="answer.metric_key" class="text-xs text-stone-500 mt-1 font-mono">{{ answer.metric_key }}</p>
+      <div v-if="answer.citations?.length" class="mt-2 flex flex-wrap gap-1.5">
+        <span
+          v-for="c in answer.citations"
+          :key="c.doc_id"
+          class="text-xs px-2 py-0.5 rounded bg-stone-800 text-amber-200/90"
+          :title="c.snippet"
+        >
+          [ref:{{ c.doc_id }}|{{ c.title }}]
+        </span>
+      </div>
       <p class="text-xs text-stone-500 mt-1">
         {{ t('insight.metric.confidence') }}: {{ Math.round((answer.confidence || 0) * 100) }}%
         · {{ answer.branch }}

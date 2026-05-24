@@ -26,10 +26,15 @@ _run_store: Optional[InsightProfileRunStore] = None
 _metric_store: Optional[InsightMetricStore] = None
 _ds_store: Optional[DataSourceStore] = None
 _llm_settings_store = None
+_knowledge_bridge = None
+
+
+def get_knowledge_bridge():
+    return _knowledge_bridge
 
 
 def init_insight_api(db: Database, knowledge_indexer=None) -> None:
-    global _db, _run_store, _metric_store, _ds_store, _llm_settings_store
+    global _db, _run_store, _metric_store, _ds_store, _llm_settings_store, _knowledge_bridge
     _db = db
     _run_store = InsightProfileRunStore(db)
     _metric_store = InsightMetricStore(db)
@@ -40,6 +45,13 @@ def init_insight_api(db: Database, knowledge_indexer=None) -> None:
     from ..job_runner import set_insight_knowledge_indexer
 
     set_insight_knowledge_indexer(knowledge_indexer)
+
+    from ..knowledge_bridge import KnowledgeBridge
+
+    retriever = None
+    if knowledge_indexer is not None:
+        retriever = getattr(knowledge_indexer, "retriever", knowledge_indexer)
+    _knowledge_bridge = KnowledgeBridge(db, retriever=retriever, indexer=knowledge_indexer)
 
     from ..llm_resolver import init_llm_resolver
     init_llm_resolver(db)
@@ -415,7 +427,7 @@ async def ask_metric(
     """Synchronous metric QA — does not set session asking (H2)."""
     if _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    engine = MetricQaEngine(_db)
+    engine = MetricQaEngine(_db, knowledge_bridge=_knowledge_bridge)
     try:
         answer = await engine.ask(
             datasource_id,
@@ -493,7 +505,7 @@ async def ask_feedback(
     ok = store.update_feedback(question_log_id, principal.tenant_id, body.feedback)
     if not ok:
         raise HTTPException(status_code=404, detail="问答记录不存在")
-    adoption = AdoptionService(_db)
+    adoption = AdoptionService(_db, knowledge_bridge=_knowledge_bridge)
     result = adoption.process_feedback(
         question_log_id,
         principal.tenant_id,
@@ -514,7 +526,7 @@ def _adopt_metric_impl(
     if _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     mid = (metric_id or body.metric_id or "").strip()
-    service = AdoptionService(_db)
+    service = AdoptionService(_db, knowledge_bridge=_knowledge_bridge)
     try:
         result = service.adopt(
             mid,
@@ -570,7 +582,7 @@ async def list_pending_adoption(principal: Principal = Depends(_require)):
 
     if _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    service = AdoptionService(_db)
+    service = AdoptionService(_db, knowledge_bridge=_knowledge_bridge)
     return {"items": service.list_pending_adoptions(principal.tenant_id)}
 
 

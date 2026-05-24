@@ -2,23 +2,33 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from ..database.base import Database, get_local_now
+from ..database.bi_store import DataSourceStore
 from .config import InsightConfig, get_insight_config
 from .question_log_store import InsightQuestionLogStore
 from .store import AdoptionConflictError, InsightMetricStore
 from .models import InsightMetric
 
+logger = logging.getLogger(__name__)
+
 
 class AdoptionService:
-    def __init__(self, db: Database, config: Optional[InsightConfig] = None):
+    def __init__(
+        self,
+        db: Database,
+        config: Optional[InsightConfig] = None,
+        knowledge_bridge=None,
+    ):
         self.db = db
         self.config = config or get_insight_config()
         self.metric_store = InsightMetricStore(db)
         self.question_log = InsightQuestionLogStore(db)
+        self._knowledge_bridge = knowledge_bridge
 
     def adopt(
         self,
@@ -64,6 +74,33 @@ class AdoptionService:
                 "status": approved.status,
             },
         )
+        if self.config.adoption.publish_to_knowledge and self._knowledge_bridge:
+            try:
+                ds = DataSourceStore(self.db).get(approved.datasource_id, tenant_id)
+                ds_name = ds.name if ds else approved.datasource_id
+                doc_id = self._knowledge_bridge.publish_metric_card(
+                    approved.datasource_id,
+                    ds_name,
+                    tenant_id,
+                    approved,
+                )
+                if not doc_id:
+                    self._audit(
+                        tenant_id,
+                        user_id,
+                        "knowledge_publish_failed",
+                        approved.id,
+                        {"metric_key": approved.metric_key},
+                    )
+            except Exception as exc:
+                logger.warning("publish_metric_card failed: %s", exc)
+                self._audit(
+                    tenant_id,
+                    user_id,
+                    "knowledge_publish_failed",
+                    approved.id,
+                    {"error": str(exc)},
+                )
         return {"metric": self._metric_dict(approved), "status": "approved"}
 
     def _bootstrap_from_log(self, question_log_id: str, tenant_id: str) -> InsightMetric:

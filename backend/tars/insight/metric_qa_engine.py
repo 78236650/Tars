@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from ..bi.sql_agent import SQLAgent
 from ..database.bi_store import DataSourceStore
 from .config import InsightConfig, get_insight_config
-from .metric_answer import MetricAnswer, MetricAnswerError
+from .metric_answer import MetricAnswer, MetricAnswerError, MetricCitation
 from .models import InsightMetric
 from .question_log_store import InsightQuestionLogStore
 from .sql_quoting import apply_tables_quoting
@@ -52,6 +52,7 @@ class MetricQaEngine:
         config: Optional[InsightConfig] = None,
         route_fn: Optional[RouteFn] = None,
         sql_executor: Optional[SqlExecutor] = None,
+        knowledge_bridge=None,
     ):
         self.db = db
         self.config = config or get_insight_config()
@@ -61,6 +62,7 @@ class MetricQaEngine:
         self.question_log = InsightQuestionLogStore(db)
         self.workflow = InsightWorkflowService(db)
         self._route_fn = route_fn
+        self._knowledge_bridge = knowledge_bridge
 
     async def ask(
         self,
@@ -249,6 +251,13 @@ class MetricQaEngine:
             confidence=decision.confidence,
             branch=decision.branch,
             reasoning=decision.reasoning,
+        )
+        answer = self._apply_knowledge_citations(
+            answer,
+            tenant_id=tenant_id,
+            datasource_id=datasource_id,
+            question=question,
+            metric_key=answer.metric_key,
         )
         finished = self._finish(
             datasource_id,
@@ -451,6 +460,34 @@ class MetricQaEngine:
         if as_of_date:
             parts.append(f"as_of={as_of_date}")
         return "; ".join(parts)
+
+    def _apply_knowledge_citations(
+        self,
+        answer: MetricAnswer,
+        *,
+        tenant_id: str,
+        datasource_id: str,
+        question: str,
+        metric_key: Optional[str] = None,
+    ) -> MetricAnswer:
+        if not self._knowledge_bridge:
+            return answer
+        try:
+            citations = self._knowledge_bridge.retrieve_for_question(
+                tenant_id,
+                datasource_id,
+                question,
+                metric_key=metric_key,
+            )
+        except Exception as exc:
+            logger.warning("KnowledgeBridge retrieve failed: %s", exc)
+            return answer
+        answer.citations = citations
+        if citations and self.config.qa.require_metric_citation:
+            answer.definition = self._knowledge_bridge.enrich_definition(
+                answer.definition, citations
+            )
+        return answer
 
     def _finish(
         self,

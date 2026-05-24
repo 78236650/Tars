@@ -28,7 +28,7 @@ const allTools = [
   'task_planner',
 ]
 
-const allModules = ['bi', 'knowledge', 'meeting', 'skillhub']
+const allModules = ['bi', 'knowledge', 'meeting', 'skillhub', 'insight']
 
 // 表单数据
 const form = ref({

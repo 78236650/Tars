@@ -7,12 +7,18 @@ import App from './App.vue'
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     initAuth: vi.fn().mockResolvedValue(undefined),
+    isAuthenticated: true,
+    restoreFromCache: vi.fn().mockReturnValue(true),
   }),
 }))
 
+const initSettings = vi.fn().mockResolvedValue(undefined)
+const loadModels = vi.fn().mockResolvedValue(undefined)
+
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => ({
-    loadModels: vi.fn().mockResolvedValue(undefined),
+    loadModels,
+    initSettings,
   }),
 }))
 
@@ -77,5 +83,34 @@ describe('App shell gating', () => {
 
     expect(wrapper.find('[data-test="home-page"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="desktop-shell"]').exists()).toBe(true)
+  })
+
+  it('calls initSettings when authenticated after auth init', async () => {
+    initSettings.mockClear()
+    loadModels.mockClear()
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/',
+          component: { template: '<div>Home</div>' },
+        },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+
+    mount(App, {
+      global: {
+        plugins: [router],
+        stubs: { DesktopShell: { template: '<div><slot /></div>' } },
+      },
+    })
+
+    await flushPromises()
+
+    expect(initSettings).toHaveBeenCalled()
+    expect(loadModels).not.toHaveBeenCalled()
   })
 })

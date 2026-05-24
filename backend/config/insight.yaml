@@ -39,6 +39,14 @@ metric_qa:
 
 adoption:
   require_review: false
+  publish_to_knowledge: true
+
+knowledge_bridge:
+  enabled: true
+  timeout_ms: 500
+  meeting_collection_prefixes: ["meeting"]
+  max_snippet_chars: 200
+  max_total_chars: 1500
 
 feedback:
   downgrade_window_days: 30

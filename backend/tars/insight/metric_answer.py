@@ -15,6 +15,18 @@ class MetricAnswerError:
 
 
 @dataclass
+class MetricCitation:
+    doc_id: str
+    title: str
+    snippet: str
+    source_type: str  # insight_glossary | meeting_summary | metric_linked | document
+    relevance: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class MetricAnswer:
     value: Any = None
     unit: Optional[str] = None
@@ -33,6 +45,7 @@ class MetricAnswer:
     error: Optional[MetricAnswerError] = None
     question_log_id: Optional[str] = None
     metric_id: Optional[str] = None
+    citations: List[MetricCitation] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -40,4 +53,5 @@ class MetricAnswer:
             data["error"] = self.error.to_dict()
         else:
             data.pop("error", None)
+        data["citations"] = [c.to_dict() for c in self.citations]
         return data

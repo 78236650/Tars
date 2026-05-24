@@ -654,6 +654,14 @@ export interface InsightWorkflowState {
   datasource_name?: string
 }
 
+export interface InsightMetricCitation {
+  doc_id: string
+  title: string
+  snippet: string
+  source_type: string
+  relevance: number
+}
+
 export interface InsightMetricAnswer {
   value: number | string | null
   unit?: string
@@ -672,6 +680,7 @@ export interface InsightMetricAnswer {
   error?: { code: string; message: string }
   question_log_id?: string
   metric_id?: string
+  citations?: InsightMetricCitation[]
 }
 
 export interface InsightDatasourceBrief {
