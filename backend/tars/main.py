@@ -12,7 +12,7 @@ import traceback
 import yaml
 
 # 导入 TARS 模块
-from tars.channels import ConnectionManager
+from tars.channels import ConnectionManager, ChannelRegistry, ChannelRouter
 from tars.agent.agent import AgentV2
 from tars.database import Database, UserStore
 from tars.gateway.permission import PermissionManager, UserRole
@@ -290,6 +290,10 @@ for skill in skill_registry.list_all():
 memory_manager.set_provider(agent.provider)
 connection_manager = ConnectionManager()
 connection_manager.set_agent(agent)
+channel_registry = ChannelRegistry.load()
+channel_router = ChannelRouter()
+if channel_registry.is_adapter_enabled("websocket"):
+    print("[Startup] ChannelRegistry loaded (use_router=%s)" % channel_registry.use_router)
 cron_runtime = CronRuntime(db=db, scheduler=get_scheduler(), connection_manager=connection_manager)
 cronjob_tool.set_runtime(cron_runtime)
 memory_scheduler = MemoryScheduler(memory_manager.compressor, get_scheduler())

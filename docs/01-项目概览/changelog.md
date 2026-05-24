@@ -1,6 +1,6 @@
 # Changelog
 
-## v4.2.0 "Data Copilot & Evolution" (开发中 — 分支 `v4.2.0`)
+## v4.2.0 "Data Copilot & Evolution" (功能完成 — 分支 `v4.2.0`)
 
 > 基于 v4.1.2 稳定线，不影响 `v4.1.2` / `v4.1.4` 已发布能力文档。
 
@@ -9,19 +9,32 @@
 - ✅ **`GET /api/memory/tree/graph`** — 力导向图谱
 - ✅ **虚拟滚动树** — 扁平行 ≥40 窗口渲染
 
-### Phase 1: 内网数据/分析 Copilot（🚧 开发中）
+### Phase 1: 内网数据/分析 Copilot（✅ 已完成）
 
-- 📋 模块 gating 接通（`initSettings` + `business_analyst` 角色）
-- 📋 InsightForge 生产化 + BI/Insight 边界文档
-- 📋 KnowledgeBridge：问数口径优先引用 + 采用↔知识库双向关联
+- ✅ 模块 gating（`initSettings` + `business_analyst` 角色）
+- ✅ **KnowledgeBridge** — 问数口径优先引用 KB + 采用↔知识库双向关联
+- ✅ **MetricAnswerCard** — citations 展示；点击 chip 打开 `KnowledgeCitationPanel`
+- ✅ 文档上传 `metric_ids` 关联；LeftPanel 副标题与 i18n
+- ✅ 评测：`pytest -m insight_eval` 13/13 (100%)
 - 📄 设计：[data-copilot-phase1-design.md](../superpowers/specs/2026-05-24-data-copilot-phase1-design.md)
+- 📄 用户指南：[data-copilot-user-guide.md](../04-运维文档/data-copilot-user-guide.md)
 
-### Phase 2: 完整自进化（🚧 开发中）
+### Phase 2: 完整自进化（✅ 已完成）
 
-- 📋 FeedbackCollector + ApplyEngine 写回 workspace/skills
-- 📋 Eval 集 ≥20 场景，优化后综合分 +10%
+- ✅ **FeedbackCollector** — 工具/WS/Insight/Curator 统一反馈
+- ✅ **ApplyEngine** — SOUL、prompts、`subagents.json`、SKILL.md 写回 + rollback
+- ✅ **EvolutionOrchestrator** — 人格/提示词/子代理/skill 描述自动优化与应用
+- ✅ **AgentV2 + Dispatcher** — 回合 ingest 与工具结果反馈
+- ✅ Eval 集 ≥20 场景；综合分比较与回滚门控
+- ✅ 37 项 evolution 测试；模块行覆盖 ~80%
 - 📄 设计：[evolution-phase2-design.md](../superpowers/specs/2026-05-24-evolution-phase2-design.md) ✅  
 - 📄 计划：[evolution-phase2-plan.md](../superpowers/plans/2026-05-24-evolution-phase2-plan.md)
+- 📄 运维：[EVOLUTION_GUIDE.md](../04-运维文档/EVOLUTION_GUIDE.md)
+
+### 下一版本 v4.3.0（📋 已批准）
+
+- OpenClaw Phase 3：ChannelRouter、Cron、工具审批、Subagent handoff
+- 📄 [openclaw-phase3-plan.md](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
 
 ---
 

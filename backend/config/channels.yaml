@@ -1,0 +1,11 @@
+# Channel layer configuration — v4.3.0 OpenClaw Phase 3
+channels:
+  # When true, /ws outbound events route through ChannelRouter (Task 2).
+  use_router: false
+  adapters:
+    websocket:
+      enabled: true
+      capabilities:
+        - streaming
+        - attachments
+        - feedback
