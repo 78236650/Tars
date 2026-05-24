@@ -295,7 +295,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': '当前模型',
-    'sidebar.version': 'TARS v4.1.4',
+    'sidebar.version': 'TARS v4.2.0',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': '自定义模型',
     'sidebar.openrouter': 'OpenRouter',
@@ -816,6 +816,11 @@ export const messages: Record<string, Record<string, string>> = {
     'settings.changelog.v411.feature4': '设置页版本升级：展示 v4.1.0 / v4.1.1 完整变更记录',
     'settings.changelog.v411.improvement1': '依赖缺失时可跳过检查强制安装 SkillHub 技能',
     'settings.changelog.v411.improvement2': '引用预览 API：GET /api/knowledge/ref/{doc_id}',
+    'settings.changelog.v420ReleaseDate': '开发中（分支 v4.2.0）',
+    'settings.changelog.v420.feature1': 'Phase 1：内网数据/分析 Copilot — Insight 问数 + 知识库口径联动',
+    'settings.changelog.v420.feature2': 'Phase 1：business_analyst 角色与模块 gating 生产化',
+    'settings.changelog.v420.feature3': 'Phase 2：完整自进化 — 反馈采集、workspace 写回、eval 验证',
+    'settings.changelog.v420.improvement1': '记忆图谱 + 虚拟滚动树（v4.2.0 基线）',
     'settings.changelog.v414ReleaseDate': '发布日期: 2026-05-19',
     'settings.changelog.v414.feature1': '记忆页「实体」Tab：按人物/项目等实体浏览记忆树',
     'settings.changelog.v414.feature2': '树 API：GET /api/memory/tree（实体 | 谱系）、search、relations',
@@ -1377,7 +1382,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': 'Current Model',
-    'sidebar.version': 'TARS v4.1.4',
+    'sidebar.version': 'TARS v4.2.0',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': 'Custom',
     'sidebar.openrouter': 'OpenRouter',
@@ -1898,6 +1903,11 @@ export const messages: Record<string, Record<string, string>> = {
     'settings.changelog.v411.feature4': 'Settings changelog: full v4.1.0 / v4.1.1 release notes',
     'settings.changelog.v411.improvement1': 'Skip dependency check to force-install SkillHub skills',
     'settings.changelog.v411.improvement2': 'Citation preview API: GET /api/knowledge/ref/{doc_id}',
+    'settings.changelog.v420ReleaseDate': 'In development (branch v4.2.0)',
+    'settings.changelog.v420.feature1': 'Phase 1: Data/analysis Copilot — Insight Q&A + knowledge caliber links',
+    'settings.changelog.v420.feature2': 'Phase 1: business_analyst role and module gating for production',
+    'settings.changelog.v420.feature3': 'Phase 2: Full evolution — feedback, workspace writeback, eval',
+    'settings.changelog.v420.improvement1': 'Memory force graph + virtual scroll tree (v4.2.0 baseline)',
     'settings.changelog.v414ReleaseDate': 'Release Date: 2026-05-19',
     'settings.changelog.v414.feature1': 'Memory「Entity」tab: browse memories by person/project entity tree',
     'settings.changelog.v414.feature2': 'Tree APIs: GET /api/memory/tree (entity | provenance), search, relations',

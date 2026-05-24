@@ -1,5 +1,30 @@
 # Changelog
 
+## v4.2.0 "Data Copilot & Evolution" (开发中 — 分支 `v4.2.0`)
+
+> 基于 v4.1.2 稳定线，不影响 `v4.1.2` / `v4.1.4` 已发布能力文档。
+
+### 记忆图谱（基线，已合入）
+
+- ✅ **`GET /api/memory/tree/graph`** — 力导向图谱
+- ✅ **虚拟滚动树** — 扁平行 ≥40 窗口渲染
+
+### Phase 1: 内网数据/分析 Copilot（🚧 开发中）
+
+- 📋 模块 gating 接通（`initSettings` + `business_analyst` 角色）
+- 📋 InsightForge 生产化 + BI/Insight 边界文档
+- 📋 KnowledgeBridge：问数口径优先引用 + 采用↔知识库双向关联
+- 📄 设计：[data-copilot-phase1-design.md](../superpowers/specs/2026-05-24-data-copilot-phase1-design.md)
+
+### Phase 2: 完整自进化（🚧 开发中）
+
+- 📋 FeedbackCollector + ApplyEngine 写回 workspace/skills
+- 📋 Eval 集 ≥20 场景，优化后综合分 +10%
+- 📄 设计：[evolution-phase2-design.md](../superpowers/specs/2026-05-24-evolution-phase2-design.md) ✅  
+- 📄 计划：[evolution-phase2-plan.md](../superpowers/plans/2026-05-24-evolution-phase2-plan.md)
+
+---
+
 ## InsightForge INS-2.0.0 "Chat-First Copilot" (2026-05-20)
 
 鉴数从 INS-1.0 工作台升级为 **对话优先 Copilot**（独立能力版本，与 TARS 平台版本并行）。
@@ -22,7 +47,7 @@
 
 ---
 
-## v4.2.0 "Memory Graph & Virtual Tree" (2026-05-19)
+## v4.2.0 记忆图谱（历史条目，已并入上方 v4.2.0 基线）
 
 记忆实体 Tab 增强：满屏力导向图谱 + 大树虚拟滚动。
 

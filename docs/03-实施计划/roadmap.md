@@ -255,6 +255,21 @@ gantt
 - ✅ 聊天顶栏精简、Ctrl/⌘+Enter 发送、回复复制
 - ✅ 记住要点：`extract-from-turn` / `save-from-turn` + RememberMemoryDialog
 
+### v4.2.0 "Data Copilot & Evolution" (🚧 开发中 — 分支 `v4.2.0`)
+**目标:** 内网数据 Copilot + 完整自进化；基于 v4.1.2，不影响稳定线
+**分支:** `v4.2.0`
+
+- ✅ 基线：记忆图谱 + 虚拟滚动（已合入）
+- 🚧 Phase 1：Data Copilot（模块 gating、KnowledgeBridge、business_analyst）
+- 🚧 Phase 2：Evolution（设计 ✅ + 计划 ✅）
+- 📋 Phase 3：v4.3.0 OpenClaw 对齐（设计 ✅ + 计划 ✅，依赖 v4.2.0 完成）
+
+**文档：**
+- [v4.2.0 发布说明（草案）](../01-项目概览/v4.2.0-release-notes.md)
+- [Phase 1 设计](../superpowers/specs/2026-05-24-data-copilot-phase1-design.md) · [计划](../superpowers/plans/2026-05-24-data-copilot-phase1-plan.md)
+- [Phase 2 设计](../superpowers/specs/2026-05-24-evolution-phase2-design.md) · [计划](../superpowers/plans/2026-05-24-evolution-phase2-plan.md)
+- [Phase 3 设计](../superpowers/specs/2026-05-24-openclaw-phase3-design.md) · [计划](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
+
 ### v4.1.4 "Memory Entity Tree" (✅ 完成)
 **目标:** 记忆管理页按实体鸟瞰结构，保留原有人格/近期/长期/全部 Tab
 **发布日期:** 2026-05-19

@@ -62,7 +62,7 @@ from tars.tenant import TenantContextCache
 from tars.cron import CronRuntime
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="4.0.0")
+app = FastAPI(title="TARS Agent", version="4.2.0")
 
 # CORS 配置
 _cors_origins = os.environ.get(

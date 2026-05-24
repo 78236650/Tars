@@ -1,15 +1,23 @@
-# TARS AI Agent v4.1.4
+# TARS AI Agent v4.2.0
 
-一个完整的 AI 助手应用，支持多用户权限管理、SkillHub 本地技能生态、知识库主动检索、Admin 管理台、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理（含**实体树 / 谱系视图**）与自动压缩。
+一个完整的 AI 助手应用，支持多用户权限管理、SkillHub 本地技能生态、知识库主动检索、Admin 管理台、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理（含**实体树 / 谱系 / 图谱**）与自动压缩。
 
-> **当前版本 v4.1.4 "Memory Entity Tree"**（2026-05-19）  
-> 详见 [Changelog](docs/01-项目概览/changelog.md) · [v4.1.4 发布说明](docs/01-项目概览/v4.1.4-release-notes.md) · [v4.1.1 发布说明](docs/01-项目概览/v4.1.1-release-notes.md)
+> **开发版本 v4.2.0 "Data Copilot & Evolution"**（分支 `v4.2.0`）  
+> 基于 v4.1.2 稳定线 · 详见 [Changelog](docs/01-项目概览/changelog.md) · [v4.2.0 发布说明（草案）](docs/01-项目概览/v4.2.0-release-notes.md)
 
-### 近期版本（v4.1.x）
+### v4.2.0 规划（本分支）
+
+| 阶段 | 代号 | 要点 | 状态 |
+|------|------|------|------|
+| 基线 | Memory Graph | 记忆图谱 + 虚拟滚动树 | ✅ 已合入基线 |
+| Phase 1 | Data Copilot | 内网问数 Copilot、知识联动、模块 gating | 🚧 设计中 |
+| Phase 2 | Evolution | 完整自进化闭环 + eval | 📋 设计中 |
+
+### 近期已发布（v4.1.x）
 
 | 版本 | 代号 | 要点 |
 |------|------|------|
-| **v4.1.4** | Memory Entity Tree | 记忆页「实体」Tab、树 API、谱系视图、关系迷你图 |
+| v4.1.4 | Memory Entity Tree | 记忆页「实体」Tab、树 API、谱系视图、关系迷你图 |
 | v4.1.3 | Chat Polish & Remember | 聊天精简、Ctrl/⌘+Enter 发送、记住要点 |
 | v4.1.2 | Skill Ops & Platform UI | Curator 运维、Admin 平台工具 |
 | v4.1.1 | Experience Layer | SkillHub 向导、技能条、知识引用 |

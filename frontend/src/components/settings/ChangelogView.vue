@@ -13,6 +13,19 @@ interface VersionSection {
 
 const versions: VersionSection[] = [
   {
+    version: 'v4.2.0',
+    subtitle: 'Data Copilot & Evolution',
+    releaseDateKey: 'settings.changelog.v420ReleaseDate',
+    features: [
+      'settings.changelog.v420.feature1',
+      'settings.changelog.v420.feature2',
+      'settings.changelog.v420.feature3',
+    ],
+    improvements: [
+      'settings.changelog.v420.improvement1',
+    ],
+  },
+  {
     version: 'v4.1.4',
     subtitle: 'Memory Entity Tree',
     releaseDateKey: 'settings.changelog.v414ReleaseDate',
