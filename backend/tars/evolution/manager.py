@@ -109,8 +109,8 @@ class EvolutionManager:
                 evaluation
             )
         
-        if self._auto_optimize and self._conversation_count % self._optimize_interval == 0:
-            self.optimize()
+        if self._auto_optimize and self._enabled and self._conversation_count % self._optimize_interval == 0:
+            self.optimize(tenant_id=context.get("tenant_id", "default"))
         
         self._save_state()
         
@@ -125,21 +125,26 @@ class EvolutionManager:
         response: str,
         *,
         tools_used: Optional[list] = None,
+        tool_results: Optional[list] = None,
         subagent: Optional[str] = None,
-    ) -> EvaluationResult:
-        """Agent 回合结束 — 隐式反馈 + 计数 + 可选触发 optimize。"""
+    ) -> Optional[EvaluationResult]:
+        """Agent 回合结束 — 评估 + 计数 + 可选触发 optimize（工具反馈由 Dispatcher 写入）。"""
+        if not self._enabled:
+            return None
         tools_used = tools_used or []
+        if tool_results:
+            tools_used = [str(t.get("name", "")) for t in tool_results if t.get("name")]
         evaluation = self.record_conversation(
             session_id,
             query,
             response,
-            context={"tools_used": tools_used, "subagent_used": subagent, "tenant_id": tenant_id},
+            context={
+                "tools_used": tools_used,
+                "subagent_used": subagent,
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+            },
         )
-        if self._feedback_collector:
-            for tool in tools_used:
-                self._feedback_collector.record_tool_result(
-                    tenant_id, user_id, str(tool), success=True, session_id=session_id
-                )
         return evaluation
 
     @property

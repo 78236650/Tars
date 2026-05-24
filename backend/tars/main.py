@@ -257,6 +257,7 @@ agent = AgentV2(
     memory_manager=memory_manager,
     task_executor=task_executor,
     knowledge_retriever=knowledge_retriever,
+    evolution_manager=evolution_manager,
 )
 agent.skill_loader = skill_loader
 
@@ -894,6 +895,12 @@ async def trigger_evolution():
 @app.post("/api/evolution/feedback", response_model=EvolutionStatsResponse)
 async def submit_feedback(request: EvolutionFeedbackRequest):
     """提交对话反馈用于自进化"""
+    tenant_id = (request.context or {}).get("tenant_id", "default")
+    user_id = (request.context or {}).get("user_id", "default")
+    if evolution_manager.feedback_collector and request.feedback:
+        evolution_manager.feedback_collector.record_explicit_feedback(
+            tenant_id, user_id, request.conversation_id, request.feedback
+        )
     evaluation = evolution_manager.record_conversation(
         conversation_id=request.conversation_id,
         query=request.query,

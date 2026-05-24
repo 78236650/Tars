@@ -59,6 +59,26 @@ class ToolDispatcher:
                 return True
         return False
 
+    def _record_evolution_feedback(
+        self,
+        context: Optional[Dict[str, Any]],
+        tool_name: str,
+        success: bool,
+    ) -> None:
+        collector = (context or {}).get("_feedback_collector")
+        if not collector:
+            return
+        try:
+            collector.record_tool_result(
+                (context or {}).get("tenant_id", "default"),
+                (context or {}).get("user_id", "default"),
+                tool_name,
+                success=success,
+                session_id=(context or {}).get("session_id"),
+            )
+        except Exception:
+            pass
+
     async def execute_tool(
         self,
         tool_name: str,
@@ -67,7 +87,9 @@ class ToolDispatcher:
     ) -> ToolResult:
         tool = self.registry.get(tool_name)
         if not tool:
-            return ToolResult(success=False, output="", error=f"工具 '{tool_name}' 不存在")
+            result = ToolResult(success=False, output="", error=f"工具 '{tool_name}' 不存在")
+            self._record_evolution_feedback(context, tool_name, False)
+            return result
 
         # v4.0.0: 基于角色的工具权限检查
         try:
@@ -87,11 +109,13 @@ class ToolDispatcher:
                         )
                 except Exception:
                     pass
-                return ToolResult(
+                result = ToolResult(
                     success=False,
                     output="",
                     error=f"权限不足：角色 '{user_role}' 无法使用工具 '{tool_name}'",
                 )
+                self._record_evolution_feedback(context, tool_name, False)
+                return result
         except Exception:
             pass  # Security module unavailable → allow
 
@@ -126,6 +150,7 @@ class ToolDispatcher:
                     )
             except Exception:
                 pass
+            self._record_evolution_feedback(context, tool_name, result.success)
             return result
         except Exception as e:
             try:
@@ -141,7 +166,9 @@ class ToolDispatcher:
                     )
             except Exception:
                 pass
-            return ToolResult(success=False, output="", error=f"工具执行失败: {e}")
+            result = ToolResult(success=False, output="", error=f"工具执行失败: {e}")
+            self._record_evolution_feedback(context, tool_name, False)
+            return result
 
     async def chat_with_tools(
         self,

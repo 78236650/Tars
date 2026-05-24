@@ -139,14 +139,72 @@ class ApplyEngine:
         )
         return record
 
+    def read_prompt(self, tenant_id: str, prompt_type: str) -> str:
+        prompt_path = self.workspace_base / tenant_id / "prompts" / f"{prompt_type}.md"
+        if not prompt_path.exists():
+            return ""
+        return prompt_path.read_text(encoding="utf-8")
+
     def rollback(self, apply_id: str) -> bool:
         log = self.db.get_evolution_apply_log(apply_id)
-        if not log or not log.get("before_content"):
+        if not log:
+            return False
+        before_content = log.get("before_content")
+        if before_content is None:
             return False
         path = Path(log["target_path"])
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(log["before_content"], encoding="utf-8")
+        path.write_text(before_content, encoding="utf-8")
         return True
+
+    def apply_skill_description(
+        self,
+        tenant_id: str,
+        skill_id: str,
+        description: str,
+        *,
+        skill_md_path: Optional[str] = None,
+    ) -> ApplyRecord:
+        path = Path(skill_md_path) if skill_md_path else None
+        before = ""
+        after = description
+        if path and path.exists():
+            before = path.read_text(encoding="utf-8")
+            if re.search(r"(?m)^description:\s*.+$", before):
+                after = re.sub(
+                    r"(?m)^description:\s*.+$",
+                    f"description: {description}",
+                    before,
+                    count=1,
+                )
+            else:
+                after = f"---\ndescription: {description}\n---\n\n{before}"
+            path.write_text(after, encoding="utf-8")
+        apply_id = str(uuid.uuid4())
+        now = get_local_now().isoformat()
+        target = str(path) if path else f"skill:{skill_id}"
+        record = ApplyRecord(
+            id=apply_id,
+            tenant_id=tenant_id,
+            target_type="skill_description",
+            target_path=target,
+            before_hash=_file_hash(before),
+            after_hash=_file_hash(after),
+            diff_summary=f"skill {skill_id} description",
+        )
+        self.db.insert_evolution_apply_log(
+            apply_id=apply_id,
+            tenant_id=tenant_id,
+            target_type=record.target_type,
+            target_path=record.target_path,
+            before_hash=record.before_hash,
+            after_hash=record.after_hash,
+            before_content=before,
+            diff_summary=record.diff_summary,
+            status="applied",
+            created_at=now,
+        )
+        return record
 
     def read_personality_params(self, tenant_id: str) -> Dict[str, float]:
         soul_path = self._tenant_soul_path(tenant_id)

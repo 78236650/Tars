@@ -74,9 +74,17 @@ class EvolutionOrchestrator:
             results["subagent_optimized"] = True
             results["subagent_weights"] = sa_weights
 
+            prompt_apply_ids: list[str] = []
             for prompt_type in ["master", "code", "writing", "data", "research", "plan"]:
-                self.prompt_tuner.tune_system_prompt(history, prompt_type)
-            results["prompts_tuned"] = True
+                before = self.prompt_tuner.get_current_prompt(prompt_type)
+                tuned = self.prompt_tuner.tune_system_prompt(history, prompt_type)
+                if tuned and tuned != before:
+                    record = self.apply_engine.apply_prompt(tenant_id, prompt_type, tuned)
+                    prompt_apply_ids.append(record.id)
+            if prompt_apply_ids:
+                results["prompts_tuned"] = True
+                results["prompt_apply_records"] = prompt_apply_ids
+                results["apply_records"].extend(prompt_apply_ids)
 
         results["skill_suggestions"] = self.skill_optimizer.suggest_patches()
 

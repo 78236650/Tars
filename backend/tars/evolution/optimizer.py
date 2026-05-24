@@ -87,33 +87,33 @@ class PersonalityOptimizer:
     def _calculate_parameter_correlation(self, param_name: str, 
                                     history_records: List[ConversationRecord]) -> float:
         """计算参数与评分的相关性"""
-        
-        high_score_changes = []
-        
+        score_changes: List[tuple[float, float]] = []
+
         for record in history_records:
             if not record.evaluation:
                 continue
-                continue
-            
+
             params = record.context.get('personality_params', {})
             if param_name not in params:
                 continue
-            
+
             param_value = params[param_name]
             score = record.evaluation.overall_score
-            
+
             score_changes.append((param_value, score))
-        
+
         if len(score_changes) < 5:
             return 0.0
-        
-        avg_high = sum(s for v, s in score_changes if v > 0.5)
-        avg_low = sum(s for v, s in score_changes if v <= 0.5)
-        
-        if not avg_high or not avg_low:
+
+        high_scores = [s for v, s in score_changes if v > 0.5]
+        low_scores = [s for v, s in score_changes if v <= 0.5]
+
+        if not high_scores or not low_scores:
             return 0.0
-        
-        return (avg_high - avg_low) if avg_high > avg_low else -(avg_low - avg_high)
+
+        avg_high = sum(high_scores) / len(high_scores)
+        avg_low = sum(low_scores) / len(low_scores)
+        return avg_high - avg_low
     
     def update_feedback(self, improvement: float):
         """更新最后一次优化的反馈"""

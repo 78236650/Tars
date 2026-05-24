@@ -37,11 +37,13 @@ class AgentV2:
         memory_manager=None,
         task_executor=None,
         knowledge_retriever=None,
+        evolution_manager=None,
     ):
         self.db = db or Database()
         self.workspace = workspace or WorkspaceManager()
         self.current_model: str = os.getenv("OLLAMA_MODEL", "llama3.2")
         self.subagent_manager = SubAgentManager(self)
+        self.evolution_manager = evolution_manager
 
         self.tool_registry = tool_registry or global_tool_registry
         self.skill_registry = skill_registry or global_skill_registry
@@ -129,6 +131,8 @@ class AgentV2:
     ):
         """处理用户消息 - 使用 ToolDispatcher，支持文件附件和斜杠命令"""
         tenant_id = tenant_context.tenant_id if tenant_context else "default"
+        turn_tool_results: List[Dict[str, Any]] = []
+        turn_subagent: Optional[str] = None
         scoped_memory_manager = tenant_context.memory_manager if tenant_context else self.memory_manager
         scoped_wc_manager = type(self.wc_manager)(self.db, tenant_id=tenant_id) if hasattr(self, "wc_manager") else None
         scoped_memory_router = self.memory_router.for_tenant(tenant_id) if self.memory_router else None
@@ -174,6 +178,7 @@ class AgentV2:
             elif cmd_result.action == "invoke_subagent":
                 agent_type = cmd_result.action_params.get("agent_type", "")
                 task = cmd_result.action_params.get("task", "")
+                turn_subagent = agent_type
                 try:
                     sub_result = await self.subagent_manager.invoke_subagent(agent_type, task)
                     self.db.add_message(session_id, "user", user_content)
@@ -493,6 +498,15 @@ class AgentV2:
 
         async def on_tool_result(tool_name: str, result):
             import time
+            turn_tool_results.append({"name": tool_name, "success": bool(result.success)})
+            active_skill = getattr(self, "_active_skill_id", None)
+            if active_skill:
+                try:
+                    from ..skills.curator import skill_curator
+                    if skill_curator:
+                        skill_curator.record_call(active_skill, success=bool(result.success))
+                except Exception:
+                    pass
             _timers = getattr(on_tool_call, '_timers', {})
             duration = round(time.time() - _timers.get(tool_name, time.time()), 2) if tool_name in _timers else None
             await channel.send(session_id, {
@@ -553,6 +567,11 @@ class AgentV2:
                     "tenant_id": tenant_id,
                     "user_role": (request_context or {}).get("user_role", "user"),
                     "user_id": (request_context or {}).get("user_id", "default"),
+                    "_feedback_collector": (
+                        self.evolution_manager.feedback_collector
+                        if self.evolution_manager
+                        else None
+                    ),
                 },
             ):
                 full_response += chunk
@@ -750,6 +769,22 @@ class AgentV2:
             pass
 
         self.db.add_message(session_id, "assistant", full_response)
+
+        # 9.5 自进化：回合 ingest（隐式信号 + 计数 + 可选 optimize）
+        if self.evolution_manager:
+            try:
+                self.evolution_manager.ingest_turn(
+                    tenant_id,
+                    (request_context or {}).get("user_id", "default"),
+                    session_id,
+                    user_content,
+                    full_response,
+                    tools_used=[t["name"] for t in turn_tool_results],
+                    tool_results=turn_tool_results,
+                    subagent=turn_subagent,
+                )
+            except Exception as exc:
+                print(f"[Agent] evolution ingest_turn failed: {exc}")
 
         # 10. 反思记忆（V3 异步非阻塞，不延迟 done 事件）
         async def _reflect_background():

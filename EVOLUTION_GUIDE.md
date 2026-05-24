@@ -13,6 +13,17 @@
 
 写回目标：`~/.tars/workspaces/{tenant_id}/SOUL.md` 与 `prompts/*.md`。每次写回记录于 `evolution_apply_log`，eval 退步 >5% 自动 rollback。
 
+### 接线点（v4.2.0 Phase 2 完成）
+
+| 来源 | 位置 |
+|------|------|
+| Agent 回合结束 | `AgentV2.handle_message` → `EvolutionManager.ingest_turn` |
+| 工具成败 | `ToolDispatcher.execute_tool` → `FeedbackCollector.record_tool_result` |
+| Chat 👎 WS | WebSocket `message_feedback` 事件 |
+| Chat/API 反馈 | `POST /api/evolution/feedback` |
+| Insight 👎 | `AdoptionService.process_feedback` |
+| 技能调用 | `SkillCurator.record_call(skill_id, success=…)`（Agent on_tool_result） |
+
 ---
 
 > **历史版本：v2.0.0**（自进化 API 接口保持兼容）

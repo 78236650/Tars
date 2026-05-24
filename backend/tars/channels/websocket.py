@@ -76,6 +76,22 @@ class WebSocketChannel(Channel):
                     )
                 return
 
+            # Chat 显式反馈 👍/👎
+            if data.get("type") == "message_feedback":
+                mgr = getattr(self.agent, "evolution_manager", None) if self.agent else None
+                collector = mgr.feedback_collector if mgr else None
+                if collector:
+                    tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
+                    user_id = data.get("user_id") or self._request_context.get("user_id", "default")
+                    feedback = data.get("feedback") or ("up" if data.get("score", 0) > 0 else "down")
+                    collector.record_explicit_feedback(
+                        tenant_id,
+                        user_id,
+                        data.get("session_id", "default"),
+                        str(feedback),
+                    )
+                return
+
             await self.send("default", {
                 "type": "generation_start",
                 "timestamp": now_iso()
