@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import type { InsightMetricAnswer } from '@/api'
 import { insightApi } from '@/api'
 import { useToast } from '@/composables/useToast'
+import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
 
 const props = defineProps<{
   answer: InsightMetricAnswer
@@ -20,6 +21,17 @@ const toast = useToast()
 const sqlOpen = ref(false)
 const reasoningOpen = ref(false)
 const loading = ref(false)
+const citationOpen = ref(false)
+const activeCitation = ref<{ docId: string; title: string } | null>(null)
+
+const openCitation = (docId: string, title: string) => {
+  activeCitation.value = { docId, title }
+  citationOpen.value = true
+}
+
+const closeCitation = () => {
+  citationOpen.value = false
+}
 
 const tierLabel = computed(() => {
   const map: Record<string, string> = {
@@ -116,14 +128,16 @@ const onAdopt = async () => {
       <p class="text-stone-300 leading-relaxed">{{ answer.definition || '—' }}</p>
       <p v-if="answer.metric_key" class="text-xs text-stone-500 mt-1 font-mono">{{ answer.metric_key }}</p>
       <div v-if="answer.citations?.length" class="mt-2 flex flex-wrap gap-1.5">
-        <span
+        <button
           v-for="c in answer.citations"
           :key="c.doc_id"
-          class="text-xs px-2 py-0.5 rounded bg-stone-800 text-amber-200/90"
+          type="button"
+          class="text-xs px-2 py-0.5 rounded bg-stone-800 text-amber-200/90 hover:bg-stone-700 transition-colors"
           :title="c.snippet"
+          @click="openCitation(c.doc_id, c.title)"
         >
           [ref:{{ c.doc_id }}|{{ c.title }}]
-        </span>
+        </button>
       </div>
       <p class="text-xs text-stone-500 mt-1">
         {{ t('insight.metric.confidence') }}: {{ Math.round((answer.confidence || 0) * 100) }}%
@@ -188,6 +202,13 @@ const onAdopt = async () => {
       </button>
     </div>
   </div>
+
+  <KnowledgeCitationPanel
+    :open="citationOpen"
+    :doc-id="activeCitation?.docId || ''"
+    :title-hint="activeCitation?.title"
+    @close="closeCitation"
+  />
 </template>
 
 <style scoped>

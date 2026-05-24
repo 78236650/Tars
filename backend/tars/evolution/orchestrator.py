@@ -71,8 +71,18 @@ class EvolutionOrchestrator:
                 results["new_personality"] = patch
 
             sa_weights = self.subagent_optimizer.optimize_task_delegation(history)
+            sa_personality = self.subagent_optimizer.optimize_personality_weights(history)
+            subagent_patch: Dict[str, Any] = {}
+            if sa_weights:
+                subagent_patch["delegation_weights"] = sa_weights
+            if sa_personality:
+                subagent_patch["personality_weights"] = sa_personality
+            if subagent_patch:
+                sa_record = self.apply_engine.apply_subagent_config(tenant_id, subagent_patch)
+                results["apply_records"].append(sa_record.id)
             results["subagent_optimized"] = True
             results["subagent_weights"] = sa_weights
+            results["subagent_personality"] = sa_personality
 
             prompt_apply_ids: list[str] = []
             for prompt_type in ["master", "code", "writing", "data", "research", "plan"]:
@@ -87,6 +97,33 @@ class EvolutionOrchestrator:
                 results["apply_records"].extend(prompt_apply_ids)
 
         results["skill_suggestions"] = self.skill_optimizer.suggest_patches()
+        skill_apply_ids: list[str] = []
+        for sug in results["skill_suggestions"]:
+            skill_path = self.apply_engine.resolve_skill_md_path(sug["skill_id"])
+            if not skill_path:
+                continue
+            try:
+                from tars.skills.skill_md_parser import parse_skill_md
+
+                smd = parse_skill_md(skill_path)
+                base = (smd.description if smd else "") or ""
+                note = f" (evolution: clarify usage — success rate {sug.get('success_rate', 0):.0%})"
+                if note.strip() in base:
+                    continue
+                new_desc = (base + note).strip()
+                record = self.apply_engine.apply_skill_description(
+                    tenant_id,
+                    sug["skill_id"],
+                    new_desc,
+                    skill_md_path=skill_path,
+                )
+                skill_apply_ids.append(record.id)
+            except Exception:
+                logger.exception("skill description apply failed skill_id=%s", sug.get("skill_id"))
+        if skill_apply_ids:
+            results["skill_applied"] = len(skill_apply_ids)
+            results["skill_apply_records"] = skill_apply_ids
+            results["apply_records"].extend(skill_apply_ids)
 
         after_ctx = {"personality": self.apply_engine.read_personality_params(tenant_id)}
         after_eval = self.eval_runner.run(after_ctx)

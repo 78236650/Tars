@@ -55,3 +55,22 @@ def test_apply_prompt_writes_file(engine, db, tmp_path):
     assert log["target_type"] == "prompt"
     prompt_path = tmp_path / "ws" / "tenant1" / "prompts" / "master.md"
     assert prompt_path.exists()
+
+
+def test_apply_subagent_config_merges_and_audit(engine, db, tmp_path):
+    record = engine.apply_subagent_config(
+        "tenant1",
+        {"delegation_weights": {"code": 0.4, "writing": 0.2}},
+    )
+    cfg_path = tmp_path / "ws" / "tenant1" / "subagents.json"
+    assert cfg_path.exists()
+    data = engine.read_subagent_config("tenant1")
+    assert data["delegation_weights"]["code"] == 0.4
+
+    engine.apply_subagent_config("tenant1", {"personality_weights": {"code": 0.6}})
+    merged = engine.read_subagent_config("tenant1")
+    assert merged["delegation_weights"]["code"] == 0.4
+    assert merged["personality_weights"]["code"] == 0.6
+
+    log = db.get_evolution_apply_log(record.id)
+    assert log["target_type"] == "subagent_config"

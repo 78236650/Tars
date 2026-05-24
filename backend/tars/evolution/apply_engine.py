@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ..database.base import Database, get_local_now
 from ..workspace.soul import SoulParameters, parse_soul_markdown
@@ -124,6 +125,65 @@ class ApplyEngine:
             before_hash=_file_hash(before),
             after_hash=_file_hash(content),
             diff_summary=f"prompt {prompt_type}",
+        )
+        self.db.insert_evolution_apply_log(
+            apply_id=apply_id,
+            tenant_id=tenant_id,
+            target_type=record.target_type,
+            target_path=record.target_path,
+            before_hash=record.before_hash,
+            after_hash=record.after_hash,
+            before_content=before,
+            diff_summary=record.diff_summary,
+            status="applied",
+            created_at=now,
+        )
+        return record
+
+    def _subagent_config_path(self, tenant_id: str) -> Path:
+        path = self.workspace_base / tenant_id / "subagents.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def read_subagent_config(self, tenant_id: str) -> Dict[str, Any]:
+        path = self._subagent_config_path(tenant_id)
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def resolve_skill_md_path(self, skill_id: str) -> Optional[str]:
+        conn = self.db._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT dir_path FROM skills_v3 WHERE id = ?",
+                (skill_id,),
+            ).fetchone()
+        except Exception:
+            return None
+        if not row or not row[0]:
+            return None
+        skill_md = Path(row[0]) / "SKILL.md"
+        return str(skill_md) if skill_md.exists() else None
+
+    def apply_subagent_config(self, tenant_id: str, config: Dict[str, Any]) -> ApplyRecord:
+        path = self._subagent_config_path(tenant_id)
+        before = path.read_text(encoding="utf-8") if path.exists() else ""
+        merged = {**self.read_subagent_config(tenant_id), **config}
+        after = json.dumps(merged, ensure_ascii=False, indent=2)
+        apply_id = str(uuid.uuid4())
+        now = get_local_now().isoformat()
+        path.write_text(after, encoding="utf-8")
+        record = ApplyRecord(
+            id=apply_id,
+            tenant_id=tenant_id,
+            target_type="subagent_config",
+            target_path=str(path),
+            before_hash=_file_hash(before),
+            after_hash=_file_hash(after),
+            diff_summary=f"subagent keys: {', '.join(sorted(config.keys()))}",
         )
         self.db.insert_evolution_apply_log(
             apply_id=apply_id,
