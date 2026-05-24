@@ -13,6 +13,7 @@ from ..workspace import WorkspaceManager
 from ..tools import ToolRegistry, ToolDispatcher, registry as global_tool_registry
 from ..skills import SkillRegistry, skill_registry as global_skill_registry, SkillExecutor
 from .subagent_manager import SubAgentManager
+from .handoff import HandoffManager
 
 
 MULTIMODAL_MODELS = ["llava", "bakllava", "llama3.2-vision", "minicpm-v", "qwen2-vl", "qwen-vl"]
@@ -43,6 +44,7 @@ class AgentV2:
         self.workspace = workspace or WorkspaceManager()
         self.current_model: str = os.getenv("OLLAMA_MODEL", "llama3.2")
         self.subagent_manager = SubAgentManager(self)
+        self.handoff_manager = HandoffManager()
         self.evolution_manager = evolution_manager
 
         self.tool_registry = tool_registry or global_tool_registry
@@ -180,18 +182,24 @@ class AgentV2:
                 task = cmd_result.action_params.get("task", "")
                 turn_subagent = agent_type
                 try:
-                    sub_result = await self.subagent_manager.invoke_subagent(agent_type, task)
                     self.db.add_message(session_id, "user", user_content)
-                    self.db.add_message(session_id, "assistant", f"[subagent:{agent_type}] {sub_result}")
+                    sub_result = await self.subagent_manager.invoke_subagent(agent_type, task)
+                    handoff = self.handoff_manager.create_pending(
+                        parent_session_id=session_id,
+                        subagent_type=agent_type,
+                        task_summary=task,
+                        full_result=sub_result,
+                    )
                     await channel.send(session_id, {
-                        "type": "text_chunk",
-                        "session_id": session_id,
-                        "content": f"[subagent:{agent_type}] {sub_result}",
+                        "type": "subagent_handoff",
+                        **handoff.to_ws_payload(),
                         "timestamp": now_iso(),
                     })
                     await channel.send(session_id, {
-                        "type": "done", "session_id": session_id,
-                        "timestamp": now_iso(), "model": self.current_model,
+                        "type": "done",
+                        "session_id": session_id,
+                        "timestamp": now_iso(),
+                        "model": self.current_model,
                     })
                     return
                 except Exception as e:
@@ -877,6 +885,13 @@ class AgentV2:
             "引用知识库内容时，在相关陈述句末标注 [ref:doc_id|文档标题]（doc_id 与标题来自检索结果中的 ref: 与来源字段）。"
         )
 
+        sp += (
+            "\n\n## 子代理审查规则\n"
+            "当子代理任务完成并处于 pending_review 状态时，你必须先向用户摘要子代理结果并请求确认，"
+            "在用户通过 accept 接受前，不得将子代理输出当作最终答案写入会话。"
+            "用户拒绝时可说明原因并可选重新委派子代理。"
+        )
+
         # TaskDetector
         is_slash_plan = user_content.startswith("/plan")
         try:
@@ -1017,6 +1032,59 @@ class AgentV2:
             await analyzer.analyze(session_id, user_msg, assistant_msg)
         except Exception as e:
             print(f"[Agent] SceneAnalyzer 失败: {e}")
+
+    async def handle_subagent_handoff_action(
+        self,
+        handoff_id: str,
+        action: str,
+        *,
+        channel: Optional[Channel] = None,
+        connection_manager=None,
+        tenant_id: str = "default",
+    ) -> bool:
+        """Accept or reject a pending subagent handoff and optionally push WS updates."""
+        if action == "accept":
+            handoff = self.handoff_manager.accept(handoff_id)
+        elif action == "reject":
+            handoff = self.handoff_manager.reject(handoff_id)
+        else:
+            return False
+
+        if not handoff:
+            return False
+
+        session_id = handoff.parent_session_id
+        event = {
+            "type": "subagent_handoff",
+            **handoff.to_ws_payload(),
+            "timestamp": now_iso(),
+        }
+
+        async def _deliver(payload: dict) -> None:
+            if channel:
+                await channel.send(session_id, payload)
+            elif connection_manager:
+                await connection_manager.send_personal_message(session_id, payload)
+
+        await _deliver(event)
+
+        if handoff.status == "accepted":
+            content = f"[subagent:{handoff.subagent_type}] {handoff.full_result}"
+            self.db.add_message(session_id, "assistant", content)
+            await _deliver({
+                "type": "text_chunk",
+                "session_id": session_id,
+                "content": content,
+                "timestamp": now_iso(),
+                "model": self.current_model,
+            })
+            await _deliver({
+                "type": "done",
+                "session_id": session_id,
+                "timestamp": now_iso(),
+                "model": self.current_model,
+            })
+        return True
 
     def get_subagent_info(self) -> dict:
         return self.subagent_manager.get_all_subagents()

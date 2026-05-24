@@ -104,6 +104,28 @@ class WebSocketChannel(Channel):
                     )
                 return
 
+            # 子代理 handoff 审查 accept / reject
+            if data.get("type") == "subagent_handoff_action" and self.agent:
+                action = data.get("action", "")
+                handoff_id = data.get("handoff_id", "")
+                session_id = data.get("session_id", "default")
+                tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
+                ok = await self.agent.handle_subagent_handoff_action(
+                    handoff_id,
+                    action,
+                    channel=self,
+                    tenant_id=tenant_id,
+                )
+                if not ok:
+                    await self.send(session_id, {
+                        "type": "error",
+                        "session_id": session_id,
+                        "message": "子代理审查操作失败或 handoff 不存在",
+                        "code": "handoff_error",
+                        "timestamp": now_iso(),
+                    })
+                return
+
             await self.send("default", {
                 "type": "generation_start",
                 "timestamp": now_iso()
