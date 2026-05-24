@@ -56,6 +56,7 @@ from tars.api.knowledge import router as knowledge_router, init_knowledge_api
 from tars.api.meeting import router as meeting_router, init_meeting_api
 from tars.api.memory import router as memory_router, init_memory_api
 from tars.api.audit import router as audit_router, init_audit_api
+from tars.api.approvals import router as approvals_router, init_approval_api
 from tars.api.admin import router as admin_router, init_admin_api
 from tars.api.roles import router as roles_router, init_roles_api
 from tars.memory.scheduler import MemoryScheduler
@@ -321,6 +322,7 @@ app.include_router(tasks_router)
 app.include_router(invoke_router)
 app.include_router(memory_router)
 app.include_router(audit_router)
+app.include_router(approvals_router)
 app.include_router(admin_router)
 app.include_router(roles_router)
 
@@ -368,6 +370,7 @@ else:
     print("[Startup] 会议助手模块已禁用 (config/modules.yaml → meeting.enabled)")
 init_memory_api(db, memory_manager)
 init_audit_api(db)
+init_approval_api(db, connection_manager)
 init_admin_api(db)
 
 # v4.0.2: 角色模板管理

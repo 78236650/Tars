@@ -1,0 +1,11 @@
+# Tool execution approval policy — v4.3.0 OpenClaw Phase 3
+approval:
+  enabled: true
+  timeout_seconds: 300
+  require_for_tools:
+    - shell
+    - command
+    - file_write
+    - python_exec
+  auto_allow_for_roles:
+    - admin

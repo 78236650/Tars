@@ -132,6 +132,20 @@ class AuditLog:
     created_at: datetime = None
 
 
+@dataclass
+class ApprovalRequest:
+    id: str
+    tenant_id: str = "default"
+    user_id: str = "default"
+    session_id: str = ""
+    tool_name: str = ""
+    arguments: str = "{}"
+    status: str = "pending"
+    created_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by: str = ""
+
+
 class Database:
     def __init__(self, db_path: Optional[str] = None):
         if not db_path:
@@ -747,6 +761,24 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)")
+
+        # v4.3.0: 工具执行审批
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS approval_requests (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                user_id TEXT NOT NULL DEFAULT 'default',
+                session_id TEXT NOT NULL DEFAULT '',
+                tool_name TEXT NOT NULL,
+                arguments TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP,
+                resolved_at TIMESTAMP,
+                resolved_by TEXT DEFAULT ''
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_approval_session ON approval_requests(session_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status)")
 
         # v4.1.0: Provider 用量统计
         cursor.execute("""
@@ -2233,6 +2265,132 @@ class Database:
             client_ip=client_ip,
             created_at=now,
         )
+
+    def create_approval_request(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        session_id: str,
+        tool_name: str,
+        arguments: str,
+    ) -> ApprovalRequest:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        request_id = str(uuid.uuid4())
+        now = get_local_now()
+        cursor.execute(
+            """
+            INSERT INTO approval_requests
+            (id, tenant_id, user_id, session_id, tool_name, arguments, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+            """,
+            (request_id, tenant_id, user_id, session_id, tool_name, arguments, now),
+        )
+        conn.commit()
+        return ApprovalRequest(
+            id=request_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=session_id,
+            tool_name=tool_name,
+            arguments=arguments,
+            status="pending",
+            created_at=now,
+        )
+
+    def get_approval_request(self, request_id: str) -> Optional[ApprovalRequest]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, tenant_id, user_id, session_id, tool_name, arguments, status,
+                   created_at, resolved_at, resolved_by
+            FROM approval_requests WHERE id = ?
+            """,
+            (request_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return ApprovalRequest(
+            id=row[0],
+            tenant_id=row[1],
+            user_id=row[2],
+            session_id=row[3],
+            tool_name=row[4],
+            arguments=row[5],
+            status=row[6],
+            created_at=row[7],
+            resolved_at=row[8],
+            resolved_by=row[9] or "",
+        )
+
+    def update_approval_request(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        resolved_by: str = "",
+    ) -> Optional[ApprovalRequest]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        now = get_local_now()
+        cursor.execute(
+            """
+            UPDATE approval_requests
+            SET status = ?, resolved_at = ?, resolved_by = ?
+            WHERE id = ? AND status = 'pending'
+            """,
+            (status, now, resolved_by, request_id),
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            return None
+        return self.get_approval_request(request_id)
+
+    def list_pending_approval_requests(
+        self,
+        *,
+        session_id: str = "",
+        tenant_id: str = "",
+    ) -> list[ApprovalRequest]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        conditions = ["status = 'pending'"]
+        params: list = []
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if tenant_id:
+            conditions.append("tenant_id = ?")
+            params.append(tenant_id)
+        where = " AND ".join(conditions)
+        cursor.execute(
+            f"""
+            SELECT id, tenant_id, user_id, session_id, tool_name, arguments, status,
+                   created_at, resolved_at, resolved_by
+            FROM approval_requests WHERE {where}
+            ORDER BY created_at DESC
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [
+            ApprovalRequest(
+                id=row[0],
+                tenant_id=row[1],
+                user_id=row[2],
+                session_id=row[3],
+                tool_name=row[4],
+                arguments=row[5],
+                status=row[6],
+                created_at=row[7],
+                resolved_at=row[8],
+                resolved_by=row[9] or "",
+            )
+            for row in rows
+        ]
 
     def list_audit_logs(
         self,

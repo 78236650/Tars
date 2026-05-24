@@ -119,6 +119,25 @@ class ToolDispatcher:
         except Exception:
             pass  # Security module unavailable → allow
 
+        # v4.3.0: 高危工具执行审批
+        try:
+            from ..security.execution_policy import execution_policy
+            from ..security.approval_service import approval_service
+
+            user_role = (context or {}).get("user_role", "user")
+            if approval_service and execution_policy.requires_approval(tool_name, arguments, user_role):
+                approved = await approval_service.request_approval(tool_name, arguments, context)
+                if not approved:
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error="工具执行被拒绝或审批超时",
+                    )
+                    self._record_evolution_feedback(context, tool_name, False)
+                    return result
+        except Exception:
+            pass
+
         # v4.0.1: 注入 per-tenant workspace 路径
         try:
             from .tenant_workspace import tenant_workspace_manager
