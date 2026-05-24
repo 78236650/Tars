@@ -24,6 +24,8 @@ def test_eval_set_has_at_least_20_cases(runner):
         ({"tools_used": ["shell", "memory"]}, 0.1),
         ({"skill_id": "code-review"}, 0.05),
         ({"subagent": "code"}, 0.05),
+        ({"prompts": {"master": "You are TARS, a helpful assistant with enough text."}}, 0.05),
+        ({"delegation_weights": {"data": 0.8, "code": 0.2}}, 0.05),
     ],
 )
 def test_eval_runner_scores_context(runner, ctx, expected_min):

@@ -51,9 +51,13 @@ class EvolutionOrchestrator:
         history = self.evaluator.history
         last = history[-1] if history else None
         last_ctx = (last.context if last else {}) or {}
+        subagent_cfg = self.apply_engine.read_subagent_config(tenant_id)
+        master_prompt = self.apply_engine.read_prompt(tenant_id, "master")
         return {
             "personality": self.apply_engine.read_personality_params(tenant_id),
-            "prompt_overlay": self.apply_engine.read_prompt(tenant_id, "master"),
+            "prompt_overlay": master_prompt,
+            "prompts": {"master": master_prompt},
+            "delegation_weights": subagent_cfg.get("delegation_weights") or {},
             "tools_used": last_ctx.get("tools_used") or (last.tools_used if last else []),
             "skill_id": last_ctx.get("skill_id"),
             "subagent": last_ctx.get("subagent_used") or (last.subagent_used if last else None),

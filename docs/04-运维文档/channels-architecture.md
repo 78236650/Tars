@@ -81,18 +81,18 @@ channels:
 - 前端：`frontend/src/components/chat/HandoffDialog.vue`
 - `/subagent` 斜杠命令完成后 emit `subagent_handoff`（`pending_review`），accept 后才写入 assistant 消息
 
-## 出站迁移残留（F-12，目标 v4.4）
+## 出站迁移（F-12）
 
-`use_router=true` 时，`ConnectionManager.send_personal_message` 已内部转发至 `ChannelRouter.send("websocket", …)`。以下模块仍**直接调用** `connection_manager`，尚未改为显式 `channel_router.send`：
+v4.3.0 起统一经 `OutboundDeliverer`（`backend/tars/channels/outbound.py`）投递：
 
-| 位置 | 说明 |
-|------|------|
-| `backend/tars/agent/agent.py` | handoff accept/reject 投递 |
-| `backend/tars/cron/runtime.py` | `deliver_event` |
-| `backend/tars/cron/executors/prompt.py` | prompt cron 事件 |
-| `backend/tars/security/approval_service.py` | approval WS 事件 |
+- `CronRuntime.deliver_event`
+- `ApprovalService._emit`
+- `CronPromptChannel`
+- REST handoff accept/reject（经 `init_handoff_api(outbound=...)`）
 
-v4.4 目标：上述调用点归零，统一注入 `ChannelRouter`。
+`use_router=true` 时优先 `ChannelRouter.send("websocket", …)`，否则回退 `ConnectionManager`。
+
+`agent/agent.py` 内 subagent invoke 路径仍经 `WebSocketChannel.send`（已走路由）。
 
 ## 验证
 

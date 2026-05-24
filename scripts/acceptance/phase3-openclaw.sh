@@ -16,7 +16,7 @@ echo "== Phase 3 OpenClaw acceptance (pytest) =="
 cd "$BACKEND"
 
 echo "-- §7.1 #6 ChannelRouter tests (>=5 cases) --"
-$VENV -m pytest tests/test_channel_router.py -q
+$VENV -m pytest tests/test_channel_router.py tests/test_outbound_deliverer.py -q
 
 echo "-- §7.1 #2-3 Cron delegate + prompt --"
 $VENV -m pytest tests/test_cron_delegate_prompt.py tests/unit/test_cron_runtime.py -q

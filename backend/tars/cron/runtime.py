@@ -16,11 +16,14 @@ def _now_local() -> datetime:
 class CronRuntime:
     """负责将 DB 中的 cronjob 同步到 scheduler，并通过 executor 注册表执行任务。"""
 
-    def __init__(self, db, scheduler, connection_manager, agent=None):
+    def __init__(self, db, scheduler, connection_manager, agent=None, outbound=None):
+        from ..channels.outbound import OutboundDeliverer
+
         self.db = db
         self.scheduler = scheduler
         self.connection_manager = connection_manager
         self.agent = agent
+        self.outbound = outbound or OutboundDeliverer(connection_manager=connection_manager)
         self._executors = {
             ReminderExecutor.task_type: ReminderExecutor(),
             DelegateExecutor.task_type: DelegateExecutor(),
@@ -114,7 +117,7 @@ class CronRuntime:
                     )
                 )
             try:
-                delivered = await self.connection_manager.send_personal_message(session_id, event)
+                delivered = await self.outbound.send_personal(session_id, event)
                 if delivered:
                     delivery_status = "delivered"
                 else:
@@ -126,7 +129,7 @@ class CronRuntime:
                                 "会话连接不存在，回退广播",
                             )
                         )
-                    await self.connection_manager.broadcast(event)
+                    await self.outbound.broadcast(event)
                     delivery_status = "broadcast"
             except Exception as exc:
                 error_message = str(exc)
@@ -141,7 +144,7 @@ class CronRuntime:
                     )
                 )
             try:
-                await self.connection_manager.broadcast(event)
+                await self.outbound.broadcast(event)
                 delivery_status = "broadcast"
             except Exception as exc:
                 error_message = str(exc)

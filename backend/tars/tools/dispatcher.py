@@ -156,6 +156,21 @@ class ToolDispatcher:
                 try:
                     approved = await approval_service.request_approval(tool_name, arguments, context)
                 except Exception as exc:
+                    try:
+                        from ..security.audit import safe_audit
+
+                        safe_audit(
+                            lambda logger: logger.log(
+                                action="approval_request_failed",
+                                resource_type="tool",
+                                resource_id=tool_name,
+                                tenant_id=(context or {}).get("tenant_id", "default"),
+                                user_id=(context or {}).get("user_id", "default"),
+                                detail=str(exc)[:500],
+                            )
+                        )
+                    except Exception:
+                        pass
                     result = ToolResult(
                         success=False,
                         output="",

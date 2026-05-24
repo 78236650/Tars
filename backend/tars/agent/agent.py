@@ -792,6 +792,7 @@ class AgentV2:
                     tools_used=[t["name"] for t in turn_tool_results],
                     tool_results=turn_tool_results,
                     subagent=turn_subagent,
+                    skill_id=getattr(self, "_active_skill_id", None),
                 )
             except Exception as exc:
                 print(f"[Agent] evolution ingest_turn failed: {exc}")
@@ -1046,6 +1047,7 @@ class AgentV2:
         *,
         channel: Optional[Channel] = None,
         connection_manager=None,
+        outbound=None,
         tenant_id: str = "default",
     ) -> bool:
         """Accept or reject a pending subagent handoff and optionally push WS updates."""
@@ -1069,6 +1071,8 @@ class AgentV2:
         async def _deliver(payload: dict) -> None:
             if channel:
                 await channel.send(session_id, payload)
+            elif outbound is not None:
+                await outbound.send_personal(session_id, payload)
             elif connection_manager:
                 await connection_manager.send_personal_message(session_id, payload)
 

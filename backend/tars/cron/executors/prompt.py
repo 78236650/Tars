@@ -15,8 +15,8 @@ def _now_local() -> datetime:
 class CronPromptChannel(Channel):
     """Minimal Channel that forwards agent outbound events to a cron session."""
 
-    def __init__(self, connection_manager, session_id: str):
-        self._connection_manager = connection_manager
+    def __init__(self, outbound, session_id: str):
+        self._outbound = outbound
         self._session_id = session_id
 
     async def receive(self, raw_message: Any) -> ChannelMessage:
@@ -30,7 +30,7 @@ class CronPromptChannel(Channel):
 
     async def send(self, session_id: str, event: dict) -> None:
         sid = session_id or self._session_id
-        await self._connection_manager.send_personal_message(sid, event)
+        await self._outbound.send_personal(sid, event)
 
     async def stream(self, session_id: str, chunk: str) -> None:
         await self.send(
@@ -65,7 +65,7 @@ class PromptExecutor(CronTaskExecutor):
             )
             raise ValueError("prompt cron 缺少 session_id")
 
-        channel = CronPromptChannel(ctx.connection_manager, session_id)
+        channel = CronPromptChannel(ctx.outbound, session_id)
 
         await ctx.agent.handle_message(
             session_id=session_id,

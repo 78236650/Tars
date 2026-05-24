@@ -14,9 +14,22 @@ def _now_local() -> datetime:
 
 
 class ApprovalService:
-    def __init__(self, db, connection_manager=None, *, timeout_seconds: int = 300):
+    def __init__(
+        self,
+        db,
+        connection_manager=None,
+        *,
+        channel_router=None,
+        timeout_seconds: int = 300,
+    ):
+        from ..channels.outbound import OutboundDeliverer
+
         self.db = db
         self.connection_manager = connection_manager
+        self.outbound = OutboundDeliverer(
+            channel_router=channel_router,
+            connection_manager=connection_manager,
+        )
         self.timeout_seconds = timeout_seconds
         self._waiters: Dict[str, asyncio.Event] = {}
         self._outcomes: Dict[str, str] = {}
@@ -119,10 +132,10 @@ class ApprovalService:
             )
 
     async def _emit(self, session_id: str, event: dict) -> None:
-        if not self.connection_manager or not session_id:
+        if not session_id:
             return
         try:
-            await self.connection_manager.send_personal_message(session_id, event)
+            await self.outbound.send_personal(session_id, event)
         except Exception as exc:
             import logging
 
@@ -144,10 +157,21 @@ class ApprovalService:
 approval_service: Optional[ApprovalService] = None
 
 
-def init_approval_service(db, connection_manager=None, *, timeout_seconds: Optional[int] = None) -> ApprovalService:
+def init_approval_service(
+    db,
+    connection_manager=None,
+    *,
+    channel_router=None,
+    timeout_seconds: Optional[int] = None,
+) -> ApprovalService:
     global approval_service
     from .execution_policy import execution_policy
 
     timeout = timeout_seconds if timeout_seconds is not None else execution_policy.timeout_seconds
-    approval_service = ApprovalService(db, connection_manager, timeout_seconds=timeout)
+    approval_service = ApprovalService(
+        db,
+        connection_manager,
+        channel_router=channel_router,
+        timeout_seconds=timeout,
+    )
     return approval_service

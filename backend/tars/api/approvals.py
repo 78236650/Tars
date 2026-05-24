@@ -13,10 +13,10 @@ router = APIRouter(prefix="/api/approvals", tags=["approvals"])
 _db: Optional[Database] = None
 
 
-def init_approval_api(db: Database, connection_manager=None) -> None:
+def init_approval_api(db: Database, connection_manager=None, channel_router=None) -> None:
     global _db
     _db = db
-    init_approval_service(db, connection_manager)
+    init_approval_service(db, connection_manager, channel_router=channel_router)
 
 
 def _require_db() -> Database:

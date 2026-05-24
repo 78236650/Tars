@@ -13,6 +13,7 @@ class CronExecutionContext:
         self.runtime = runtime
         self.db = runtime.db
         self.connection_manager = runtime.connection_manager
+        self.outbound = runtime.outbound
         self.agent = runtime.agent
         self.audit_extras: dict[str, Any] = {}
 

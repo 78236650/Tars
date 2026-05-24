@@ -61,3 +61,11 @@ cases:
   - id: d05_plan_subagent
     category: subagent_delegate
     expected: plan
+  - id: pr01_master_prompt_nonempty
+    category: prompt_presence
+    prompt_type: master
+    min_length: 20
+  - id: w01_data_delegation_weight
+    category: subagent_weight
+    subagent_type: data
+    min_weight: 0.3

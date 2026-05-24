@@ -55,6 +55,26 @@ class EvalRunner:
                 return None
             return 1.0 if subagent == expected else 0.0
 
+        if category == "prompt_presence":
+            prompt_type = case.get("prompt_type", "master")
+            prompts = context.get("prompts") or {}
+            text = prompts.get(prompt_type) or context.get("prompt_overlay") or ""
+            if not str(text).strip():
+                return None
+            min_length = int(case.get("min_length", 1))
+            return 1.0 if len(str(text).strip()) >= min_length else 0.0
+
+        if category == "subagent_weight":
+            weights = context.get("delegation_weights") or {}
+            if not weights:
+                return None
+            agent_type = case.get("subagent_type", "")
+            min_weight = float(case.get("min_weight", 0.5))
+            value = weights.get(agent_type)
+            if value is None:
+                return 0.0
+            return 1.0 if float(value) >= min_weight else 0.0
+
         return 0.5 if context.get("matched") else 0.0
 
     def run(self, context: Dict[str, Any]) -> Dict[str, Any]:

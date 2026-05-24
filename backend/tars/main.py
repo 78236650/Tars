@@ -13,6 +13,7 @@ import yaml
 
 # 导入 TARS 模块
 from tars.channels import ConnectionManager, ChannelRegistry, ChannelRouter
+from tars.channels.outbound import OutboundDeliverer
 from tars.channels.adapter import ConnectionManagerOutboundAdapter
 from tars.agent.agent import AgentV2
 from tars.database import Database, UserStore
@@ -300,11 +301,19 @@ if channel_registry.is_adapter_enabled("websocket"):
         connection_manager.configure_router(channel_router, use_router=True)
         channel_router.register("websocket", ConnectionManagerOutboundAdapter(connection_manager))
     print("[Startup] ChannelRegistry loaded (use_router=%s)" % channel_registry.use_router)
+_use_router = (
+    channel_registry.is_adapter_enabled("websocket") and channel_registry.use_router
+)
+_outbound = OutboundDeliverer(
+    channel_router=channel_router if _use_router else None,
+    connection_manager=connection_manager,
+)
 cron_runtime = CronRuntime(
     db=db,
     scheduler=get_scheduler(),
     connection_manager=connection_manager,
     agent=agent,
+    outbound=_outbound,
 )
 cronjob_tool.set_runtime(cron_runtime)
 memory_scheduler = MemoryScheduler(memory_manager.compressor, get_scheduler())
@@ -372,8 +381,12 @@ else:
     print("[Startup] 会议助手模块已禁用 (config/modules.yaml → meeting.enabled)")
 init_memory_api(db, memory_manager)
 init_audit_api(db)
-init_approval_api(db, connection_manager)
-init_handoff_api(agent, connection_manager)
+init_approval_api(
+    db,
+    connection_manager,
+    channel_router=channel_router if _use_router else None,
+)
+init_handoff_api(agent, connection_manager=connection_manager, outbound=_outbound)
 init_admin_api(db)
 
 # v4.0.2: 角色模板管理

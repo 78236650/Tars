@@ -8,13 +8,15 @@ from ._auth import Principal, require_authenticated_user
 router = APIRouter(prefix="/api/handoffs", tags=["handoffs"])
 
 _agent: Any = None
+_outbound: Any = None
 _connection_manager: Any = None
 
 
-def init_handoff_api(agent, connection_manager=None) -> None:
-    global _agent, _connection_manager
+def init_handoff_api(agent, connection_manager=None, outbound=None) -> None:
+    global _agent, _connection_manager, _outbound
     _agent = agent
     _connection_manager = connection_manager
+    _outbound = outbound
 
 
 def _require_agent():
@@ -35,6 +37,7 @@ async def accept_handoff(
     ok = await agent.handle_subagent_handoff_action(
         handoff_id,
         "accept",
+        outbound=_outbound,
         connection_manager=_connection_manager,
         tenant_id=principal.tenant_id,
     )
@@ -55,6 +58,7 @@ async def reject_handoff(
     ok = await agent.handle_subagent_handoff_action(
         handoff_id,
         "reject",
+        outbound=_outbound,
         connection_manager=_connection_manager,
         tenant_id=principal.tenant_id,
     )
