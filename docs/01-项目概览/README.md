@@ -8,6 +8,19 @@ TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模�
 **上一主线: v4.3.0** Channels & Execution · **v4.2.0** Data Copilot & Evolution  
 **稳定基线: v4.1.2**（生产/内网部署参考）
 
+### 平台版本 vs InsightForge 能力版本（双轨，方案 A）
+
+| TARS 平台 | InsightForge（`GET /api/insight/version`） | 说明 |
+|-----------|---------------------------------------------|------|
+| **v4.3.1**（当前） | **INS-2.1.0** | 建档性能（batch stats、增量 reuse、SQL 超时）；随 v4.3.1 patch 交付 |
+| v4.3.0 | INS-2.0.0 | 对话优先 Copilot、WorkflowStrip、Metric QA |
+| v4.2.0 | INS-2.0.0 | Data Copilot 与 KnowledgeBridge 联动 |
+| — | INS-1.0.0 | 早期 Profile 流水线（历史 tag `insight-v1.0.0`） |
+
+- 平台号：`backend/tars/main.py` → OpenAPI **4.3.1**
+- 能力号：`backend/tars/insight/version.py` → **INS-2.1.0**（勿与 `4.3.1` 混用同一字符串）
+- Git 能力 tag 建议：`insight-v2.1.0`（与 `insight-v2.0.0` 并列，不替代平台分支名）
+
 ## 核心特性
 
 ### 智能交互

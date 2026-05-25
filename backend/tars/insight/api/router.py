@@ -1,4 +1,4 @@
-"""InsightForge API — /api/insight (INS-2.0.0)."""
+"""InsightForge API — /api/insight (INS-2.1.0; 兼容 INS-2.0 工作流)."""
 from __future__ import annotations
 
 import json

@@ -1,4 +1,4 @@
-# InsightForge 部署说明（INS-2.0）
+# InsightForge 部署说明（INS-2.1.0 / TARS v4.3.1+）
 
 ## SSE 与多 Worker（H1）
 

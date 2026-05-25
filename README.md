@@ -386,7 +386,7 @@ python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
 ./scripts/migrate-evolution-workspace.sh
 ```
 
-验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.1**）。
+验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.1**）；鉴数能力版本见 `GET /api/insight/version`（当前 **INS-2.1.0**，与平台号双轨，见 [版本对照](docs/01-项目概览/README.md#平台版本-vs-insightforge-能力版本双轨方案-a)）。
 
 ### 3. 前端启动
 

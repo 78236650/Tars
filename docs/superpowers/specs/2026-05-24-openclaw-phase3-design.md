@@ -330,7 +330,7 @@ Parent delegates → Subagent runs → pending_review event
 | Tool approval | ✅ Web |
 | Subagent review handoff | ✅ |
 | Queue steering | ⚠️ 轻量 queue |
-| Browser/Codex/Voice | ❌ v4.4+ |
+| Browser/Codex/Voice | ❌ v4.3.2+ |
 
 ---
 
