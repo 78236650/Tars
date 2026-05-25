@@ -24,3 +24,15 @@ export function resolveWebSocketUrl(): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}/ws/${tenantId}${query}`
 }
+
+/** 会议助手实时录音 WebSocket（浏览器无法带 Header，使用 api_key query）。 */
+export function resolveMeetingWebSocketUrl(options?: { language?: string }): string {
+  const params = new URLSearchParams()
+  const apiKey = localStorage.getItem('apiKey') || ''
+  if (apiKey) params.set('api_key', apiKey)
+  const lang = options?.language ?? localStorage.getItem('meeting_asr_language') ?? ''
+  if (lang && lang !== 'auto') params.set('language', lang)
+  const query = params.toString() ? `?${params.toString()}` : ''
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/api/meeting/ws/record${query}`
+}

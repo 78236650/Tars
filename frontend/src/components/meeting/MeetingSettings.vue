@@ -3,12 +3,52 @@
     <button class="settings-toggle" @click="showPanel = !showPanel">⚙️ {{ t('meeting.settingsToggle') }}</button>
 
     <div v-if="showPanel" class="settings-panel">
-      <!-- 模型选择 -->
+      <!-- 语音识别 -->
+      <div class="setting-section">
+        <h4>{{ t('meeting.asrSection') }}</h4>
+        <div class="asr-form">
+          <label class="field-label">{{ t('meeting.asrLanguage') }}</label>
+          <select v-model="selectedAsrLanguage" @change="onAsrLanguageChange">
+            <option v-for="opt in asrLanguageOptions" :key="opt.id" :value="opt.id">
+              {{ opt.label }}
+            </option>
+          </select>
+
+          <label class="field-label">{{ t('meeting.whisperModel') }}</label>
+          <select v-model="selectedWhisperModel" @change="onWhisperModelChange">
+            <option v-for="opt in whisperModelOptions" :key="opt.id" :value="opt.id">
+              {{ opt.id }} — {{ opt.label }}
+            </option>
+          </select>
+
+          <span class="model-hint block-hint">
+            {{ t('meeting.asrModelHint', { backend: asrBackend, model: asrDisplayModel }) }}
+          </span>
+        </div>
+      </div>
+
+      <!-- 摘要模型 -->
       <div class="setting-section">
         <h4>{{ t('meeting.summaryModel') }}</h4>
-        <div class="model-selector">
+        <div class="summary-model-form">
+          <label class="field-label">{{ t('meeting.summaryProvider') }}</label>
+          <select v-model="summaryProvider" @change="onSummaryProviderChange">
+            <option value="ollama">Ollama</option>
+            <option value="openai_compatible">{{ t('meeting.summaryRemote') }}</option>
+          </select>
+
+          <template v-if="summaryProvider === 'openai_compatible'">
+            <label class="field-label">{{ t('meeting.summaryEndpoint') }}</label>
+            <select v-model="summaryEndpointId" @change="onSummaryEndpointChange">
+              <option :value="null">{{ t('meeting.summaryPickEndpoint') }}</option>
+              <option v-for="ep in endpoints" :key="ep.id" :value="ep.id">{{ ep.name }}</option>
+            </select>
+          </template>
+
+          <label class="field-label">{{ t('meeting.summaryPickModel') }}</label>
           <select v-model="selectedModel" @change="switchModel">
-            <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+            <option value="">{{ t('meeting.summaryPickModel') }}</option>
+            <option v-for="m in summaryModelChoices" :key="m" :value="m">{{ m }}</option>
           </select>
           <span class="model-hint">{{ t('meeting.modelHint') }}</span>
         </div>
@@ -67,19 +107,28 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import { meetingApi, modelApi } from '@/api'
+import type { Endpoint } from '@/types'
+import { getMeetingAsrLanguage, setMeetingAsrLanguage, type MeetingAsrLanguage } from '@/composables/useMeetingAsrLanguage'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
-
-const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
 const showPanel = ref(false)
 const templates = ref<any[]>([])
 const activeTemplate = ref('general')
 const customPrompt = ref('')
 const availableModels = ref<string[]>([])
+const endpoints = ref<Endpoint[]>([])
+const summaryProvider = ref<'ollama' | 'openai_compatible'>('ollama')
+const summaryEndpointId = ref<string | null>(null)
 const selectedModel = ref('')
+const asrDisplayModel = ref('whisper-small')
+const asrBackend = ref('whisper')
+const selectedWhisperModel = ref('small')
+const whisperModelOptions = ref<Array<{ id: string; label: string }>>([])
+const asrLanguageOptions = ref<Array<{ id: string; label: string }>>([])
+const selectedAsrLanguage = ref<MeetingAsrLanguage>(getMeetingAsrLanguage())
 const { t } = useI18n()
 const toast = useToast()
 
@@ -88,15 +137,53 @@ const currentPromptPreview = computed(() => {
   return tpl?.prompt || ''
 })
 
-onMounted(async () => {
-  await loadTemplates()
-  await loadModels()
-  await loadCurrentModel()
+const summaryModelChoices = computed(() => {
+  if (summaryProvider.value === 'ollama') return availableModels.value
+  const ep = endpoints.value.find((e) => e.id === summaryEndpointId.value)
+  return ep?.models || []
 })
+
+onMounted(async () => {
+  selectedAsrLanguage.value = getMeetingAsrLanguage()
+  await Promise.all([loadTemplates(), loadModels()])
+  await loadCurrentModel()
+  await loadAsrSettings()
+})
+
+async function loadAsrSettings() {
+  try {
+    const data = await meetingApi.getAsrSettings()
+    asrDisplayModel.value = data.model
+    asrBackend.value = data.backend
+    selectedWhisperModel.value = data.whisper_model || 'small'
+    whisperModelOptions.value = data.whisper_model_options || []
+    asrLanguageOptions.value = data.language_options
+    if (!asrLanguageOptions.value.some((o) => o.id === selectedAsrLanguage.value)) {
+      selectedAsrLanguage.value = (data.language_default as MeetingAsrLanguage) || 'zh'
+      setMeetingAsrLanguage(selectedAsrLanguage.value)
+    }
+  } catch {}
+}
+
+async function onWhisperModelChange() {
+  if (!selectedWhisperModel.value) return
+  try {
+    const data = await meetingApi.setAsrSettings({ whisper_model: selectedWhisperModel.value })
+    asrDisplayModel.value = data.model || `whisper-${selectedWhisperModel.value}`
+    toast.success(t('meeting.whisperModelSwitchSuccess'))
+  } catch (e: unknown) {
+    toast.error(getErrorDetail(e, t('meeting.whisperModelSwitchFailed')))
+    await loadAsrSettings()
+  }
+}
+
+function onAsrLanguageChange() {
+  setMeetingAsrLanguage(selectedAsrLanguage.value)
+}
 
 async function loadTemplates() {
   try {
-    const { data } = await api.get('/meeting/settings/templates')
+    const data = await meetingApi.getPromptTemplates()
     templates.value = data.templates
     activeTemplate.value = data.active_template
     if (data.custom_prompt) customPrompt.value = data.custom_prompt
@@ -105,21 +192,44 @@ async function loadTemplates() {
 
 async function loadModels() {
   try {
-    const { data } = await api.get('/models/')
+    const data = await modelApi.getModelsOverview()
     availableModels.value = data.ollama_models || []
+    endpoints.value = data.endpoints || []
   } catch {}
+}
+
+function onSummaryProviderChange() {
+  selectedModel.value = ''
+  if (summaryProvider.value === 'openai_compatible' && !summaryEndpointId.value) {
+    summaryEndpointId.value = endpoints.value[0]?.id || null
+  }
+}
+
+function onSummaryEndpointChange() {
+  selectedModel.value = ''
 }
 
 async function loadCurrentModel() {
   try {
-    const { data } = await api.get('/meeting/settings/model')
-    selectedModel.value = data.model
+    const data = await meetingApi.getModelSettings()
+    summaryProvider.value = (data.provider as 'ollama' | 'openai_compatible') || 'ollama'
+    summaryEndpointId.value = data.endpoint_id ?? null
+    selectedModel.value = data.model || ''
+    if (summaryProvider.value === 'openai_compatible' && !summaryEndpointId.value) {
+      summaryEndpointId.value = endpoints.value[0]?.id || null
+    }
   } catch {}
 }
 
 async function switchModel() {
+  if (!selectedModel.value) return
   try {
-    await api.put('/meeting/settings/model', { provider: 'ollama', model: selectedModel.value })
+    await meetingApi.setModelSettings({
+      provider: summaryProvider.value,
+      model: selectedModel.value,
+      endpoint_id: summaryProvider.value === 'openai_compatible' ? summaryEndpointId.value ?? undefined : undefined,
+    })
+    toast.success(t('meeting.modelSwitchSuccess'))
   } catch (e: any) {
     toast.error(getErrorDetail(e, t('meeting.modelSwitchFailed')))
   }
@@ -128,13 +238,13 @@ async function switchModel() {
 async function selectTemplate(id: string) {
   if (id !== 'custom') {
     customPrompt.value = ''
-    try { await api.delete('/meeting/settings/prompt') } catch {}
+    try { await meetingApi.resetCustomPrompt() } catch {}
   }
 }
 
 async function saveCustomPrompt() {
   try {
-    await api.put('/meeting/settings/prompt', { prompt: customPrompt.value })
+    await meetingApi.saveCustomPrompt(customPrompt.value)
     activeTemplate.value = 'custom'
   } catch (e: any) {
     toast.error(t('meeting.saveFailed'))
@@ -143,7 +253,7 @@ async function saveCustomPrompt() {
 
 async function resetPrompt() {
   try {
-    const { data } = await api.delete('/meeting/settings/prompt')
+    const data = await meetingApi.resetCustomPrompt()
     activeTemplate.value = data.active_template || 'general'
     customPrompt.value = ''
   } catch {}
@@ -172,6 +282,18 @@ async function resetPrompt() {
   padding: 6px 10px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px;
   font-size: 13px; min-width: 180px; background: rgba(255,255,255,0.04); color: #e7e5e4;
 }
+.asr-form { display: flex; flex-direction: column; gap: 6px; }
+.asr-form select {
+  padding: 6px 10px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px;
+  font-size: 13px; min-width: 180px; background: rgba(255,255,255,0.04); color: #e7e5e4;
+}
+.block-hint { margin-left: 0; margin-top: 4px; display: block; }
+.summary-model-form { display: flex; flex-direction: column; gap: 6px; }
+.summary-model-form select {
+  padding: 6px 10px; border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 6px;
+  font-size: 13px; min-width: 180px; background: rgba(255,255,255,0.04); color: #e7e5e4;
+}
+.field-label { font-size: 11px; color: #78716c; margin-top: 4px; }
 .model-hint { font-size: 11px; color: #78716c; margin-left: 8px; }
 
 .template-list { display: flex; flex-direction: column; gap: 6px; }

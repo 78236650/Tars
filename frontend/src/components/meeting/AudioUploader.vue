@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { meetingApi } from '@/api'
+import { meetingAsrLanguageForApi } from '@/composables/useMeetingAsrLanguage'
 import { useI18n } from '@/i18n'
 
 const emit = defineEmits<{ uploaded: [transcription: any] }>()
@@ -75,7 +76,7 @@ async function uploadFile(file: File) {
   uploadError.value = ''
   try {
     uploadProgress.value = 60
-    const result = await meetingApi.upload(file)
+    const result = await meetingApi.upload(file, meetingAsrLanguageForApi())
     uploadProgress.value = 100
     if (result.success) emit('uploaded', result.transcription)
     else uploadError.value = t('meeting.uploadFailed')

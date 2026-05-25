@@ -253,13 +253,14 @@ class ToolDispatcher:
         stream: bool = True,
         on_tool_call: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
-        max_rounds: int = 20,
+        max_rounds: int | None = None,
         tools: Optional[List[Dict]] = None,
         response_format: Optional[Dict[str, Any]] = None,
         tool_context: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[str, None]:
         """带工具调用的对话，自动处理多轮工具调用循环。
-        tools 参数可选，传入时覆盖默认的全部工具 schema。"""
+        tools 参数可选，传入时覆盖默认的全部工具 schema。
+        max_rounds 为 None 时不限制轮次；传入正整数时可设上限。"""
         if not self.provider:
             raise RuntimeError("ToolDispatcher 未设置 provider")
 
@@ -272,7 +273,9 @@ class ToolDispatcher:
             working_messages = self._inject_tool_prompt(working_messages)
 
         tools_called = []
-        for _ in range(max_rounds):
+        round_num = 0
+        while max_rounds is None or round_num < max_rounds:
+            round_num += 1
             if use_native:
                 response = await self._call_with_native_tools(
                     working_messages, tools_schemas, stream, response_format=response_format
@@ -360,7 +363,8 @@ class ToolDispatcher:
                 working_messages.append({"role": "assistant", "content": f'```json\n{{"tool_call": {{"name": "{tool_name}", "arguments": {json.dumps(arguments, ensure_ascii=False)}}}}}\n```'})
                 working_messages.append({"role": "user", "content": f"[系统] {tool_msg}\n\n请根据工具结果回答用户的问题。"})
 
-        yield "[工具调用轮次已达上限]"
+        if max_rounds is not None:
+            yield "[工具调用轮次已达上限]"
 
     def _inject_tool_prompt(self, messages: List[Dict]) -> List[Dict]:
         """为不支持 function calling 的模型注入工具提示到 system prompt"""

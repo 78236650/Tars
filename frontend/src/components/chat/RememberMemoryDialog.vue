@@ -19,7 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  saved: [count: number]
+  saved: [memoryCount: number, knowledgeCount: number, promotionTrigger?: string]
 }>()
 
 const { t } = useI18n()
@@ -28,6 +28,7 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const drafts = ref<MemoryDraftItem[]>([])
+const publishToKnowledge = ref(false)
 
 const categoryOptions = [
   { value: 'fact', labelKey: 'chat.remember.category.fact' },
@@ -53,6 +54,7 @@ const loadDrafts = async () => {
     }))
     if (drafts.value.length === 0) {
       error.value = t('chat.remember.empty')
+      addDraft()
     }
   } catch {
     error.value = t('chat.remember.extractFailed')
@@ -87,8 +89,13 @@ const saveDrafts = async () => {
   saving.value = true
   error.value = ''
   try {
-    const result = await memoryApi.saveFromTurn({ items })
-    emit('saved', result.saved.length)
+    const result = await memoryApi.saveFromTurn({
+      items,
+      user_context: props.userContent,
+      publish_to_knowledge: publishToKnowledge.value,
+    })
+    const kbCount = result.knowledge_doc_ids?.length || 0
+    emit('saved', result.saved.length, kbCount, result.promotion_trigger)
     emit('close')
   } catch {
     error.value = t('chat.remember.saveFailed')
@@ -152,6 +159,14 @@ watch(
         >
           + {{ t('chat.remember.addManual') }}
         </button>
+
+        <label class="flex items-start gap-2 rounded-lg border border-amber-100/10 bg-white/[0.02] p-3 text-sm text-stone-300">
+          <input v-model="publishToKnowledge" type="checkbox" class="mt-0.5 rounded border-stone-600" />
+          <span>
+            <span class="block text-stone-200">{{ t('chat.remember.publishNow') }}</span>
+            <span class="mt-1 block text-xs text-stone-500">{{ t('chat.remember.publishHint') }}</span>
+          </span>
+        </label>
 
         <p v-if="error && drafts.length > 0" class="text-sm text-rose-300">{{ error }}</p>
       </template>

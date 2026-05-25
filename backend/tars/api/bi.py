@@ -4,7 +4,14 @@ from pydantic import BaseModel, Field
 from typing import Any, Dict, Optional
 
 from ..database import Database
-from ..database.bi_store import DataSourceStore
+from ..database.bi_store import DataSource, DataSourceStore, init_bi_store
+from ..bi.connection_config import (
+    ConnectionConfig,
+    config_from_payload,
+    parse_connection_url,
+    serialize_stored_config,
+    to_public_dict,
+)
 from ..bi.schema_explorer import SchemaExplorer
 from ..bi.sql_agent import SQLAgent
 from ..bi.chart_generator import ChartGenerator
@@ -22,10 +29,18 @@ _store: Optional[DataSourceStore] = None
 def init_bi_api(db: Database) -> None:
     global _db, _store
     _db = db
-    _store = DataSourceStore(db)
+    _store = init_bi_store(db)
 
 
 # ========== Pydantic 模型 ==========
+
+class ConnectionFields(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    database: Optional[str] = None
+
 
 class CreateDataSourceRequest(BaseModel):
     name: str
@@ -33,12 +48,35 @@ class CreateDataSourceRequest(BaseModel):
         ...,
         pattern="^(mysql|postgresql|oracle|sqlserver|clickhouse|sqlite|doris|jdbc)$",
     )
-    connection_url: str
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    database: Optional[str] = None
+    connection_url: Optional[str] = None
 
 
 class UpdateDataSourceRequest(BaseModel):
     name: Optional[str] = None
     db_type: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    database: Optional[str] = None
+    connection_url: Optional[str] = None
+
+
+class TestConnectionConfigRequest(BaseModel):
+    db_type: str = Field(
+        ...,
+        pattern="^(mysql|postgresql|oracle|sqlserver|clickhouse|sqlite|doris|jdbc)$",
+    )
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    database: Optional[str] = None
     connection_url: Optional[str] = None
 
 
@@ -56,6 +94,76 @@ class GenerateChartRequest(BaseModel):
     user_question: str = ""
 
 
+def _uses_structured_fields(**fields) -> bool:
+    return any(v is not None and v != "" for v in fields.values())
+
+
+def _resolve_connection(
+    *,
+    db_type: str,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    database: Optional[str] = None,
+    connection_url: Optional[str] = None,
+    existing: Optional[DataSource] = None,
+) -> tuple[ConnectionConfig, str, dict[str, Any]]:
+    structured = _uses_structured_fields(
+        host=host, port=port, username=username, password=password, database=database,
+    )
+
+    effective_password = password
+    if structured and (effective_password is None or effective_password == "") and existing:
+        effective_password = parse_connection_url(existing.connection_url, existing.db_type).password
+
+    try:
+        if structured:
+            cfg, url = config_from_payload(
+                db_type=db_type,
+                host=host,
+                port=port,
+                username=username,
+                password=effective_password,
+                database=database,
+            )
+        elif connection_url:
+            cfg, url = config_from_payload(db_type=db_type, connection_url=connection_url)
+        elif existing:
+            cfg = parse_connection_url(existing.connection_url, existing.db_type)
+            url = existing.connection_url
+        else:
+            raise ValueError("请填写连接信息")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    stored_config = to_public_dict(cfg, mask_password=True)
+    return cfg, url, stored_config
+
+
+def _serialize_datasource(ds: DataSource) -> dict[str, Any]:
+    connection = serialize_stored_config(ds.connection_config_json, ds.connection_url, ds.db_type)
+    return {
+        "id": ds.id,
+        "name": ds.name,
+        "db_type": ds.db_type,
+        "readonly": ds.readonly,
+        "connection": connection,
+        "schema_snapshot": ds.schema_snapshot,
+        "schema_annotations": ds.schema_annotations,
+        "created_at": ds.created_at,
+        "updated_at": ds.updated_at,
+    }
+
+
+def _test_url(connection_url: str) -> tuple[bool, str]:
+    explorer = SchemaExplorer(connection_url)
+    try:
+        return explorer.test_connection()
+    finally:
+        explorer.close()
+
+
 # ========== DataSource CRUD ==========
 
 @router.get("/")
@@ -64,21 +172,27 @@ async def list_datasources(principal: Principal = Depends(_require)):
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
     datasources = _store.list_by_tenant(principal.tenant_id)
-    return {
-        "datasources": [
-            {
-                "id": ds.id,
-                "name": ds.name,
-                "db_type": ds.db_type,
-                "readonly": ds.readonly,
-                "schema_snapshot": ds.schema_snapshot,
-                "schema_annotations": ds.schema_annotations,
-                "created_at": ds.created_at,
-                "updated_at": ds.updated_at,
-            }
-            for ds in datasources
-        ]
-    }
+    return {"datasources": [_serialize_datasource(ds) for ds in datasources]}
+
+
+@router.post("/test-config")
+async def test_connection_config(
+    request: TestConnectionConfigRequest,
+    principal: Principal = Depends(_require),
+):
+    """测试连接配置（保存前）"""
+    _ = principal
+    _, url, _ = _resolve_connection(
+        db_type=request.db_type,
+        host=request.host,
+        port=request.port,
+        username=request.username,
+        password=request.password,
+        database=request.database,
+        connection_url=request.connection_url,
+    )
+    ok, msg = _test_url(url)
+    return {"success": ok, "message": msg}
 
 
 @router.post("/")
@@ -91,17 +205,24 @@ async def create_datasource(
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
     tenant_id = principal.tenant_id
+    _, connection_url, stored_config = _resolve_connection(
+        db_type=request.db_type,
+        host=request.host,
+        port=request.port,
+        username=request.username,
+        password=request.password,
+        database=request.database,
+        connection_url=request.connection_url,
+    )
 
-    # 先测试连接
-    explorer = SchemaExplorer(request.connection_url)
-    ok, msg = explorer.test_connection()
+    ok, msg = _test_url(connection_url)
     if not ok:
         raise HTTPException(status_code=400, detail=f"连接测试失败: {msg}")
 
-    # 抓取 schema
+    explorer = SchemaExplorer(connection_url)
     try:
         schema = explorer.explore()
-    except Exception as e:
+    except Exception:
         schema = {}
     finally:
         explorer.close()
@@ -110,24 +231,13 @@ async def create_datasource(
         tenant_id=tenant_id,
         name=request.name,
         db_type=request.db_type,
-        connection_url=request.connection_url,
+        connection_url=connection_url,
         readonly=True,
         schema_snapshot=schema,
+        connection_config_json=stored_config,
     )
 
-    return {
-        "success": True,
-        "datasource": {
-            "id": ds.id,
-            "name": ds.name,
-            "db_type": ds.db_type,
-            "readonly": ds.readonly,
-            "schema_snapshot": ds.schema_snapshot,
-            "schema_annotations": ds.schema_annotations,
-            "created_at": ds.created_at,
-            "updated_at": ds.updated_at,
-        }
-    }
+    return {"success": True, "datasource": _serialize_datasource(ds)}
 
 
 @router.get("/{ds_id}")
@@ -143,16 +253,7 @@ async def get_datasource(
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
-    return {
-        "id": ds.id,
-        "name": ds.name,
-        "db_type": ds.db_type,
-        "readonly": ds.readonly,
-        "schema_snapshot": ds.schema_snapshot,
-        "schema_annotations": ds.schema_annotations,
-        "created_at": ds.created_at,
-        "updated_at": ds.updated_at,
-    }
+    return _serialize_datasource(ds)
 
 
 @router.put("/{ds_id}")
@@ -170,28 +271,42 @@ async def update_datasource(
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
-    update_data = {}
+    update_data: dict[str, Any] = {}
     if request.name is not None:
         update_data["name"] = request.name
-    if request.db_type is not None:
-        update_data["db_type"] = request.db_type
-    if request.connection_url is not None:
-        update_data["connection_url"] = request.connection_url
+
+    connection_touched = _uses_structured_fields(
+        host=request.host,
+        port=request.port,
+        username=request.username,
+        password=request.password,
+        database=request.database,
+    ) or request.connection_url is not None or request.db_type is not None
+
+    if connection_touched:
+        db_type = request.db_type or ds.db_type
+        _, connection_url, stored_config = _resolve_connection(
+            db_type=db_type,
+            host=request.host,
+            port=request.port,
+            username=request.username,
+            password=request.password,
+            database=request.database,
+            connection_url=request.connection_url,
+            existing=ds,
+        )
+        ok, msg = _test_url(connection_url)
+        if not ok:
+            raise HTTPException(status_code=400, detail=f"连接测试失败: {msg}")
+        update_data["db_type"] = db_type
+        update_data["connection_url"] = connection_url
+        update_data["connection_config_json"] = stored_config
 
     if not update_data:
         raise HTTPException(status_code=400, detail="没有要更新的字段")
 
     updated = _store.update(ds_id, tenant_id, **update_data)
-    return {"success": True, "datasource": {
-        "id": updated.id,
-        "name": updated.name,
-        "db_type": updated.db_type,
-        "readonly": updated.readonly,
-        "schema_snapshot": updated.schema_snapshot,
-        "schema_annotations": updated.schema_annotations,
-        "created_at": updated.created_at,
-        "updated_at": updated.updated_at,
-    }}
+    return {"success": True, "datasource": _serialize_datasource(updated)}
 
 
 @router.delete("/{ds_id}")
@@ -223,12 +338,8 @@ async def test_datasource_connection(
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
-    explorer = SchemaExplorer(ds.connection_url)
-    try:
-        ok, msg = explorer.test_connection()
-        return {"success": ok, "message": msg}
-    finally:
-        explorer.close()
+    ok, msg = _test_url(ds.connection_url)
+    return {"success": ok, "message": msg}
 
 
 @router.post("/{ds_id}/refresh-schema")

@@ -52,9 +52,23 @@ export const useWsStore = defineStore('ws', () => {
         return
       }
 
-      if (data.type === 'text_chunk' || data.type === 'generation_start' || data.type === 'tool_calling' || data.type === 'tool_result' || data.type === 'thinking_start' || data.type === 'thinking_step') {
+      // thinking_start/thinking_step must not toggle generation: background memory
+      // reflection can emit thinking_step after done and would leave the UI stuck.
+      if (
+        data.type === 'text_chunk'
+        || data.type === 'generation_start'
+        || data.type === 'tool_calling'
+        || data.type === 'tool_result'
+      ) {
         isGenerating.value = true
-      } else if (data.type === 'done' || data.type === 'generation_end' || data.type === 'error' || data.type === 'plan_complete') {
+      } else if (
+        data.type === 'done'
+        || data.type === 'generation_end'
+        || data.type === 'generation_stopped'
+        || data.type === 'thinking_complete'
+        || data.type === 'error'
+        || data.type === 'plan_complete'
+      ) {
         isGenerating.value = false
       }
 
@@ -140,6 +154,14 @@ export const useWsStore = defineStore('ws', () => {
     }
   }
 
+  const stopGeneration = (sessionId: string) => {
+    if (!sessionId) return
+    send({
+      type: 'stop_generation',
+      session_id: sessionId,
+    })
+  }
+
   return {
     ws,
     isConnected,
@@ -153,5 +175,6 @@ export const useWsStore = defineStore('ws', () => {
     connect,
     subscribe,
     send,
+    stopGeneration,
   }
 })

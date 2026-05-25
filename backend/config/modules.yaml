@@ -20,13 +20,13 @@ modules:
     bi:
       enabled: true
       description: "BI 工作台（数据分析 + 可视化）"
-      routes: ["/api/bi"]
+      routes: ["/api/bi", "/api/datasources"]
     insight:
       enabled: true
-      description: "InsightForge 鉴数 — 对话优先 Copilot INS-2.0.0"
+      description: "InsightForge 鉴数 — 对话优先 Copilot INS-2.1.0"
       requires: [bi, knowledge]
       capability_tag: insight-forge
-      version: INS-2.0.0
+      version: INS-2.1.0
       routes: ["/api/insight"]
     knowledge:
       enabled: true

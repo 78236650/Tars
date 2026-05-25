@@ -38,14 +38,22 @@ BUILTIN_TEMPLATES = [
     RoleTemplate(
         id="developer", name="开发者", description="信任用户，可执行代码",
         is_builtin=True,
-        allowed_tools=["weather", "web_search", "web_fetch", "file", "file_list", "file_write", "shell", "command", "python_exec", "memory", "knowledge_search", "cronjob"],
+        allowed_tools=[
+            "weather", "web_search", "web_fetch", "file", "file_list", "file_write",
+            "shell", "command", "python_exec", "memory", "knowledge_search", "cronjob",
+            "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
+        ],
         allowed_modules=["bi", "knowledge", "meeting", "skillhub", "insight"],
         workspace_restriction=True, max_concurrent=2,
     ),
     RoleTemplate(
         id="analyst", name="数据分析师", description="BI + Python + 知识库",
         is_builtin=True,
-        allowed_tools=["weather", "web_search", "web_fetch", "python_exec", "file", "file_list", "file_write", "knowledge_search"],
+        allowed_tools=[
+            "weather", "web_search", "web_fetch", "python_exec", "file", "file_list",
+            "file_write", "knowledge_search",
+            "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
+        ],
         allowed_modules=["bi", "knowledge", "insight"],
         workspace_restriction=True, max_concurrent=2,
     ),
@@ -115,8 +123,9 @@ BUILTIN_TEMPLATES = [
         allowed_tools=[
             "weather", "web_search", "web_fetch", "file", "file_list", "memory",
             "knowledge_search", "meeting_recognizer",
+            "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
-        allowed_modules=["knowledge", "skillhub", "meeting", "insight"],
+        allowed_modules=["bi", "knowledge", "skillhub", "meeting", "insight"],
         workspace_restriction=True, max_concurrent=1,
     ),
     RoleTemplate(

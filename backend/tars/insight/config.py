@@ -1,6 +1,7 @@
 """Load InsightForge configuration from insight.yaml."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List
@@ -20,6 +21,12 @@ class InsightBudget:
     stats_timeout_sec: int = 15
     table_timeout_sec: int = 120
     parallel_tables: int = 3
+    parallel_tables_max: int = 8
+    column_stats_batch_size: int = 10
+    column_stats_batch_size_pg_max: int = 20
+    incremental_force_on_schema_change: bool = True
+    incremental_resample_on_reuse: bool = True
+    reuse_synthesize_annotation: bool = True
     llm_batch_tables: int = 8
     llm_max_tokens_per_batch: int = 6000
     skip_table_patterns: List[str] = field(default_factory=lambda: ["^_", "^tmp_", "^bak_"])
@@ -102,6 +109,16 @@ def _config_path() -> Path:
     return Path(__file__).parent.parent.parent / "config" / "insight.yaml"
 
 
+def _apply_profile_env_overrides(budget: InsightBudget) -> InsightBudget:
+    """Optional runtime overrides (spec INS-2.1 §5)."""
+    parallel = os.environ.get("TARS_INSIGHT_PARALLEL_TABLES")
+    if parallel:
+        budget.parallel_tables = max(1, int(parallel))
+    if os.environ.get("TARS_INSIGHT_INCREMENTAL") == "0":
+        budget.enable_incremental = False
+    return budget
+
+
 def load_insight_config(path: str | Path | None = None) -> InsightConfig:
     cfg_path = Path(path) if path else _config_path()
     if not cfg_path.exists():
@@ -129,12 +146,21 @@ def load_insight_config(path: str | Path | None = None) -> InsightConfig:
         stats_timeout_sec=int(prof.get("stats_timeout_sec", 15)),
         table_timeout_sec=int(prof.get("table_timeout_sec", 120)),
         parallel_tables=int(prof.get("parallel_tables", 3)),
+        parallel_tables_max=int(prof.get("parallel_tables_max", 8)),
+        column_stats_batch_size=int(prof.get("column_stats_batch_size", 10)),
+        column_stats_batch_size_pg_max=int(prof.get("column_stats_batch_size_pg_max", 20)),
+        incremental_force_on_schema_change=bool(
+            prof.get("incremental_force_on_schema_change", True)
+        ),
+        incremental_resample_on_reuse=bool(prof.get("incremental_resample_on_reuse", True)),
+        reuse_synthesize_annotation=bool(prof.get("reuse_synthesize_annotation", True)),
         llm_batch_tables=int(prof.get("llm_batch_tables", 8)),
         llm_max_tokens_per_batch=int(prof.get("llm_max_tokens_per_batch", 6000)),
         skip_table_patterns=list(prof.get("skip_table_patterns") or ["^_", "^tmp_", "^bak_"]),
         enable_incremental=bool(prof.get("enable_incremental", True)),
         incremental_ttl_hours=int(prof.get("incremental_ttl_hours", 24)),
     )
+    budget = _apply_profile_env_overrides(budget)
 
     qa = InsightQaSettings(
         fewshot_max_items=int(qa_raw.get("fewshot_max_items", 5)),

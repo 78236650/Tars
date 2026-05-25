@@ -1,13 +1,15 @@
 """SQL 安全校验层"""
 import re
 import sqlparse
-from typing import List, Set, Tuple
+from typing import Set, Tuple
 
 
 class SQLSecurityChecker:
     """SQL 安全校验器：只允许只读查询"""
 
-    ALLOWED_STATEMENTS: Set[str] = {"SELECT", "WITH"}
+    QUERY_STATEMENTS: Set[str] = {"SELECT", "WITH"}
+    METADATA_STATEMENTS: Set[str] = {"SHOW", "DESCRIBE", "DESC", "EXPLAIN", "PRAGMA"}
+    ALLOWED_STATEMENTS: Set[str] = QUERY_STATEMENTS | METADATA_STATEMENTS
     FORBIDDEN_KEYWORDS: Set[str] = {
         "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE",
         "GRANT", "REVOKE", "CREATE", "EXEC", "EXECUTE", "MERGE",
@@ -17,6 +19,40 @@ class SQLSecurityChecker:
     def __init__(self, max_rows: int = 1000, timeout_seconds: int = 30):
         self.max_rows = max_rows
         self.timeout_seconds = timeout_seconds
+
+    def _leading_keyword(self, sql: str) -> str:
+        stripped = sql.strip()
+        if not stripped:
+            return ""
+
+        try:
+            parsed = sqlparse.parse(stripped)
+        except Exception:
+            parsed = []
+
+        if parsed:
+            for token in parsed[0].tokens:
+                if token.is_whitespace:
+                    continue
+                if token.ttype in (sqlparse.tokens.Comment, sqlparse.tokens.Comment.Multiline):
+                    continue
+                value = str(token).strip().upper()
+                if value:
+                    return value.split()[0]
+
+        return stripped.upper().split()[0]
+
+    def _is_query_statement(self, sql: str) -> bool:
+        keyword = self._leading_keyword(sql)
+        if keyword in self.QUERY_STATEMENTS:
+            return True
+        try:
+            parsed = sqlparse.parse(sql.strip())
+            if parsed and parsed[0].get_type().upper() == "SELECT":
+                return True
+        except Exception:
+            pass
+        return False
 
     def validate(self, sql: str) -> Tuple[bool, str]:
         """
@@ -43,49 +79,19 @@ class SQLSecurityChecker:
         if not parsed:
             return False, "无法解析 SQL"
 
-        for stmt in parsed:
-            # 获取第一个 token 的类型
-            first_token = None
-            for token in stmt.tokens:
-                if not token.is_whitespace:
-                    first_token = token
-                    break
-
-            if first_token is None:
-                continue
-
-            # 检查语句类型
-            token_type = getattr(first_token, "ttype", None)
-            token_value = str(first_token).upper()
-
-            # 检查是否是允许的语句类型
-            is_allowed = False
-            for allowed in self.ALLOWED_STATEMENTS:
-                if allowed in token_value:
-                    is_allowed = True
-                    break
-
-            if not is_allowed and token_type is not None:
-                # 再次检查关键字
-                for allowed in self.ALLOWED_STATEMENTS:
-                    if allowed in token_value:
-                        is_allowed = True
-                        break
-
-            if not is_allowed:
-                # 检查是否有禁止的关键字
-                sql_upper = stripped.upper()
-                for forbidden in self.FORBIDDEN_KEYWORDS:
-                    # 使用正则匹配完整单词
-                    pattern = r'\b' + forbidden + r'\b'
-                    if re.search(pattern, sql_upper):
-                        return False, f"SQL 包含禁止的操作: {forbidden}"
+        keyword = self._leading_keyword(stripped)
+        if keyword not in self.ALLOWED_STATEMENTS:
+            sql_upper = stripped.upper()
+            for forbidden in self.FORBIDDEN_KEYWORDS:
+                pattern = r"\b" + forbidden + r"\b"
+                if re.search(pattern, sql_upper):
+                    return False, f"SQL 包含禁止的操作: {forbidden}"
+            return False, f"不支持的 SQL 语句类型: {keyword or '未知'}"
 
         # 3. 检查注释中的注入（如 /* ... */ 或 --）
-        # 允许正常注释，但检查是否有可疑内容
         comment_patterns = [
-            r'/\*.*?\*/',
-            r'--.*?$',
+            r"/\*.*?\*/",
+            r"--.*?$",
         ]
         for pattern in comment_patterns:
             for match in re.finditer(pattern, stripped, re.MULTILINE | re.DOTALL):
@@ -97,18 +103,18 @@ class SQLSecurityChecker:
         return True, ""
 
     def add_limit(self, sql: str) -> str:
-        """为 SQL 添加 LIMIT 限制（如果尚未存在）"""
+        """为 SELECT/WITH 查询添加 LIMIT 限制（元数据语句不加 LIMIT）"""
+        if not self._is_query_statement(sql):
+            return sql.rstrip(";")
+
         sql_upper = sql.upper()
 
-        # 检查是否已有 LIMIT
         if "LIMIT" in sql_upper:
             return sql
 
-        # 检查是否已有 FETCH FIRST / TOP (SQL Server/Oracle 风格)
         if "FETCH FIRST" in sql_upper or "TOP " in sql_upper:
             return sql
 
-        # 添加 LIMIT
         return f"{sql.rstrip(';')} LIMIT {self.max_rows}"
 
     def sanitize(self, sql: str) -> Tuple[str, str]:

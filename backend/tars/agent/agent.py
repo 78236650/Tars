@@ -110,8 +110,11 @@ class AgentV2:
                     self.current_model = model_name
                     self.dispatcher.set_provider(self.provider)
                     return True
-            # Fallback: switch model on current provider
-            self.provider.model = model_name
+            from ..models import OllamaProvider
+            if not isinstance(self.provider, OllamaProvider):
+                self.provider = OllamaProvider(model=model_name)
+            else:
+                self.provider.model = model_name
             self.current_model = model_name
             self.dispatcher.set_provider(self.provider)
             return True
@@ -123,6 +126,30 @@ class AgentV2:
             return await self.provider.list_models()
         except Exception:
             return []
+
+    async def _abort_if_cancelled(
+        self,
+        channel: Channel,
+        session_id: str,
+        *,
+        partial_response: str = "",
+    ) -> bool:
+        if not self.follow_up_queue.is_cancelled(session_id):
+            return False
+        if partial_response.strip():
+            self.db.add_message(session_id, "assistant", partial_response)
+        await channel.send(session_id, {
+            "type": "thinking_complete",
+            "session_id": session_id,
+            "timestamp": now_iso(),
+        })
+        await channel.send(session_id, {
+            "type": "generation_stopped",
+            "session_id": session_id,
+            "reason": "user_cancelled",
+            "timestamp": now_iso(),
+        })
+        return True
 
     async def handle_message(
         self,
@@ -546,6 +573,8 @@ class AgentV2:
             "title": "生成回答",
             "timestamp": now_iso(),
         })
+        if await self._abort_if_cancelled(channel, session_id):
+            return
         full_response = ""
         # v4.0.0: rate limiter
         _limiter_acquired = False
@@ -584,6 +613,8 @@ class AgentV2:
                     ),
                 },
             ):
+                if self.follow_up_queue.is_cancelled(session_id):
+                    break
                 full_response += chunk
                 await channel.send(session_id, {
                     "type": "text_chunk",
@@ -625,6 +656,9 @@ class AgentV2:
                         rate_limiter.release(tenant_id, "llm")
                 except Exception:
                     pass
+
+        if await self._abort_if_cancelled(channel, session_id, partial_response=full_response):
+            return
 
         # 8.5 检查是否有待执行的计划（task_planner 被调用时）
         if self.task_executor:

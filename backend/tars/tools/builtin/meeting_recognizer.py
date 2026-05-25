@@ -1,81 +1,39 @@
-"""会议语音识别工具 — 基于 faster-whisper 的音频转录与 LLM 摘要生成"""
+"""会议语音识别工具 — 可插拔 ASR 后端 + LLM 摘要"""
 import ast
-import os
 import json
 import re
 import asyncio
-from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Dict, Optional
 from pathlib import Path
 
 from ..base import BaseTool, ToolResult
+from ...meeting.asr import display_model_name, get_asr_pool, sync_transcribe
+from ...meeting.config import load_meeting_asr_config, resolve_asr_language
+from ...meeting.transcript import normalize_transcript_text
 
-
-# 全局进程池（Whisper 是 CPU 密集型，限制 1 worker 避免内存爆炸）
-_whisper_pool: Optional[ProcessPoolExecutor] = None
-
-# 支持的音频格式
 SUPPORTED_AUDIO_FORMATS = {".mp3", ".wav", ".m4a", ".mp4", ".webm", ".ogg", ".flac", ".wma"}
 
 
-def _get_whisper_pool() -> ProcessPoolExecutor:
-    global _whisper_pool
-    if _whisper_pool is None:
-        _whisper_pool = ProcessPoolExecutor(max_workers=1)
-    return _whisper_pool
+def _get_whisper_pool():
+    return get_asr_pool()
 
 
 def shutdown_whisper_pool():
-    global _whisper_pool
-    if _whisper_pool is not None:
-        _whisper_pool.shutdown(wait=False)
-        _whisper_pool = None
+    from ...meeting.asr.pool import shutdown_asr_pool
+
+    shutdown_asr_pool()
 
 
-# 进程内缓存 Whisper 模型（避免每次转写重新加载，首次仍可能下载模型）
-_worker_models: Dict[str, Any] = {}
+_sync_transcribe = sync_transcribe
 
 
-def _sync_transcribe(file_path: str, language: Optional[str] = None, model_size: str = "base") -> dict:
-    """在独立进程中执行 Whisper 转写（CPU 密集型，避免阻塞事件循环）"""
-    try:
-        from faster_whisper import WhisperModel
-
-        model = _worker_models.get(model_size)
-        if model is None:
-            print(f"[MeetingRecognizer] 加载 Whisper 模型 {model_size}（首次较慢，请耐心等待）...")
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
-            _worker_models[model_size] = model
-        segments, info = model.transcribe(file_path, language=language, beam_size=5)
-
-        segment_list = []
-        texts = []
-        for seg in segments:
-            texts.append(seg.text)
-            segment_list.append({
-                "start": seg.start,
-                "end": seg.end,
-                "text": seg.text,
-            })
-
-        full_text = "\n".join(texts).strip()
-        return {
-            "success": True,
-            "text": full_text,
-            "language": info.language,
-            "duration": info.duration,
-            "segments": segment_list,
-        }
-    except ImportError:
-        return {
-            "success": False,
-            "error": "未安装 faster-whisper，请执行: pip install faster-whisper",
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-        }
+def _extract_chat_content(response: Any) -> str:
+    """Normalize Ollama ModelResponse vs OpenAI-compat dict."""
+    if isinstance(response, dict):
+        return (response.get("content") or "").strip()
+    if hasattr(response, "content"):
+        return (getattr(response, "content", None) or "").strip()
+    return str(response or "").strip()
 
 
 class MeetingRecognizerTool(BaseTool):
@@ -100,18 +58,22 @@ class MeetingRecognizerTool(BaseTool):
             },
             "language": {
                 "type": "string",
-                "description": "语言代码，如 zh/en/ja，默认自动检测",
+                "description": "语言：zh（普通话简体）/ en / auto（自动检测）",
             },
         },
         "required": ["file_path"],
     }
 
-    def __init__(self, provider=None, model_size: str = "base"):
+    def __init__(self, provider=None, model_size: Optional[str] = None):
         self.provider = provider
-        self.model_size = model_size
+        cfg = load_meeting_asr_config()
+        self.model_size = model_size or cfg.get("model", "small")
+
+    @property
+    def model_label(self) -> str:
+        return display_model_name()
 
     def _validate_file(self, file_path: str) -> Optional[str]:
-        """验证文件，返回错误信息或 None"""
         path = Path(file_path)
         if not path.exists():
             return f"文件不存在: {file_path}"
@@ -123,15 +85,17 @@ class MeetingRecognizerTool(BaseTool):
         return None
 
     async def _transcribe(self, file_path: str, language: Optional[str] = None) -> dict:
-        """异步执行转写（通过进程池）"""
         loop = asyncio.get_event_loop()
-        pool = _get_whisper_pool()
+        pool = get_asr_pool()
         return await loop.run_in_executor(
-            pool, _sync_transcribe, file_path, language, self.model_size
+            pool,
+            sync_transcribe,
+            file_path,
+            language,
+            self.model_size,
         )
 
     async def _generate_summary(self, transcript: str, language: str = "zh", prompt_override: str = None) -> dict:
-        """调用 LLM 生成结构化会议摘要"""
         if not self.provider:
             return {
                 "summary": "",
@@ -152,17 +116,32 @@ class MeetingRecognizerTool(BaseTool):
             from ...models.base import ChatMessage
             system = (
                 "你是一位专业的会议记录助手。输出必须使用 Markdown 格式，不要使用 JSON。"
+                "请使用简体中文撰写会议纪要。"
                 if markdown_mode
-                else "你是一位专业的会议记录助手。"
+                else "你是一位专业的会议记录助手。请使用简体中文撰写会议纪要。"
             )
             messages = [
                 ChatMessage(role="system", content=system),
                 ChatMessage(role="user", content=prompt),
             ]
             response = await self.provider.chat(messages, temperature=0.7, max_tokens=2000)
-            raw = response.content if hasattr(response, "content") else str(response)
-            content = self._coerce_llm_text(raw)
-            return self._parse_summary_response(content, markdown_mode=markdown_mode)
+            content = self._coerce_llm_text(_extract_chat_content(response))
+            if not content:
+                return {
+                    "summary": "",
+                    "key_points": [],
+                    "timeline": [],
+                    "error": "LLM 返回内容为空，请检查会议摘要模型是否可用",
+                }
+            parsed = self._parse_summary_response(content, markdown_mode=markdown_mode)
+            if not (parsed.get("summary") or "").strip():
+                return {
+                    "summary": "",
+                    "key_points": [],
+                    "timeline": [],
+                    "error": "无法解析 LLM 摘要结果",
+                }
+            return parsed
         except Exception as e:
             return {
                 "summary": "",
@@ -172,9 +151,8 @@ class MeetingRecognizerTool(BaseTool):
             }
 
     def _build_summary_prompt(self, transcript: str, language: str = "zh") -> str:
-        """构建摘要生成提示词（Markdown 纪要）"""
-        if language == "zh" or language.startswith("zh"):
-            return f"""请对以下会议转录整理为专业会议纪要，使用 Markdown 格式输出。
+        if language == "zh" or (language or "").startswith("zh"):
+            return f"""请对以下会议转录整理为专业会议纪要，使用 Markdown 格式输出，全文使用简体中文。
 
 ## 核心摘要
 （2-3 句话概括会议全貌）
@@ -195,8 +173,7 @@ class MeetingRecognizerTool(BaseTool):
 会议转录文本：
 {transcript}
 """
-        else:
-            return f"""Summarize the following meeting transcript as professional meeting notes in Markdown.
+        return f"""Summarize the following meeting transcript as professional meeting notes in Markdown.
 
 ## Executive Summary
 ## Key Points
@@ -209,7 +186,6 @@ Meeting transcript:
 
     @staticmethod
     def _coerce_llm_text(raw: Any) -> str:
-        """Normalize provider output to plain text before parsing."""
         if raw is None:
             return ""
         if isinstance(raw, dict):
@@ -233,7 +209,6 @@ Meeting transcript:
         text = (content or "").strip()
         if not text.startswith("{"):
             return None
-
         for parser in (json.loads, ast.literal_eval):
             try:
                 data = parser(text)
@@ -241,7 +216,6 @@ Meeting transcript:
                 continue
             if isinstance(data, dict):
                 return data
-
         json_start = text.find("{")
         json_end = text.rfind("}")
         if json_start >= 0 and json_end > json_start:
@@ -277,7 +251,6 @@ Meeting transcript:
 
     @classmethod
     def _extract_loose_dict_field(cls, text: str, field: str) -> str:
-        """Best-effort extract when JSON / literal_eval fail (e.g. multiline Python repr)."""
         stripped = (text or "").strip()
         patterns = (
             rf"['\"]{re.escape(field)}['\"]\s*:\s*['\"]([\s\S]*?)['\"]\s*\}}",
@@ -312,9 +285,7 @@ Meeting transcript:
         return points
 
     def _parse_summary_response(self, content: str, markdown_mode: bool = False) -> dict:
-        """解析 LLM 摘要：模板/纪要模式保留完整 Markdown；兼容 JSON / content 字段。"""
         content = self._strip_markdown_fence(self._coerce_llm_text(content))
-
         payload = self._extract_structured_payload(content)
         if payload:
             summary = self._summary_from_payload(payload)
@@ -327,7 +298,6 @@ Meeting transcript:
                     "key_points": key_points,
                     "timeline": payload.get("timeline", []) if isinstance(payload.get("timeline"), list) else [],
                 }
-
         if content.strip().startswith("{"):
             for key in ("summary", "content", "text", "markdown", "output"):
                 extracted = self._extract_loose_dict_field(content, key)
@@ -337,16 +307,13 @@ Meeting transcript:
                         "key_points": self._extract_bullet_key_points(extracted),
                         "timeline": [],
                     }
-
         content = self._unescape_literal_newlines(content)
-
         if markdown_mode or self._looks_like_markdown(content):
             return {
                 "summary": content,
                 "key_points": self._extract_bullet_key_points(content),
                 "timeline": [],
             }
-
         return {
             "summary": content,
             "key_points": self._extract_bullet_key_points(content),
@@ -358,12 +325,10 @@ Meeting transcript:
         action = kwargs.get("action", "summarize")
         language = kwargs.get("language")
 
-        # 验证文件
         error = self._validate_file(file_path)
         if error:
             return ToolResult(success=False, output="", error=error)
 
-        # 执行转写
         result = await self._transcribe(file_path, language)
         if not result.get("success"):
             return ToolResult(
@@ -377,14 +342,14 @@ Meeting transcript:
         duration = result.get("duration")
         segments = result.get("segments", [])
 
-        # 构建元数据
         metadata = {
             "language": detected_language,
             "duration": duration,
             "segment_count": len(segments),
+            "model": result.get("model", self.model_label),
+            "backend": result.get("backend"),
         }
 
-        # 如果需要摘要
         if action == "summarize":
             summary_data = await self._generate_summary(transcript, detected_language)
             metadata["summary"] = summary_data.get("summary", "")
@@ -401,21 +366,23 @@ Meeting transcript:
 """
             for i, point in enumerate(metadata.get("key_points", []), 1):
                 output_text += f"{i}. {point}\n"
-
             output_text += f"""
 ## 转写文本
 
 {transcript}
 """
-            return ToolResult(
-                success=True,
-                output=output_text,
-                metadata=metadata,
-            )
+            return ToolResult(success=True, output=output_text, metadata=metadata)
 
-        # 仅转写
-        return ToolResult(
-            success=True,
-            output=transcript,
-            metadata=metadata,
-        )
+        return ToolResult(success=True, output=transcript, metadata=metadata)
+
+
+# Re-export for tests
+__all__ = [
+    "MeetingRecognizerTool",
+    "SUPPORTED_AUDIO_FORMATS",
+    "normalize_transcript_text",
+    "sync_transcribe",
+    "_sync_transcribe",
+    "_get_whisper_pool",
+    "shutdown_whisper_pool",
+]

@@ -163,3 +163,90 @@ def resolve_insight_llm(
         {"label": "未配置", "use_chat_default": settings.use_chat_default},
         "none",
     )
+
+
+def resolve_knowledge_llm(
+    tenant_id: str = "default",
+    llm_settings_store=None,
+) -> ResolvedInsightLlm:
+    """
+    Knowledge enrichment LLM — follows Chat's active model first (Ollama or configured endpoint).
+    Does not use InsightForge tenant-only model unless Chat model is unavailable.
+    """
+    chat_sel = get_chat_model_selection()
+    model = (chat_sel.get("model") or "").strip()
+    if model:
+        try:
+            prov, sel = build_provider_from_selection(chat_sel)
+            sel = dict(sel)
+            sel["use_chat_default"] = True
+            return ResolvedInsightLlm(prov, sel, "chat")
+        except Exception as e:
+            logger.warning("[KnowledgeEnricher] chat model build failed: %s", e)
+
+    try:
+        from ..models.config import get_agent
+        from ..models import OllamaProvider, OpenAICompatProvider
+
+        agent = get_agent()
+        prov = getattr(agent, "provider", None)
+        current_model = (getattr(agent, "current_model", None) or "").strip()
+        expected = chat_sel.get("provider") or "ollama"
+        if prov is not None and current_model:
+            type_ok = (
+                (expected == "ollama" and isinstance(prov, OllamaProvider))
+                or (expected == "openai_compatible" and isinstance(prov, OpenAICompatProvider))
+            )
+            if type_ok:
+                sel = dict(chat_sel)
+                sel["model"] = current_model
+                if not sel.get("label"):
+                    sel["label"] = _label_for(
+                        expected,
+                        current_model,
+                        sel.get("endpoint_name"),
+                    )
+                return ResolvedInsightLlm(prov, sel, "chat_agent")
+            logger.warning(
+                "[KnowledgeEnricher] agent provider type mismatch expected=%s got=%s; rebuild from selection",
+                expected,
+                type(prov).__name__,
+            )
+    except Exception as e:
+        logger.warning("[KnowledgeEnricher] agent provider unavailable: %s", e)
+
+    if llm_settings_store is not None:
+        try:
+            settings = llm_settings_store.get(tenant_id)
+            forced = InsightLlmSettings(
+                tenant_id=tenant_id,
+                use_chat_default=True,
+                provider=settings.provider,
+                model=settings.model,
+                endpoint_id=settings.endpoint_id,
+            )
+            resolved = resolve_insight_llm(forced)
+            if resolved.provider is not None:
+                return resolved
+        except Exception as e:
+            logger.warning("[KnowledgeEnricher] insight fallback failed: %s", e)
+
+    from .llm_synthesizer import get_default_llm_provider
+
+    prov = get_default_llm_provider()
+    if prov is not None:
+        m = getattr(prov, "model", "") or os.getenv("OLLAMA_MODEL", "llama3.2")
+        sel = {
+            "provider": "ollama",
+            "endpoint_id": None,
+            "model": m,
+            "label": _label_for("ollama", m) + " (providers.yaml)",
+            "use_chat_default": False,
+        }
+        return ResolvedInsightLlm(prov, sel, "providers_yaml")
+
+    return ResolvedInsightLlm(
+        None,
+        {"label": "未配置", "use_chat_default": True},
+        "none",
+    )

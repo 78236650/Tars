@@ -1,5 +1,15 @@
 <template>
   <div class="document-uploader">
+    <div class="uploader-options" @click.stop>
+      <label class="doc-type-label">{{ t('knowledge.uploadDocType') }}</label>
+      <select v-model="selectedDocType" class="doc-type-select">
+        <option value="">{{ t('knowledge.uploadDocTypeAuto') }}</option>
+        <option value="policy">{{ t('knowledge.docType.policy') }}</option>
+        <option value="proposal">{{ t('knowledge.docType.proposal') }}</option>
+        <option value="metrics">{{ t('knowledge.docType.metrics') }}</option>
+        <option value="generic">{{ t('knowledge.docType.generic') }}</option>
+      </select>
+    </div>
     <div
       class="drop-zone"
       :class="{ dragging: isDragging }"
@@ -12,7 +22,7 @@
         ref="fileInput"
         type="file"
         multiple
-        accept=".txt,.md,.pdf,.docx,.xlsx,.csv"
+        accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.pptx"
         style="display: none"
         @change="handleFileSelect"
       />
@@ -33,12 +43,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { knowledgeApi } from '@/api'
 import { useI18n } from '@/i18n'
 
 interface Props {
   collectionId: string
+  defaultDocType?: string | null
 }
 
 const props = defineProps<Props>()
@@ -48,8 +59,18 @@ const emit = defineEmits<{
 
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
+const selectedDocType = ref(props.defaultDocType || '')
 const uploading = ref<{ id: string; name: string; status: 'uploading' | 'completed' | 'failed'; error?: string }[]>([])
 const { t } = useI18n()
+
+watch(
+  () => props.defaultDocType,
+  (value) => {
+    if (!selectedDocType.value) {
+      selectedDocType.value = value || ''
+    }
+  },
+)
 
 function triggerFileInput() {
   fileInput.value?.click()
@@ -76,17 +97,19 @@ async function uploadFiles(files: File[]) {
     uploading.value.push({ id, name: file.name, status: 'uploading' })
 
     try {
-      const result = await knowledgeApi.uploadDocument(props.collectionId, file)
+      const docType = selectedDocType.value || undefined
+      const result = await knowledgeApi.uploadDocument(props.collectionId, file, docType)
       const item = uploading.value.find(u => u.id === id)
+      const docStatus = result.document?.status
       if (item) {
-        if (result.document?.status === 'indexed') {
+        if (result.success && docStatus && !['failed'].includes(docStatus)) {
           item.status = 'completed'
         } else {
           item.status = 'failed'
-          item.error = result.document?.status || 'index_failed'
+          item.error = docStatus || 'upload_failed'
         }
       }
-      if (result.document?.status === 'indexed') {
+      if (result.success && docStatus && !['failed'].includes(docStatus)) {
         emit('uploaded', props.collectionId)
       }
     } catch (e: any) {
@@ -115,6 +138,28 @@ function statusText(item: { status: 'uploading' | 'completed' | 'failed'; error?
 <style scoped>
 .document-uploader {
   margin-bottom: 12px;
+}
+
+.uploader-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.doc-type-label {
+  color: #78716c;
+}
+
+.doc-type-select {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  background: rgba(255,255,255,0.04);
+  color: #d6d3d1;
+  font-size: 12px;
 }
 
 .drop-zone {

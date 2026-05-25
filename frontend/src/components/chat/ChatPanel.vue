@@ -52,6 +52,7 @@ const emit = defineEmits<{
   quickStart: [text: string]
   citationClick: [payload: { docId: string; title?: string }]
   insightClarify: [payload: { question: string; candidate_metric_keys: string[]; datasourceId: string }]
+  stop: []
 }>()
 
 const { t } = useI18n()
@@ -127,6 +128,15 @@ const isStreamingAssistant = (msg: ChatMessage, idx: number) =>
       msg.id?.startsWith('streaming-'),
   )
 
+// Hide the global footer once an assistant bubble exists; the message-level
+// thinking panel / streamed content already conveys progress. This also covers
+// isGenerating getting stuck after done finalizes the streaming message id.
+const showGlobalThinking = computed(() => {
+  if (!props.isGenerating) return false
+  const last = props.messages[props.messages.length - 1]
+  return !(last?.role === 'assistant')
+})
+
 const formatAssistantContent = (msg: ChatMessage, idx: number) =>
   renderChatMarkdown(msg.content, {
     streaming: isStreamingAssistant(msg, idx),
@@ -191,8 +201,14 @@ const closeRememberDialog = () => {
   rememberOpen.value = false
 }
 
-const onRememberSaved = (count: number) => {
-  toast.success(t('chat.remember.saved', { count }))
+const onRememberSaved = (count: number, kbCount = 0, promotionTrigger = 'none') => {
+  if (kbCount > 0) {
+    toast.success(t('chat.remember.savedWithKnowledge', { count, kbCount }))
+  } else if (promotionTrigger === 'pending') {
+    toast.success(t('chat.remember.savedPendingKb', { count }))
+  } else {
+    toast.success(t('chat.remember.saved', { count }))
+  }
 }
 
 onMounted(() => {
@@ -302,12 +318,6 @@ onMounted(() => {
 
             <!-- TARS 卡片 -->
             <div v-else-if="msg.role === 'assistant' || msg.role === 'system'" class="max-w-[95%]">
-              <!-- v2.6.1: 空内容脉冲动画 -->
-              <div v-if="!msg.content && msg.thinking?.isActive" class="flex gap-1 py-2">
-                <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0s" />
-                <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.2s" />
-                <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.4s" />
-              </div>
               <div
                 v-if="msg.content"
                 class="markdown-body text-sm text-slate-300 leading-relaxed"
@@ -416,14 +426,41 @@ onMounted(() => {
         </div>
       </template>
 
-      <!-- 思考中 -->
-      <div v-if="isGenerating" class="flex items-center gap-3 pl-11 py-2">
-        <div class="flex gap-1">
-          <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0s"></span>
-          <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.2s"></span>
-          <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.4s"></span>
+      <!-- 思考中：仅在尚无 assistant 气泡时显示（避免与消息内 thinking 面板重复） -->
+      <div v-if="showGlobalThinking" class="flex items-center justify-between gap-3 pl-11 py-2 pr-2">
+        <div class="flex items-center gap-3">
+          <div class="flex gap-1">
+            <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0s"></span>
+            <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.2s"></span>
+            <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style="animation-delay:0.4s"></span>
+          </div>
+          <span class="text-xs text-slate-500">{{ t('chat.thinking') }}</span>
         </div>
-        <span class="text-xs text-slate-500">{{ t('chat.thinking') }}</span>
+        <button
+          type="button"
+          data-test="chat-stop-inline"
+          class="shrink-0 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20"
+          :title="t('chat.stopTitle')"
+          @click="emit('stop')"
+        >
+          {{ t('chat.stop') }}
+        </button>
+      </div>
+
+      <!-- 流式回复中：assistant 气泡已出现时，在消息区也提供停止入口 -->
+      <div
+        v-else-if="isGenerating"
+        class="sticky bottom-0 z-10 flex justify-end px-2 py-2"
+      >
+        <button
+          type="button"
+          data-test="chat-stop-inline"
+          class="rounded-lg border border-rose-500/40 bg-rose-950/90 px-3 py-1.5 text-xs font-medium text-rose-200 shadow-lg backdrop-blur transition hover:bg-rose-500/20"
+          :title="t('chat.stopTitle')"
+          @click="emit('stop')"
+        >
+          ⏹ {{ t('chat.stop') }}
+        </button>
       </div>
     </div>
 

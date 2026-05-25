@@ -31,7 +31,7 @@ class TestBusinessAnalystRole:
         assert "bi" in t.allowed_modules
         assert "insight" in t.allowed_modules
 
-    def test_standard_has_insight_not_bi(self, manager):
+    def test_standard_has_bi_and_insight(self, manager):
         t = manager.get_template("standard")
         assert "insight" in t.allowed_modules
-        assert "bi" not in t.allowed_modules
+        assert "bi" in t.allowed_modules

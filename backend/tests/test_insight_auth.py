@@ -77,8 +77,8 @@ def test_insight_version_with_non_admin_user_role_admin_rejected(app_client, ali
     assert r.status_code == 403, r.text
 
 
-def test_insight_version_standard_user_rejected(app_client, alice_key):
-    """Standard role template does not include insight module."""
+def test_insight_version_standard_user_allowed(app_client, alice_key):
+    """Standard role template includes insight module (see test_role_module_gating)."""
     client, _ = app_client
     _skip_if_disabled(client)
     api_key, _ = alice_key
@@ -86,7 +86,8 @@ def test_insight_version_standard_user_rejected(app_client, alice_key):
         "/api/insight/version",
         headers={"X-API-Key": api_key},
     )
-    assert r.status_code == 403, r.text
+    assert r.status_code == 200, r.text
+    assert r.json()["version"] == "INS-2.1.0"
 
 
 def test_insight_version_with_admin_key_succeeds(app_client, admin_key):
@@ -99,7 +100,7 @@ def test_insight_version_with_admin_key_succeeds(app_client, admin_key):
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["version"] == "INS-2.0.0"
+    assert body["version"] == "INS-2.1.0"
 
 
 def test_insight_llm_settings_requires_auth(app_client):

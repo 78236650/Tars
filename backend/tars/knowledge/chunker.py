@@ -1,6 +1,9 @@
 """文档分块器 — 支持多种分块策略"""
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .models import DocumentSection
 
 
 class DocumentChunker:
@@ -139,3 +142,34 @@ class DocumentChunker:
                 final_chunks.append(chunk)
 
         return final_chunks
+
+    def chunk_by_sections(
+        self,
+        sections: List["DocumentSection"],
+        metadata: Dict[str, Any] | None = None,
+    ) -> List[Dict[str, Any]]:
+        """按 section 边界分块，不在 section 之间合并。"""
+        result: List[Dict[str, Any]] = []
+        running_idx = 0
+        for section in sections:
+            text = (section.text or "").strip()
+            if not text:
+                continue
+            sec_meta = dict(metadata or {})
+            sec_meta.update({
+                "section_id": section.section_id,
+                "section_title": section.title,
+                "parent_section_id": section.section_id,
+            })
+            if section.page_or_slide is not None:
+                sec_meta["page_or_slide"] = section.page_or_slide
+            for piece in self.chunk(text, metadata=sec_meta):
+                piece["chunk_index"] = running_idx
+                piece["metadata"]["chunk_index"] = running_idx
+                result.append(piece)
+                running_idx += 1
+        total = len(result)
+        for piece in result:
+            piece["chunk_total"] = total
+            piece["metadata"]["chunk_total"] = total
+        return result

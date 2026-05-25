@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..database import Database
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/memory", tags=["memory"])
 _db: Optional[Database] = None
 _memory_manager: Optional[MemoryManager] = None
 _compressor: Optional[MemoryCompressor] = None
+_provider_resolver = None
 
 
 def init_memory_api(db: Database, memory_manager: MemoryManager):
@@ -27,6 +28,31 @@ def init_memory_api(db: Database, memory_manager: MemoryManager):
     _db = db
     _memory_manager = memory_manager
     _compressor = memory_manager.compressor
+
+
+def set_memory_provider_resolver(resolver):
+    """Lazy-resolve LLM provider for extract-from-turn when manager has none."""
+    global _provider_resolver
+    _provider_resolver = resolver
+
+
+def _resolve_provider(manager: MemoryManager):
+    if manager.provider:
+        return manager.provider
+    if _provider_resolver:
+        try:
+            return _provider_resolver()
+        except Exception:
+            return None
+    return None
+
+
+def _manager_with_provider(tenant_id: Optional[str]) -> MemoryManager:
+    manager = _tenant_manager(tenant_id)
+    provider = _resolve_provider(manager)
+    if provider and not manager.provider:
+        manager.set_provider(provider)
+    return manager
 
 
 def _require_db() -> Database:
@@ -128,6 +154,15 @@ class MemoryDraftItem(BaseModel):
 
 class SaveTurnMemoriesRequest(BaseModel):
     items: List[MemoryDraftItem] = Field(min_length=1, max_length=10)
+    user_context: str = Field(default="", max_length=8000)
+    publish_to_knowledge: bool = False
+    promotion_group_id: Optional[str] = Field(default=None, max_length=128)
+
+
+class PromoteToKnowledgeRequest(BaseModel):
+    promotion_group_id: Optional[str] = None
+    memory_ids: Optional[List[str]] = None
+    user_context: str = Field(default="", max_length=8000)
 
 
 @router.get("/stats")
@@ -274,7 +309,7 @@ async def extract_memories_from_turn(
     payload: ExtractTurnRequest,
     x_tenant_id: Optional[str] = Header(default="default"),
 ):
-    manager = _tenant_manager(x_tenant_id)
+    manager = _manager_with_provider(x_tenant_id)
     items = await manager.extract_turn_memories(payload.user_content, payload.assistant_content)
     return {"items": items}
 
@@ -282,22 +317,74 @@ async def extract_memories_from_turn(
 @router.post("/save-from-turn")
 async def save_memories_from_turn(
     payload: SaveTurnMemoriesRequest,
+    background_tasks: BackgroundTasks,
     http_request: Request,
     x_tenant_id: Optional[str] = Header(default="default"),
 ):
-    manager = _tenant_manager(x_tenant_id)
+    manager = _manager_with_provider(x_tenant_id)
     tenant_id = x_tenant_id or "default"
     allowed = {"fact", "preference", "decision", "domain_knowledge"}
     for item in payload.items:
         if item.category not in allowed:
             raise HTTPException(status_code=400, detail=f"invalid category: {item.category}")
 
-    result = await manager.save_turn_memories([item.model_dump() for item in payload.items])
+    result = await manager.save_turn_memories(
+        [item.model_dump() for item in payload.items],
+        user_context=payload.user_context,
+        publish_to_knowledge=payload.publish_to_knowledge,
+        promotion_group_id=payload.promotion_group_id,
+    )
     for memory in result["saved"]:
         _audit_memory_write("write", memory.id, tenant_id, http_request)
+
+    group_id = result.get("promotion_group_id")
+    if group_id and not payload.publish_to_knowledge and result.get("saved"):
+        background_tasks.add_task(_background_kb_promotion_check, tenant_id, group_id)
+
     return {
         "saved": [_memory_to_dict(memory) for memory in result["saved"]],
         "skipped": result["skipped"],
+        "knowledge_doc_ids": result.get("knowledge_doc_ids") or [],
+        "promotion_group_id": group_id,
+        "promotion_trigger": result.get("promotion_trigger", "none"),
+    }
+
+
+async def _background_kb_promotion_check(tenant_id: str, group_id: str) -> None:
+    """保存后后台阈值检查（非 cron）。"""
+    try:
+        manager = _manager_with_provider(tenant_id)
+        from ..memory.kb_promotion import maybe_auto_promote_group
+
+        doc_id = await maybe_auto_promote_group(manager, group_id)
+        if doc_id:
+            print(f"[MemoryAPI] Auto-promoted group {group_id} -> KB doc {doc_id}")
+    except Exception as e:
+        print(f"[MemoryAPI] Background KB promotion failed: {e}")
+
+
+@router.post("/promote-to-knowledge")
+async def promote_memories_to_knowledge(
+    payload: PromoteToKnowledgeRequest,
+    x_tenant_id: Optional[str] = Header(default="default"),
+):
+    """手动将 pending 记忆组合成一篇知识库文档。"""
+    manager = _manager_with_provider(x_tenant_id)
+    from ..memory.kb_promotion import default_promotion_group_id, promote_group_to_kb
+
+    group_id = payload.promotion_group_id or default_promotion_group_id(manager.tenant_id)
+    doc_id = await promote_group_to_kb(
+        manager,
+        group_id,
+        user_context=payload.user_context,
+        memory_ids=payload.memory_ids,
+    )
+    if not doc_id:
+        raise HTTPException(status_code=404, detail="没有可升格的记忆，或知识库组件不可用")
+    return {
+        "success": True,
+        "knowledge_doc_id": doc_id,
+        "promotion_group_id": group_id,
     }
 
 

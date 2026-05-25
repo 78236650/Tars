@@ -1,0 +1,653 @@
+# InsightForge 鉴数建档性能优化 — 测试用例集
+# 运行:
+#   pytest tests/insight/test_insight_profile_perf_suite.py -v -m "not insight_perf"
+#   INSIGHT_PERF_BENCH=1 pytest tests/insight/test_insight_profile_perf_suite.py -v -m insight_perf
+#
+# Spec: docs/superpowers/specs/2026-05-24-insightforge-profile-perf-design.md (v2 reviewed)
+version: "2"
+suite: insightforge-profile-perf
+description: INS-2.1 Profile P2 性能 — 并行 / 超时 / 增量 (含 sample 重抓 + LLM reuse) / 批量 SQL / 基准
+
+defaults:
+  tenant_id: default
+  db_type: sqlite
+  n_columns: 8
+  n_rows: 50
+
+cases:
+  # ---------- L0 前置：store 新方法 ----------
+  - id: store_latest_completed_excludes_failed
+    layer: unit
+    tags: [store, latest_completed]
+    module: run_store
+    action: latest_completed_excludes_failed
+    expect:
+      latest_id_matches: completed_run
+
+  - id: store_latest_completed_none_when_empty
+    layer: unit
+    tags: [store, latest_completed]
+    module: run_store
+    action: latest_completed_none
+    expect:
+      result: null
+
+  # ---------- L1 单元：Schema 指纹 ----------
+  - id: fp_stable_same_schema
+    layer: unit
+    tags: [fingerprint]
+    module: schema_fingerprint
+    action: assert_stable
+    setup:
+      tables: 2
+    mutate: none
+    expect:
+      equal: true
+
+  - id: fp_changes_on_new_column
+    layer: unit
+    tags: [fingerprint]
+    module: schema_fingerprint
+    action: assert_changes
+    setup:
+      tables: 1
+    mutate: add_column
+    expect:
+      equal: false
+
+  - id: fp_changes_on_column_type_change
+    layer: unit
+    tags: [fingerprint]
+    module: schema_fingerprint
+    action: assert_changes
+    setup:
+      tables: 1
+    mutate: change_column_type
+    expect:
+      equal: false
+
+  - id: fp_ignores_column_order
+    layer: unit
+    tags: [fingerprint]
+    module: schema_fingerprint
+    action: assert_stable
+    setup:
+      tables: 1
+    mutate: reorder_columns
+    expect:
+      equal: true
+
+  - id: fp_ignores_table_comment
+    layer: unit
+    tags: [fingerprint]
+    module: schema_fingerprint
+    action: assert_stable
+    setup:
+      tables: 1
+    mutate: change_table_comment_only
+    expect:
+      equal: true
+
+  - id: fp_includes_primary_key
+    layer: unit
+    tags: [fingerprint]
+    module: schema_fingerprint
+    action: assert_changes
+    setup:
+      tables: 1
+    mutate: change_primary_key
+    expect:
+      equal: false
+
+  # ---------- L1 单元：增量规划 ----------
+  - id: plan_force_full_collect
+    layer: unit
+    tags: [incremental, planner]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 5
+      has_previous: true
+    input:
+      force: true
+      enable_incremental: true
+    expect:
+      all_action: collect
+      profile_run_type: full
+
+  - id: plan_incremental_all_reuse
+    layer: unit
+    tags: [incremental, planner]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 5
+      has_previous: true
+      schema_unchanged: true
+    input:
+      force: false
+      enable_incremental: true
+    expect:
+      reused_count: 5
+      collected_count: 0
+      profile_run_type: incremental
+
+  - id: plan_incremental_one_new_table
+    layer: unit
+    tags: [incremental, planner]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 6
+      has_previous: true
+      previous_tables: 5
+      schema_unchanged: true
+    input:
+      force: false
+    expect:
+      reused_count: 5
+      collected_count: 1
+      dropped_count: 0
+
+  - id: plan_incremental_dropped_table
+    layer: unit
+    tags: [incremental, planner]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 4
+      has_previous: true
+      previous_tables: 5
+    input:
+      force: false
+    expect:
+      dropped_count: 1
+
+  - id: plan_no_previous_full
+    layer: unit
+    tags: [incremental, planner]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 3
+      has_previous: false
+    expect:
+      all_action: collect
+      profile_run_type: full
+
+  - id: plan_incremental_disabled
+    layer: unit
+    tags: [incremental, planner]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 5
+      has_previous: true
+      schema_unchanged: true
+    input:
+      enable_incremental: false
+    expect:
+      all_action: collect
+
+  - id: plan_ttl_expired_forces_collect
+    layer: unit
+    tags: [incremental, planner, ttl]
+    module: incremental_planner
+    action: plan
+    setup:
+      tables: 3
+      has_previous: true
+      schema_unchanged: true
+      previous_age_hours: 48
+    input:
+      incremental_ttl_hours: 24
+    expect:
+      all_action: collect
+
+  # ---------- L1 单元：SQL 超时 ----------
+  - id: timeout_fast_query_ok
+    layer: unit
+    tags: [timeout, sql]
+    module: sql_timeout
+    action: fetch_one
+    input:
+      sql: "SELECT 1"
+      timeout_sec: 5
+    expect:
+      success: true
+
+  - id: timeout_slow_query_none
+    layer: unit
+    tags: [timeout, sql]
+    module: sql_timeout
+    action: fetch_one_slow
+    input:
+      timeout_sec: 1
+      # SQLite CTE 自循环模拟 ≥ 3s 查询
+      slow_kind: sqlite_recursive_cte
+    expect:
+      success: false
+      result_is_none: true
+      max_elapsed_sec: 2.0
+
+  - id: timeout_quality_flag_on_column
+    layer: unit
+    tags: [timeout, stats]
+    module: stats_collector
+    action: collect_column_with_timeout
+    expect:
+      quality_issue: stats_timeout
+      null_rate: null
+
+  - id: timeout_table_wall_clock
+    layer: unit
+    tags: [timeout, stats, wall]
+    module: stats_collector
+    action: collect_table_wall_timeout
+    setup:
+      n_columns: 50
+      per_column_sleep_ms: 200
+      table_timeout_sec: 2
+    expect:
+      skipped_reason: table_timeout
+      collected_columns_lte: 12   # ~ 2s / 0.2s = 10, 允许 +2 buffer
+
+  # ---------- L1 单元：批量 SQL ----------
+  - id: batch_mysql_sql_shape
+    layer: unit
+    tags: [batch, dialect]
+    module: batch_stats
+    action: build_batch_sql
+    input:
+      dialect: mysql
+      table: orders
+      columns: [id, amount, status]
+    expect:
+      sql_contains:
+        - "COUNT(*)"
+        - "COUNT(DISTINCT"
+        - "`amount`"
+      min_columns_in_select: 3
+      sql_length_lt: 8000
+
+  - id: batch_sqlite_sql_shape
+    layer: unit
+    tags: [batch, dialect]
+    module: batch_stats
+    action: build_batch_sql
+    input:
+      dialect: sqlite
+      table: orders
+      columns: [id, amount, status]
+    expect:
+      sql_contains:
+        - "COUNT(*)"
+        - "COUNT(DISTINCT"
+
+  - id: batch_pg_large_table_fallback
+    layer: unit
+    tags: [batch, dialect, pg]
+    module: stats_collector
+    action: collect_table_batch_pg_large
+    setup:
+      dialect: postgresql
+      mock_estimate_rows: 5000000
+      n_columns: 15
+    expect:
+      used_fallback: true
+      quality_flags_contain: batch_fallback
+
+  - id: batch_respects_max_size
+    layer: unit
+    tags: [batch, dialect]
+    module: batch_stats
+    action: build_batch_sql
+    input:
+      dialect: mysql
+      table: wide_table
+      columns_n: 30
+      batch_size: 10
+    expect:
+      batches_produced: 3
+      each_batch_columns_lte: 10
+
+  - id: batch_fallback_on_error
+    layer: unit
+    tags: [batch, dialect]
+    module: stats_collector
+    action: collect_table_batch_fallback
+    setup:
+      inject_batch_error: true
+    expect:
+      table_stats_present: true
+      used_fallback: true
+      quality_flags_contain: batch_fallback
+
+  # ---------- L2 集成：并行采集 ----------
+  - id: parallel_respects_semaphore
+    layer: integration
+    tags: [parallel, stats]
+    module: stats_collector
+    action: collect_all_async
+    setup:
+      n_tables: 12
+      parallel_tables: 3
+    expect:
+      max_inflight_lte: 3
+
+  - id: parallel_sqlite_serial
+    layer: integration
+    tags: [parallel, sqlite]
+    module: stats_collector
+    action: collect_all_async
+    setup:
+      n_tables: 8
+      parallel_tables: 3
+      db_type: sqlite
+    expect:
+      max_inflight_lte: 1
+
+  - id: parallel_single_table_failure_nonfatal
+    layer: integration
+    tags: [parallel, resilience]
+    module: stats_collector
+    action: collect_all_async
+    setup:
+      n_tables: 5
+      inject_fail_table: t_2
+    expect:
+      success_tables_gte: 4
+      quality_flags_present: true
+
+  - id: parallel_pool_size_scales
+    layer: integration
+    tags: [parallel, pool]
+    module: stats_collector
+    action: check_engine_pool
+    setup:
+      parallel_tables: 5
+      db_type: mysql_mock
+    expect:
+      pool_size_gte: 7   # parallel + 2
+      pool_pre_ping: true
+
+  # ---------- L2 集成：Pipeline E2E ----------
+  - id: pipeline_snapshot_has_perf
+    layer: integration
+    tags: [pipeline, perf]
+    module: profile_pipeline
+    action: run
+    setup:
+      n_tables: 3
+    expect:
+      snapshot_keys:
+        - perf.phases_ms.schema
+        - perf.phases_ms.stats
+        - perf.phases_ms.synthesize
+        - perf.total_ms
+        - perf.stats.tables_total
+        - perf.stats.parallelism
+
+  - id: pipeline_incremental_second_run
+    layer: integration
+    tags: [pipeline, incremental]
+    module: profile_pipeline
+    action: run_twice
+    setup:
+      n_tables: 10
+      enable_incremental: true
+    expect:
+      second_run:
+        profile_run_type: incremental
+        tables_reused_gte: 8
+        perf.stats.tables_collected_lte: 2
+
+  - id: pipeline_incremental_resamples
+    layer: integration
+    tags: [pipeline, incremental, sample]
+    module: profile_pipeline
+    action: run_twice_with_data_drift
+    setup:
+      n_tables: 5
+      enable_incremental: true
+      incremental_resample_on_reuse: true
+      between_runs: insert_extra_rows
+    expect:
+      second_run:
+        profile_run_type: incremental
+        # stats 复用：null_rate 等保持一致
+        stats_field_unchanged: distinct_count
+        # sample 重抓：sample_rows 内容必须不同 (新数据进入)
+        sample_rows_changed: true
+        perf.stats.tables_resampled_gte: 4
+
+  - id: pipeline_llm_annotation_reused_on_incremental
+    layer: integration
+    tags: [pipeline, incremental, llm]
+    module: profile_pipeline
+    action: run_twice_with_counting_llm
+    setup:
+      n_tables: 6
+      enable_incremental: true
+      reuse_synthesize_annotation: true
+    expect:
+      second_run:
+        # 关键: schema 不变 → LLM 完全不调用
+        llm_call_count: 0
+        perf.synthesize.tables_annotation_reused_gte: 5
+
+  - id: pipeline_force_ignores_incremental
+    layer: integration
+    tags: [pipeline, incremental]
+    module: profile_pipeline
+    action: run_twice
+    setup:
+      n_tables: 6
+    input:
+      second_run_force: true
+    expect:
+      second_run:
+        profile_run_type: full
+        tables_reused: 0
+
+  - id: pipeline_output_backward_compatible
+    layer: integration
+    tags: [pipeline, regression]
+    module: profile_pipeline
+    action: run
+    setup:
+      n_tables: 2
+    expect:
+      snapshot_keys:
+        - schema_version
+        - tables
+        - relations
+        - quality_flags
+        - profile_mode
+      schema_version: 1
+
+  - id: pipeline_rollback_equivalent_to_ins_2_0
+    layer: integration
+    tags: [pipeline, regression, rollback]
+    module: profile_pipeline
+    action: run_with_all_features_disabled
+    setup:
+      n_tables: 5
+      parallel_tables: 1
+      enable_incremental: false
+      disable_batch_sql: true
+      reuse_synthesize_annotation: false
+    expect:
+      # 关键: 所有开关关闭后, 表 stats 和 INS-2.0 完全一致 (字段对齐)
+      snapshot_tables_count: 5
+      profile_run_type: full
+      # perf 段仍写入(可观测性不回退)
+      perf_present: true
+
+  # ---------- L2 集成：JobRunner ----------
+  - id: job_runner_loads_previous_snapshot
+    layer: integration
+    tags: [job_runner]
+    module: job_runner
+    action: start_profile_twice
+    setup:
+      n_tables: 4
+    expect:
+      second_run_status: completed
+      incremental_reused_gte: 3
+
+  - id: job_runner_passes_force_flag
+    layer: integration
+    tags: [job_runner, force]
+    module: job_runner
+    action: start_profile_with_force
+    setup:
+      n_tables: 3
+    input:
+      force: true
+    expect:
+      profile_run_type: full
+      tables_reused: 0
+
+  # ---------- L3 性能基准（需 INSIGHT_PERF_BENCH=1） ----------
+  - id: bench_sqlite_30_tables_serial_baseline
+    layer: bench
+    tags: [bench, sqlite, baseline]
+    markers: [insight_perf]
+    module: profile_pipeline
+    action: bench_run
+    setup:
+      n_tables: 30
+      n_columns: 10
+      n_rows: 200
+      parallel_tables: 1
+      llm: skip
+    expect:
+      # 基线: 串行 + 单列 SQL + 无增量, 仅记录 wall time 作为后续对比基准
+      record_metric: wall_time_baseline_sec
+      wall_time_sec_lte: 90
+
+  - id: bench_sqlite_30_tables_parallel
+    layer: bench
+    tags: [bench, sqlite, parallel]
+    markers: [insight_perf]
+    module: profile_pipeline
+    action: bench_run
+    setup:
+      n_tables: 30
+      n_columns: 10
+      n_rows: 200
+      parallel_tables: 3
+      llm: skip
+    expect:
+      wall_time_sec_lte: 35
+      speedup_vs_serial_gte: 1.8
+
+  - id: bench_sqlite_30_tables_parallel_plus_batch
+    layer: bench
+    tags: [bench, sqlite, parallel, batch]
+    markers: [insight_perf]
+    module: profile_pipeline
+    action: bench_run
+    setup:
+      n_tables: 30
+      n_columns: 10
+      n_rows: 200
+      parallel_tables: 3
+      enable_batch_sql: true
+      llm: skip
+    expect:
+      wall_time_sec_lte: 25
+      speedup_vs_serial_gte: 2.8
+
+  - id: bench_sqlite_30_tables_incremental
+    layer: bench
+    tags: [bench, sqlite, incremental]
+    markers: [insight_perf]
+    module: profile_pipeline
+    action: bench_run_twice
+    setup:
+      n_tables: 30
+      n_columns: 10
+      parallel_tables: 3
+      enable_incremental: true
+      reuse_synthesize_annotation: true
+      llm: mock_counting
+    expect:
+      second_wall_time_sec_lte: 8
+      tables_reused_gte: 27
+      second_speedup_vs_first_gte: 4.0
+      llm_calls_second_run: 0
+
+  - id: bench_sql_count_reduction_batch
+    layer: bench
+    tags: [bench, batch]
+    markers: [insight_perf]
+    module: stats_collector
+    action: bench_sql_count
+    setup:
+      n_tables: 10
+      n_columns: 20
+      dialect: sqlite   # mysql 需 docker, 改 sqlite 等价验证
+    expect:
+      batch_sql_reduction_pct_gte: 50
+
+  - id: bench_100_tables_parallel
+    layer: bench
+    tags: [bench, scale]
+    markers: [insight_perf]
+    module: profile_pipeline
+    action: bench_run
+    setup:
+      n_tables: 100
+      n_columns: 20
+      parallel_tables: 3
+      enable_batch_sql: true
+      llm: skip
+    expect:
+      wall_time_sec_lte: 60
+
+  - id: bench_docker_mysql_demo
+    layer: bench
+    tags: [bench, docker]
+    markers: [insight_perf]
+    requires_env: INSIGHT_DOCKER_TEST=1
+    module: profile_pipeline
+    action: bench_docker_mysql
+    expect:
+      wall_time_sec_lte: 50
+      success: true
+
+  # ---------- L4 回归：与 INS-2.0 workflow 共存 ----------
+  - id: workflow_ready_after_optimized_profile
+    layer: integration
+    tags: [workflow, regression]
+    module: job_runner
+    action: start_profile
+    setup:
+      n_tables: 3
+      workflow_state: needs_forge
+    expect:
+      workflow_state: ready
+      show_workflow_strip: false
+
+  - id: metric_candidates_still_written
+    layer: integration
+    tags: [regression, metrics]
+    module: job_runner
+    action: start_profile_with_mock_llm
+    setup:
+      n_tables: 2
+      mock_llm_metrics: 1
+    expect:
+      draft_metrics_gte: 1
+
+  - id: knowledge_publish_still_called
+    layer: integration
+    tags: [regression, knowledge]
+    module: profile_pipeline
+    action: run_with_publisher
+    setup:
+      n_tables: 2
+    expect:
+      knowledge_doc_id_not_null: true

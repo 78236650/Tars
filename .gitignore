@@ -84,7 +84,14 @@ Thumbs.db
 backend/uploads/
 
 # Local Chroma vector index (runtime; do not commit)
-backend/data/vectorstore/**/data_level0.bin
+backend/data/vectorstore/
+
+# Meeting recordings and uploads (per-user runtime)
+backend/storage/meetings/
+
+# Meeting ASR models (large; download via scripts/download_meeting_whisper.sh)
+backend/data/models/
+backend/data/hf-cache/
 
 # Local workspace
 .superpowers/

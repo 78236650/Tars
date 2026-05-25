@@ -156,13 +156,17 @@ class ChromaVectorStore:
 
     def delete(
         self,
-        ids: List[str],
+        ids: Optional[List[str]] = None,
         tenant_id: str = "default",
         collection_name: str = "memories",
+        where: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """删除指定文档"""
+        """按 ids 或 metadata where 条件删除。两者至少一项。"""
         collection = self._get_collection(tenant_id, collection_name)
-        collection.delete(ids=ids)
+        if ids:
+            collection.delete(ids=ids)
+        elif where:
+            collection.delete(where=where)
 
     def delete_collection(self, tenant_id: str = "default", collection_name: str = "memories") -> None:
         """删除整个 collection"""

@@ -5,6 +5,8 @@ import json
 import sqlite3
 from typing import Any
 
+from .version import INS_VERSION
+
 
 def _table_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
     cursor.execute(f"PRAGMA table_info({table})")
@@ -122,7 +124,7 @@ def backfill_insight_workflow_states(cursor: sqlite3.Cursor) -> int:
             snapshot = {}
         insight = snapshot.setdefault("insight", {})
         workflow = insight.setdefault("workflow", {})
-        if workflow.get("ins_version") == "INS-2.0.0" and workflow.get("state"):
+        if workflow.get("ins_version") in ("INS-2.0.0", "INS-2.1.0") and workflow.get("state"):
             continue
 
         cursor.execute(
@@ -146,7 +148,7 @@ def backfill_insight_workflow_states(cursor: sqlite3.Cursor) -> int:
         workflow.update(
             {
                 "state": state,
-                "ins_version": "INS-2.0.0",
+                "ins_version": INS_VERSION,
             }
         )
         insight["workflow"] = workflow

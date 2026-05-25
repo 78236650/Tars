@@ -13,7 +13,7 @@
             {{ statusText(transcription.status) }}
           </span>
           <button
-            v-if="transcription.status === 'completed' && !transcription.summary"
+            v-if="transcription.status === 'completed' && !hasSummary && transcription.transcript"
             class="action-btn primary"
             @click="generateSummary"
             :disabled="summarizing"
@@ -34,6 +34,21 @@
       <div v-if="transcription.error_message" class="error-box">
         <strong>{{ t('meeting.errorLabel') }}:</strong> {{ transcription.error_message }}
       </div>
+
+      <!-- 原音频播放 -->
+      <div v-if="transcription.has_audio || audioUrl || audioLoading" class="section audio-section">
+        <h3 class="section-title">🔊 {{ t('meeting.originalAudio') }}</h3>
+        <p v-if="audioLoading" class="audio-hint">{{ t('meeting.audioLoading') }}</p>
+        <audio
+          v-else-if="audioUrl"
+          class="audio-player"
+          controls
+          preload="metadata"
+          :src="audioUrl"
+        />
+        <p v-else class="audio-hint">{{ t('meeting.audioUnavailable') }}</p>
+      </div>
+      <p v-else-if="showAudioMissingHint" class="audio-missing-hint">{{ t('meeting.audioUnavailable') }}</p>
 
       <!-- 摘要区域 -->
       <div v-if="normalizedSummary || editing" class="section summary-section">
@@ -118,17 +133,20 @@
         <div v-show="showTranscript" class="transcript-text">{{ transcription.transcript }}</div>
       </div>
 
-      <!-- 待处理提示 -->
-      <div v-if="transcription.status === 'pending' || transcription.status === 'processing'" class="pending-box">
+      <!-- 待处理 / 摘要生成中 -->
+      <div
+        v-if="transcription.status === 'pending' || transcription.status === 'processing' || summarizing"
+        class="pending-box"
+      >
         <div class="spinner"></div>
-        <p>{{ t('meeting.pendingMessage') }}</p>
+        <p>{{ summarizing ? t('meeting.summaryGenerating') : t('meeting.pendingMessage') }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import type { Transcription } from '@/types'
 import { meetingApi } from '@/api'
 import { useI18n } from '@/i18n'
@@ -151,6 +169,51 @@ const emit = defineEmits<{
 }>()
 
 const summarizing = ref(false)
+const autoSummaryAttempted = ref<Set<string>>(new Set())
+const audioUrl = ref('')
+const audioLoading = ref(false)
+const audioChecked = ref(false)
+
+const hasSummary = computed(() => {
+  const raw = props.transcription?.summary
+  return Boolean(raw && String(raw).trim())
+})
+
+const showAudioMissingHint = computed(() => {
+  if (!props.transcription) return false
+  if (props.transcription.has_audio) return false
+  return audioChecked.value && !audioUrl.value && !audioLoading.value
+})
+
+function revokeAudioUrl() {
+  if (audioUrl.value) {
+    URL.revokeObjectURL(audioUrl.value)
+    audioUrl.value = ''
+  }
+}
+
+async function loadAudio() {
+  if (!props.transcription?.id) return
+  revokeAudioUrl()
+  audioLoading.value = false
+  audioChecked.value = false
+  if (props.transcription.has_audio === false) {
+    audioChecked.value = true
+    return
+  }
+  audioLoading.value = true
+  try {
+    const blob = await meetingApi.fetchAudio(props.transcription.id)
+    if (blob.size > 0) {
+      audioUrl.value = URL.createObjectURL(blob)
+    }
+  } catch {
+    /* 无音频或旧记录未保存文件 */
+  } finally {
+    audioLoading.value = false
+    audioChecked.value = true
+  }
+}
 const editing = ref(false)
 const editSummary = ref('')
 const editKeyPoints = ref('')
@@ -159,6 +222,15 @@ const approveSuccess = ref(false)
 const showTranscript = ref(false)
 const { t, locale } = useI18n()
 const toast = useToast()
+
+watch(
+  () => [props.transcription?.status, props.transcription?.transcript] as const,
+  ([status, transcript]) => {
+    if (status === 'processing' && transcript) {
+      showTranscript.value = true
+    }
+  },
+)
 
 const normalizedSummary = computed(() =>
   normalizeMeetingSummary(props.transcription?.summary),
@@ -196,16 +268,59 @@ const renderedSummaryHtml = computed(() => {
 
 async function generateSummary() {
   if (!props.transcription) return
+  if (!props.transcription.transcript?.trim()) {
+    toast.error(t('meeting.summaryNeedsTranscript'))
+    return
+  }
   summarizing.value = true
   try {
-    await meetingApi.summarize(props.transcription.id)
+    const res = await meetingApi.summarize(props.transcription.id)
+    if (!res.transcription?.summary?.trim()) {
+      toast.error(t('meeting.summaryGenerateFailed'))
+      return
+    }
     emit('refresh')
-  } catch (e: any) {
+    toast.success(t('meeting.summaryGenerateSuccess'))
+  } catch (e: unknown) {
     toast.error(getErrorDetail(e, t('meeting.summaryGenerateFailed')))
   } finally {
     summarizing.value = false
   }
 }
+
+watch(
+  () => props.transcription?.id,
+  () => {
+    autoSummaryAttempted.value = new Set()
+    void loadAudio()
+  },
+)
+
+watch(
+  () => props.transcription?.has_audio,
+  () => {
+    void loadAudio()
+  },
+)
+
+onBeforeUnmount(() => {
+  revokeAudioUrl()
+})
+
+watch(
+  () => [
+    props.transcription?.id,
+    props.transcription?.status,
+    props.transcription?.transcript,
+    hasSummary.value,
+  ] as const,
+  ([id, status, transcript, hasSum]) => {
+    if (!id || status !== 'completed' || !transcript?.trim() || hasSum) return
+    if (autoSummaryAttempted.value.has(id) || summarizing.value) return
+    autoSummaryAttempted.value.add(id)
+    void generateSummary()
+  },
+)
 
 function startEdit() {
   if (!props.transcription) return
@@ -749,6 +864,26 @@ function formatDate(iso: string | null): string {
   color: #fca5a5;
   font-size: 13px;
   margin-bottom: 16px;
+}
+
+.audio-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(245, 158, 11, 0.12);
+  border-radius: 8px;
+}
+
+.audio-player {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.audio-hint,
+.audio-missing-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #78716c;
 }
 
 .pending-box {

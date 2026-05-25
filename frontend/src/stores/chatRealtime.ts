@@ -208,14 +208,25 @@ export function createChatMessageState(
               }
             }
           })
-        } else if (data.type === 'done' || data.type === 'generation_end') {
+        } else if (data.type === 'done' || data.type === 'generation_end' || data.type === 'generation_stopped') {
           if (!sessionId) return
           updateMessages(sessionId, msgs => {
             const lastMsg = msgs[msgs.length - 1]
             if (lastMsg?.id?.startsWith('streaming-')) {
               lastMsg.id = `msg-${Date.now()}`
             }
+            if (lastMsg?.thinking?.isActive) {
+              lastMsg.thinking.isActive = false
+            }
           })
+          if (data.type === 'generation_stopped') {
+            appendMessage(sessionId, {
+              id: `${Date.now()}_stopped`,
+              role: 'system',
+              content: `⏹ ${t('chat.generationStopped')}`,
+              timestamp: data.timestamp || new Date().toISOString(),
+            })
+          }
         } else if (data.type === 'error') {
           if (!sessionId) return
           appendMessage(sessionId, {

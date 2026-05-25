@@ -45,6 +45,13 @@ def _sync_llm_chain(agent: Agent) -> None:
         meeting_tool.provider = agent.provider
 
 
+def _switch_agent_to_ollama(agent: Agent, model: str) -> None:
+    """Replace agent provider with Ollama (not just .model on a remote provider)."""
+    agent.provider = OllamaProvider(model=model)
+    agent.current_model = model
+    _sync_llm_chain(agent)
+
+
 def get_agent() -> Agent:
     from tars.main import agent
 
@@ -215,8 +222,7 @@ async def delete_endpoint(endpoint_id: str):
         _current_provider = "ollama"
         agent = get_agent()
         try:
-            agent.switch_model(os.getenv("OLLAMA_MODEL", "llama3.2"))
-            _sync_llm_chain(agent)
+            _switch_agent_to_ollama(agent, os.getenv("OLLAMA_MODEL", "llama3.2"))
         except Exception:
             pass
     return {"success": True}
@@ -255,12 +261,12 @@ async def switch_model(request: SwitchModelRequest):
     agent = get_agent()
 
     if request.provider == "ollama":
-        ok = agent.switch_model(request.model)
-        if not ok:
-            raise HTTPException(status_code=400, detail=f"无法切换到模型: {request.model}")
+        try:
+            _switch_agent_to_ollama(agent, request.model)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"无法切换到模型: {request.model}") from e
         _current_provider = "ollama"
         _current_endpoint_id = None
-        _sync_llm_chain(agent)
         return {
             "success": True,
             "message": f"已切换到 Ollama: {request.model}",

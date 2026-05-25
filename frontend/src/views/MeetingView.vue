@@ -5,7 +5,13 @@
       <div class="left-panel">
         <MeetingSettings />
         <AudioUploader @uploaded="onUploaded" />
-        <RecordingPanel @done="loadHistory" @saved="onRecordingSaved" />
+        <RecordingPanel
+          @done="loadHistory"
+          @started="onRecordingStarted"
+          @transcript="onRecordingTranscript"
+          @saved="onRecordingSaved"
+          @failed="onRecordingFailed"
+        />
         <TranscriptionList
           :transcriptions="transcriptions"
           :selected-id="selectedId"
@@ -59,13 +65,69 @@ async function loadHistory() {
 }
 
 function onUploaded(transcription: Transcription) {
-  transcriptions.value.unshift(transcription)
+  transcriptions.value = [
+    transcription,
+    ...transcriptions.value.filter(t => t.id !== transcription.id),
+  ]
   selectedId.value = transcription.id
+  void loadHistory()
 }
 
-function onRecordingSaved(data: { id: string; status: string }) {
-  loadHistory()
+function onRecordingStarted(data: { id: string; status: string }) {
+  const placeholder: Transcription = {
+    id: data.id,
+    user_id: '',
+    file_name: t('meeting.liveRecordingName'),
+    file_size: null,
+    duration: null,
+    language: null,
+    status: data.status as Transcription['status'],
+    transcript: null,
+    summary: null,
+    key_points: [],
+    model_used: null,
+    created_at: new Date().toISOString(),
+    completed_at: null,
+    error_message: null,
+    approved_at: null,
+    knowledge_doc_id: null,
+  }
+  transcriptions.value = [placeholder, ...transcriptions.value.filter(t => t.id !== data.id)]
   selectedId.value = data.id
+}
+
+function onRecordingTranscript(data: { id: string; full_text: string }) {
+  const idx = transcriptions.value.findIndex(t => t.id === data.id)
+  if (idx < 0) return
+  transcriptions.value[idx] = {
+    ...transcriptions.value[idx],
+    transcript: data.full_text,
+    status: 'processing',
+  }
+}
+
+function onRecordingSaved(data: { id: string; status: string; summarizing?: boolean }) {
+  void loadHistory().then(() => {
+    selectedId.value = data.id
+    if (data.summarizing) {
+      const poll = setInterval(() => {
+        void loadHistory().then(() => {
+          const row = transcriptions.value.find((t) => t.id === data.id)
+          if (row?.summary?.trim() || row?.error_message) {
+            clearInterval(poll)
+          }
+        })
+      }, 3000)
+      setTimeout(() => clearInterval(poll), 120000)
+    }
+  })
+}
+
+function onRecordingFailed(data: { id: string; status: string; error?: string }) {
+  void loadHistory().then(() => {
+    selectedId.value = data.id
+    if (data.error) toast.error(data.error)
+  })
 }
 
 function onSelect(item: Transcription) {
@@ -88,13 +150,16 @@ onMounted(() => {
   loadHistory()
   // 每 5 秒刷新一次状态（用于 pending/processing 状态的更新）
   refreshTimer.value = setInterval(() => {
-    const hasPending = transcriptions.value.some(
-      t => t.status === 'pending' || t.status === 'processing'
+    const needsRefresh = transcriptions.value.some(
+      (t) =>
+        t.status === 'pending' ||
+        t.status === 'processing' ||
+        (t.status === 'completed' && !!t.transcript?.trim() && !t.summary?.trim())
     )
-    if (hasPending) {
-      loadHistory()
+    if (needsRefresh) {
+      void loadHistory()
     }
-  }, 5000)
+  }, 3000)
 })
 
 onUnmounted(() => {

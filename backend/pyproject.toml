@@ -1,6 +1,6 @@
 [project]
 name = "tars"
-version = "2.6.0"
+version = "2.6.1"
 description = "TARS AI Agent - 高度自主、可配置的 AI Agent"
 readme = "../README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ dependencies = [
     "httpx>=0.26.0",
     "pyyaml>=6.0.1",
     "faster-whisper>=1.0.0",
+    "zhconv>=1.4.3",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +37,10 @@ dev = [
     "ruff>=0.1.0",
     "black>=24.0.0",
     "isort>=5.13.0",
+]
+sensevoice = [
+    "funasr>=1.1.2",
+    "modelscope>=1.11.1",
 ]
 
 [build-system]

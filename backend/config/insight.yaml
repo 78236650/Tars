@@ -1,7 +1,7 @@
-# InsightForge 鉴数 — INS-2.0.0
+# InsightForge 鉴数 — INS-2.1.0
 capability:
   name: insight-forge
-  version: INS-2.0.0
+  version: INS-2.1.0
 
 databases:
   tier1: [oracle, mysql, postgresql, doris]
@@ -16,6 +16,12 @@ profile:
   stats_timeout_sec: 15
   table_timeout_sec: 120
   parallel_tables: 3
+  parallel_tables_max: 8
+  column_stats_batch_size: 10
+  column_stats_batch_size_pg_max: 20
+  incremental_force_on_schema_change: true
+  incremental_resample_on_reuse: true
+  reuse_synthesize_annotation: true
   llm_batch_tables: 8
   llm_max_tokens_per_batch: 6000
   skip_table_patterns: ["^_", "^tmp_", "^bak_"]

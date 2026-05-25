@@ -1,0 +1,20 @@
+knowledge:
+  enrichment:
+    enabled: true
+    timeout_sec: 120
+    max_input_chars: 48000
+    confidence_threshold: 0.6
+    json_repair_retries: 1
+    budget_per_doc_tokens: 30000
+    synthetic_qa_max: 3
+    glossary_max: 20
+    key_facts_max: 30
+  chunking:
+    profiles:
+      policy:   { chunk_size: 1000, overlap: 150 }
+      proposal: { chunk_size: 800,  overlap: 120 }
+      metrics:  { chunk_size: 600,  overlap: 80 }
+      generic:  { chunk_size: 900,  overlap: 120 }
+  reindex:
+    require_confirm_above_doc_count: 5
+    estimate_tokens_per_doc: 8000

@@ -137,7 +137,7 @@ def test_insight_smoke_health_chain(tars_smoke_stack):
 
     ver = client.get("/api/insight/version", headers=headers)
     assert ver.status_code == 200
-    assert ver.json()["version"] == "INS-2.0.0"
+    assert ver.json()["version"] == "INS-2.1.0"
 
     wf = client.get(
         f"/api/insight/datasources/{ctx.datasource_id}/workflow",

@@ -72,6 +72,22 @@ class InsightProfileRunStore:
         )
         return [r for row in cursor.fetchall() if (r := self._row_to_run(row))]
 
+    def latest_completed_for_datasource(
+        self, datasource_id: str, tenant_id: str = "default"
+    ) -> Optional[InsightProfileRun]:
+        """Return the most recent completed profile run for a datasource."""
+        conn = self.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM insight_profile_runs
+            WHERE datasource_id = ? AND tenant_id = ? AND status = 'completed'
+            ORDER BY finished_at DESC LIMIT 1
+            """,
+            (datasource_id, tenant_id),
+        )
+        return self._row_to_run(cursor.fetchone())
+
     def update_progress(
         self,
         run_id: str,

@@ -60,6 +60,9 @@ class Memory:
     event_time: Optional[datetime] = None
     entity_refs: Optional[List[str]] = None
     scope: str = "private"
+    promotion_group_id: Optional[str] = None
+    kb_doc_id: Optional[str] = None
+    kb_promotion_status: Optional[str] = None  # pending | published | skipped
 
 
 @dataclass
@@ -297,6 +300,9 @@ class Database:
             ("pinned", "INTEGER DEFAULT 0"),
             ("compressed_from", "TEXT DEFAULT NULL"),
             ("memory_type", "TEXT DEFAULT 'episodic'"),
+            ("promotion_group_id", "TEXT DEFAULT NULL"),
+            ("kb_doc_id", "TEXT DEFAULT NULL"),
+            ("kb_promotion_status", "TEXT DEFAULT NULL"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE memories ADD COLUMN {col_name} {col_type}")
@@ -319,6 +325,12 @@ class Database:
             """
             CREATE INDEX IF NOT EXISTS idx_memories_tenant_pinned
             ON memories(tenant_id, pinned)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_memories_kb_promotion
+            ON memories(tenant_id, promotion_group_id, kb_promotion_status)
             """
         )
         cursor.execute(
@@ -622,6 +634,12 @@ class Database:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bi_datasources_tenant ON bi_datasources(tenant_id)")
+        try:
+            cursor.execute(
+                "ALTER TABLE bi_datasources ADD COLUMN connection_config_json TEXT DEFAULT '{}'"
+            )
+        except Exception:
+            pass
 
         # === InsightForge 鉴数 (INS-1.0.0) ===
         cursor.execute("""
@@ -680,11 +698,16 @@ class Database:
                 tenant_id TEXT NOT NULL DEFAULT 'default',
                 name TEXT NOT NULL,
                 description TEXT,
+                default_doc_type TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_collections_tenant ON document_collections(tenant_id)")
+        try:
+            cursor.execute("ALTER TABLE document_collections ADD COLUMN default_doc_type TEXT")
+        except Exception:
+            pass
 
         # === Knowledge Base: 文档文件表 ===
         cursor.execute("""
@@ -696,6 +719,10 @@ class Database:
                 file_type TEXT,
                 chunk_count INTEGER DEFAULT 0,
                 status TEXT DEFAULT 'pending',
+                doc_type TEXT DEFAULT 'generic',
+                profile_ready INTEGER DEFAULT 0,
+                one_liner TEXT,
+                status_message TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (collection_id) REFERENCES document_collections(id)
             )
@@ -705,6 +732,42 @@ class Database:
             cursor.execute("ALTER TABLE document_files ADD COLUMN metadata_json TEXT DEFAULT '{}'")
         except Exception:
             pass
+        for _alter in (
+            "ALTER TABLE document_files ADD COLUMN doc_type TEXT DEFAULT 'generic'",
+            "ALTER TABLE document_files ADD COLUMN profile_ready INTEGER DEFAULT 0",
+            "ALTER TABLE document_files ADD COLUMN one_liner TEXT",
+            "ALTER TABLE document_files ADD COLUMN status_message TEXT",
+        ):
+            try:
+                cursor.execute(_alter)
+            except Exception:
+                pass
+
+        # === Knowledge Base: 文档画像表（v4.4 深度入库）===
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS document_profiles (
+                doc_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                collection_id TEXT NOT NULL,
+                doc_type TEXT NOT NULL DEFAULT 'generic',
+                title TEXT,
+                one_liner TEXT,
+                summary TEXT,
+                key_points_json TEXT,
+                sections_json TEXT,
+                key_facts_json TEXT,
+                glossary_json TEXT,
+                qa_pairs_json TEXT,
+                tags_json TEXT,
+                confidence REAL DEFAULT 1.0,
+                enrichment_model TEXT,
+                enriched_at TEXT,
+                parse_warnings_json TEXT,
+                FOREIGN KEY (doc_id) REFERENCES document_files(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_profiles_collection ON document_profiles(collection_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_profiles_tenant ON document_profiles(tenant_id)")
 
         # === Meeting Voice Recognition: transcriptions 表 ===
         cursor.execute("""
@@ -1126,6 +1189,9 @@ class Database:
             event_time=_parse_db_datetime(row[13]) if row[13] else None,
             entity_refs=entity_refs,
             scope=row[14] if len(row) > 14 and row[14] else "private",
+            promotion_group_id=row[15] if len(row) > 15 else None,
+            kb_doc_id=row[16] if len(row) > 16 else None,
+            kb_promotion_status=row[17] if len(row) > 17 else None,
         )
 
     def get_memory(self, memory_id: str, tenant_id: str = "default") -> Optional[Memory]:
@@ -1135,7 +1201,8 @@ class Database:
             """
             SELECT
                 id, tenant_id, content, category, importance, created_at, updated_at,
-                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope
+                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope,
+                promotion_group_id, kb_doc_id, kb_promotion_status
             FROM memories
             WHERE id = ? AND tenant_id = ?
             """,
@@ -1400,6 +1467,153 @@ class Database:
         conn.commit()
         return self.get_memory(memory_id, tenant_id=tenant_id)
 
+    def set_memory_promotion_meta(
+        self,
+        memory_id: str,
+        *,
+        tenant_id: str = "default",
+        promotion_group_id: Optional[str] = None,
+        kb_promotion_status: Optional[str] = None,
+        kb_doc_id: Optional[str] = None,
+        memory_type: Optional[str] = None,
+    ) -> bool:
+        sets = ["updated_at = ?"]
+        values: List[Any] = [get_local_now()]
+        if promotion_group_id is not None:
+            sets.append("promotion_group_id = ?")
+            values.append(promotion_group_id)
+        if kb_promotion_status is not None:
+            sets.append("kb_promotion_status = ?")
+            values.append(kb_promotion_status)
+        if kb_doc_id is not None:
+            sets.append("kb_doc_id = ?")
+            values.append(kb_doc_id)
+        if memory_type is not None:
+            sets.append("memory_type = ?")
+            values.append(memory_type)
+        values.extend([memory_id, tenant_id])
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE memories SET {', '.join(sets)} WHERE id = ? AND tenant_id = ?",
+            values,
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def get_kb_promotion_group_stats(self, tenant_id: str, promotion_group_id: str) -> Dict[str, Any]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*), COALESCE(SUM(LENGTH(content)), 0)
+            FROM memories
+            WHERE tenant_id = ?
+              AND source = 'manual_extract'
+              AND promotion_group_id = ?
+              AND (kb_promotion_status IS NULL OR kb_promotion_status = 'pending')
+            """,
+            (tenant_id, promotion_group_id),
+        )
+        row = cursor.fetchone()
+        return {
+            "count": int(row[0] or 0),
+            "total_chars": int(row[1] or 0),
+            "promotion_group_id": promotion_group_id,
+        }
+
+    def list_memories_for_kb_promotion(
+        self,
+        *,
+        tenant_id: str,
+        promotion_group_id: str,
+        memory_ids: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Memory]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        if memory_ids:
+            placeholders = ",".join("?" for _ in memory_ids)
+            cursor.execute(
+                f"""
+                SELECT id, tenant_id, content, category, importance, created_at, updated_at,
+                       last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope,
+                       promotion_group_id, kb_doc_id, kb_promotion_status
+                FROM memories
+                WHERE tenant_id = ? AND id IN ({placeholders})
+                  AND source = 'manual_extract'
+                  AND (kb_promotion_status IS NULL OR kb_promotion_status = 'pending')
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                [tenant_id, *memory_ids, limit],
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, tenant_id, content, category, importance, created_at, updated_at,
+                       last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope,
+                       promotion_group_id, kb_doc_id, kb_promotion_status
+                FROM memories
+                WHERE tenant_id = ?
+                  AND source = 'manual_extract'
+                  AND promotion_group_id = ?
+                  AND (kb_promotion_status IS NULL OR kb_promotion_status = 'pending')
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (tenant_id, promotion_group_id, limit),
+            )
+        return [self._memory_from_row(row) for row in cursor.fetchall() if row]
+
+    def mark_memories_kb_published(
+        self,
+        memory_ids: List[str],
+        *,
+        tenant_id: str,
+        kb_doc_id: str,
+    ) -> int:
+        if not memory_ids:
+            return 0
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        now = get_local_now()
+        updated = 0
+        for memory_id in memory_ids:
+            cursor.execute(
+                """
+                UPDATE memories
+                SET kb_promotion_status = 'published',
+                    kb_doc_id = ?,
+                    memory_type = 'longterm',
+                    importance = MAX(COALESCE(importance, 0.5), 0.65),
+                    updated_at = ?
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (kb_doc_id, now, memory_id, tenant_id),
+            )
+            updated += cursor.rowcount
+        conn.commit()
+        return updated
+
+    def list_kb_promotion_groups(self, limit: int = 200) -> List[tuple[str, str]]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT tenant_id, promotion_group_id
+            FROM memories
+            WHERE source = 'manual_extract'
+              AND promotion_group_id IS NOT NULL
+              AND (kb_promotion_status IS NULL OR kb_promotion_status = 'pending')
+            GROUP BY tenant_id, promotion_group_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return [(row[0], row[1]) for row in cursor.fetchall() if row[0] and row[1]]
+
     def delete_memory(self, memory_id: str, tenant_id: str = "default"):
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -1632,7 +1846,9 @@ class Database:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at FROM document_files WHERE id = ?",
+            "SELECT id, collection_id, file_name, file_path, file_type, chunk_count, status, "
+            "doc_type, profile_ready, one_liner, status_message, created_at "
+            "FROM document_files WHERE id = ?",
             (doc_id,),
         )
         row = cursor.fetchone()
@@ -1646,8 +1862,44 @@ class Database:
             "file_type": row[4],
             "chunk_count": row[5],
             "status": row[6],
-            "created_at": row[7],
+            "doc_type": row[7] or "generic",
+            "profile_ready": bool(row[8]),
+            "one_liner": row[9],
+            "status_message": row[10],
+            "created_at": row[11],
         }
+
+    def update_document_file(self, doc_id: str, **fields: Any) -> bool:
+        """部分更新 document_files 行；仅允许已知列。"""
+        allowed = {
+            "status",
+            "chunk_count",
+            "doc_type",
+            "profile_ready",
+            "one_liner",
+            "status_message",
+            "file_type",
+        }
+        sets: List[str] = []
+        values: List[Any] = []
+        for key, value in fields.items():
+            if key not in allowed:
+                continue
+            if key == "profile_ready":
+                value = 1 if bool(value) else 0
+            sets.append(f"{key} = ?")
+            values.append(value)
+        if not sets:
+            return False
+        values.append(doc_id)
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE document_files SET {', '.join(sets)} WHERE id = ?",
+            values,
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
     def delete_document_file(self, doc_id: str) -> bool:
         conn = self._get_conn()
@@ -1828,6 +2080,7 @@ class Database:
     def delete_cronjob(self, cronjob_id: str):
         conn = self._get_conn()
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM reminder_notifications WHERE job_id = ?", (cronjob_id,))
         cursor.execute("DELETE FROM cronjobs WHERE id = ?", (cronjob_id,))
         conn.commit()
 
@@ -2079,8 +2332,9 @@ class Database:
         file_size: Optional[int] = None,
         language: Optional[str] = None,
         model_used: Optional[str] = None,
+        transcription_id: Optional[str] = None,
     ) -> Transcription:
-        transcription_id = str(uuid.uuid4())
+        transcription_id = transcription_id or str(uuid.uuid4())
         now = get_local_now()
 
         conn = self._get_conn()
@@ -2147,6 +2401,7 @@ class Database:
         allowed_fields = {
             "duration", "language", "status", "transcript", "segments",
             "summary", "summary_type", "key_points", "model_used", "error_message",
+            "file_path", "file_name", "file_size",
         }
         updates = []
         params = []

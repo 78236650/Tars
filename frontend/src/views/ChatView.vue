@@ -41,6 +41,7 @@ const insightMetricQaEnabled = ref(false)
 const insightDatasourceId = ref('')
 const insightDatasources = ref<{ id: string; name: string }[]>([])
 const insightAsking = ref(false)
+const insightAskAbort = ref<AbortController | null>(null)
 const insightWorkflowEnabled = ref(false)
 const INSIGHT_ASK_RE = /^\/(问数|metric)\s+(.+)/is
 const INSIGHT_DS_STORAGE = 'tars_insight_ask_datasource_id'
@@ -151,12 +152,15 @@ const runInsightAsk = async (
     })
   }
   insightAsking.value = true
+  insightAskAbort.value?.abort()
+  const controller = new AbortController()
+  insightAskAbort.value = controller
   try {
     const answer: InsightMetricAnswer = await insightApi.ask(dsId, {
       question,
       candidate_metric_keys: candidateKeys,
       session_id: sessionId,
-    })
+    }, { signal: controller.signal })
     chatStore.appendMessage(sessionId, {
       id: `${Date.now()}-insight`,
       role: 'assistant',
@@ -166,10 +170,30 @@ const runInsightAsk = async (
       insightDatasourceId: dsId,
     })
   } catch (e: unknown) {
-    toast.error(getErrorDetail(e, t('insight.metric.askFailed')))
+    if (controller.signal.aborted) {
+      toast.info(t('chat.generationStopped'))
+    } else {
+      toast.error(getErrorDetail(e, t('insight.metric.askFailed')))
+    }
   } finally {
     insightAsking.value = false
+    if (insightAskAbort.value === controller) {
+      insightAskAbort.value = null
+    }
   }
+}
+
+const isGenerating = computed(() => wsStore.isGenerating || insightAsking.value)
+
+const stopGeneration = () => {
+  const sessionId = chatStore.currentSessionId
+  if (insightAsking.value) {
+    insightAskAbort.value?.abort()
+    insightAsking.value = false
+    return
+  }
+  if (!sessionId || !wsStore.isGenerating) return
+  wsStore.stopGeneration(sessionId)
 }
 
 const sendMessage = async () => {
@@ -350,11 +374,12 @@ const onInsightClarify = async (payload: {
 
       <ChatPanel
         :messages="messages"
-        :is-generating="wsStore.isGenerating || insightAsking"
+        :is-generating="isGenerating"
         :loading-history="messagesLoading"
         @quick-start="quickStart"
         @citation-click="openCitation"
         @insight-clarify="onInsightClarify"
+        @stop="stopGeneration"
       />
 
       <KnowledgeCitationPanel
@@ -454,8 +479,18 @@ const onInsightClarify = async (payload: {
           />
 
           <button
+            v-if="isGenerating"
+            type="button"
+            data-test="chat-stop-button"
+            @click="stopGeneration"
+            class="rounded-2xl border border-rose-500/50 bg-rose-500/15 px-5 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/25"
+            :title="t('chat.stopTitle')"
+          >
+            ⏹ {{ t('chat.stop') }}
+          </button>
+          <button
             @click="sendMessage"
-            :disabled="!wsStore.isConnected || (!inputMessage.trim() && attachments.length === 0)"
+            :disabled="isGenerating || !wsStore.isConnected || (!inputMessage.trim() && attachments.length === 0)"
             class="rounded-2xl bg-amber-500 px-5 py-3 text-sm font-medium text-stone-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-stone-700 disabled:text-stone-400"
           >
             {{ t('common.send') }}

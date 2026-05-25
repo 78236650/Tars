@@ -74,3 +74,26 @@ def test_apply_subagent_config_merges_and_audit(engine, db, tmp_path):
 
     log = db.get_evolution_apply_log(record.id)
     assert log["target_type"] == "subagent_config"
+
+
+def test_apply_invalidates_prompt_cache(engine):
+    """Each apply_* must drop cached static system prompt so new content takes effect immediately."""
+    invalidated: list[str] = []
+
+    class _FakeCache:
+        def invalidate(self, key: str) -> None:
+            invalidated.append(key)
+
+    import sys
+    pc_mod = sys.modules["tars.cache.prompt_cache"]
+    original = pc_mod.prompt_cache
+    pc_mod.prompt_cache = _FakeCache()
+    try:
+        engine.apply_personality("tenantX", {"honesty": 0.8})
+        engine.apply_prompt("tenantX", "master", "tuned content")
+        engine.apply_subagent_config("tenantX", {"delegation_weights": {"code": 0.3}})
+    finally:
+        pc_mod.prompt_cache = original
+
+    assert len(invalidated) == 3
+    assert all(key.startswith("sys_static:") for key in invalidated)

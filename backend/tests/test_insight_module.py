@@ -11,7 +11,7 @@ from tars.modules.registry import ModuleRegistry
 
 def test_insight_version_constants():
     assert CAPABILITY_NAME == "insight-forge"
-    assert INS_VERSION == "INS-2.0.0"
+    assert INS_VERSION == "INS-2.1.0"
 
 
 def test_insight_config_tier1_includes_doris():
@@ -83,7 +83,7 @@ def test_insight_version_endpoint(insight_client):
     assert res.status_code == 200
     data = res.json()
     assert data["capability"] == "insight-forge"
-    assert data["version"] == "INS-2.0.0"
+    assert data["version"] == "INS-2.1.0"
     assert "doris" in data["tier1_databases"]
 
 

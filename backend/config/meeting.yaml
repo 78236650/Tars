@@ -1,0 +1,34 @@
+# 会议助手 ASR / 转写配置
+meeting:
+  asr:
+    # sensevoice: 本地中英混合最佳（需预下载模型）；whisper: 默认可离线使用
+    backend: whisper
+    model: small
+    # 本地 faster-whisper 模型目录（含 model.bin），无外网时从此加载
+    model_path: data/models/whisper-small
+    device: auto
+    compute_type: auto
+    language_default: zh
+    output_script: simplified
+    # 勿用「请使用…」类指令作 prompt，Whisper 会反复幻觉输出；留空或仅用口语样例前缀
+    initial_prompt: ""
+    beam_size: 5
+    vad_filter: false
+    temperature: 0.0
+    preprocess:
+      enabled: true
+      sample_rate: 16000
+      channels: 1
+    sensevoice:
+      model: iic/SenseVoiceSmall
+      use_itn: true
+      vad_model: fsmn-vad
+      max_segment_ms: 30000
+      batch_size_s: 60
+      merge_vad: true
+      merge_length_s: 15
+      device: auto
+    realtime:
+      mode: hybrid
+      partial_interval_sec: 5
+      min_audio_chunks_for_partial: 1

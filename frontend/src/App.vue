@@ -4,6 +4,7 @@ import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import DesktopShell from '@/components/layout/DesktopShell.vue'
+import ToastHost from '@/components/common/ToastHost.vue'
 
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
@@ -35,6 +36,7 @@ onMounted(async () => {
     </div>
   </div>
   <RouterView v-else v-slot="{ Component }">
+    <ToastHost />
     <DesktopShell v-if="showShell">
       <KeepAlive include="ChatView">
         <component :is="Component" />

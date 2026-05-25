@@ -69,3 +69,28 @@ def split_snapshot_questions(
             llm_status = "ok"
 
     return business, llm_errors, llm_status
+
+
+def repair_schema_annotations(annotations: Dict[str, Any]) -> Dict[str, Any]:
+    """Repair mojibake in stored table/column descriptions for display."""
+    from ..utils.text_encoding import repair_mojibake
+
+    if not annotations:
+        return annotations
+    out: Dict[str, Any] = {}
+    for table, ann in annotations.items():
+        if not isinstance(ann, dict):
+            out[table] = ann
+            continue
+        fixed = dict(ann)
+        for key in ("description", "business_name"):
+            if isinstance(fixed.get(key), str):
+                fixed[key] = repair_mojibake(fixed[key])
+        cols = fixed.get("columns")
+        if isinstance(cols, dict):
+            fixed["columns"] = {
+                cn: repair_mojibake(cv) if isinstance(cv, str) else cv
+                for cn, cv in cols.items()
+            }
+        out[table] = fixed
+    return out

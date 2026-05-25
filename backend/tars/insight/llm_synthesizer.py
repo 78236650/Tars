@@ -26,19 +26,27 @@ class LlmSynthesizer:
         table_stats: Dict[str, Any],
         relations: List[Any],
         table_roles: Dict[str, str],
+        target_tables: Optional[List[str]] = None,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[str], List[str], str]:
         """
         Returns: (schema_annotations, metric_candidates, open_questions, llm_errors, llm_status)
         """
-        batches = self._build_batches(schema, table_stats, relations, table_roles)
+        batches = self._build_batches(
+            schema, table_stats, relations, table_roles, target_tables=target_tables
+        )
+        if target_tables is not None and len(target_tables) == 0:
+            return {}, [], [], [], "ok"
         annotations: Dict[str, Any] = {}
         metrics: List[Dict[str, Any]] = []
         open_questions: List[str] = []
         llm_errors: List[str] = []
 
         if self.llm_provider is None:
+            ann = self._heuristic_annotations(schema, table_roles)
+            if target_tables is not None:
+                ann = {k: v for k, v in ann.items() if k in set(target_tables)}
             return (
-                self._heuristic_annotations(schema, table_roles),
+                ann,
                 [],
                 [],
                 [
@@ -83,9 +91,13 @@ class LlmSynthesizer:
         table_stats: Dict[str, Any],
         relations: List[Any],
         table_roles: Dict[str, str],
+        target_tables: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         tables = schema.get("tables") or {}
         names = list(tables.keys())[: self.budget.max_tables]
+        if target_tables is not None:
+            target_set = set(target_tables)
+            names = [n for n in names if n in target_set]
         batch_size = self.budget.llm_batch_tables
         batches = []
         for i in range(0, len(names), batch_size):
@@ -130,6 +142,8 @@ class LlmSynthesizer:
                         }
                     )
             batches.append(payload)
+        if target_tables is not None and not names:
+            return []
         return batches or [{"tables": {}, "relations": []}]
 
     async def _call_llm(self, datasource_name: str, batch: Dict[str, Any]) -> Dict[str, Any]:

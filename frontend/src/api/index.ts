@@ -27,6 +27,7 @@ import type {
   ModelSwitchBody,
   ModelSwitchResult,
   DataSource,
+  DataSourceConnectionInput,
   BIQueryResult,
   BIChartResult,
   ReminderNotification,
@@ -34,6 +35,9 @@ import type {
   KnowledgeCollection,
   KnowledgeDocument,
   KnowledgeSearchResult,
+  DocProfile,
+  DocumentStatusResponse,
+  DocumentPassage,
   Transcription,
   TranscriptionListData,
 } from '@/types'
@@ -242,8 +246,23 @@ export const memoryApi = {
 
   saveFromTurn: async (payload: {
     items: Array<{ content: string; category: string; importance?: number }>
-  }): Promise<{ saved: MemoryItem[]; skipped: number }> => {
-    const response = await api.post<{ saved: MemoryItem[]; skipped: number }>('/memory/save-from-turn', payload)
+    user_context?: string
+    publish_to_knowledge?: boolean
+    promotion_group_id?: string
+  }): Promise<{
+    saved: MemoryItem[]
+    skipped: number
+    knowledge_doc_ids?: string[]
+    promotion_group_id?: string
+    promotion_trigger?: string
+  }> => {
+    const response = await api.post<{
+      saved: MemoryItem[]
+      skipped: number
+      knowledge_doc_ids?: string[]
+      promotion_group_id?: string
+      promotion_trigger?: string
+    }>('/memory/save-from-turn', payload)
     return response.data
   },
 
@@ -463,13 +482,18 @@ export const biApi = {
     return response.data
   },
 
-  createDataSource: async (data: { name: string; db_type: string; connection_url: string }): Promise<{ success: boolean; datasource: DataSource }> => {
+  createDataSource: async (data: DataSourceConnectionInput & { name: string }): Promise<{ success: boolean; datasource: DataSource }> => {
     const response = await api.post('/datasources/', data)
     return response.data
   },
 
-  updateDataSource: async (id: string, data: Partial<{ name: string; db_type: string; connection_url: string }>): Promise<{ success: boolean; datasource: DataSource }> => {
+  updateDataSource: async (id: string, data: Partial<DataSourceConnectionInput & { name: string }>): Promise<{ success: boolean; datasource: DataSource }> => {
     const response = await api.put(`/datasources/${id}`, data)
+    return response.data
+  },
+
+  testConnectionConfig: async (data: DataSourceConnectionInput): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post('/datasources/test-config', data)
     return response.data
   },
 
@@ -630,9 +654,10 @@ export const insightApi = {
       candidate_metric_keys?: string[]
       as_of_date?: string
       session_id?: string
-    }
+    },
+    config?: { signal?: AbortSignal },
   ): Promise<InsightMetricAnswer> => {
-    const response = await api.post(`/insight/datasources/${datasourceId}/ask`, body)
+    const response = await api.post(`/insight/datasources/${datasourceId}/ask`, body, config)
     return response.data
   },
 
@@ -745,7 +770,7 @@ export const knowledgeApi = {
     return response.data
   },
 
-  createCollection: async (data: { name: string; description?: string }): Promise<{ success: boolean; collection: KnowledgeCollection }> => {
+  createCollection: async (data: { name: string; description?: string; default_doc_type?: string }): Promise<{ success: boolean; collection: KnowledgeCollection }> => {
     const response = await api.post('/knowledge/collections', data)
     return response.data
   },
@@ -760,20 +785,41 @@ export const knowledgeApi = {
     return response.data
   },
 
-  uploadDocument: async (collectionId: string, file: File): Promise<{ success: boolean; document: KnowledgeDocument }> => {
+  uploadDocument: async (collectionId: string, file: File, docType?: string): Promise<{ success: boolean; document: KnowledgeDocument }> => {
     const formData = new FormData()
     formData.append('file', file)
+    if (docType) {
+      formData.append('doc_type', docType)
+    }
     const response = await api.post(`/knowledge/collections/${collectionId}/documents`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    const data = response.data
-    if (!data?.success || data.document?.status !== 'indexed') {
-      const detail = data?.document?.status || 'index_failed'
-      throw Object.assign(new Error(String(detail)), {
-        response: { data: { detail: `文档解析或索引失败: ${detail}` } },
-      })
-    }
-    return data
+    return response.data
+  },
+
+  getDocumentProfile: async (collectionId: string, docId: string): Promise<DocProfile> => {
+    const response = await api.get(`/knowledge/collections/${collectionId}/documents/${docId}/profile`)
+    return response.data
+  },
+
+  getDocumentStatus: async (collectionId: string, docId: string): Promise<DocumentStatusResponse> => {
+    const response = await api.get(`/knowledge/collections/${collectionId}/documents/${docId}/status`)
+    return response.data
+  },
+
+  getDocumentPassages: async (
+    collectionId: string,
+    docId: string,
+    sectionId?: string,
+  ): Promise<{ doc_id: string; section_id?: string | null; passages: DocumentPassage[] }> => {
+    const params = sectionId ? { section_id: sectionId } : undefined
+    const response = await api.get(`/knowledge/collections/${collectionId}/documents/${docId}/passages`, { params })
+    return response.data
+  },
+
+  reEnrichDocument: async (collectionId: string, docId: string): Promise<{ success: boolean; doc_id: string; status: string }> => {
+    const response = await api.post(`/knowledge/collections/${collectionId}/documents/${docId}/re-enrich`)
+    return response.data
   },
 
   deleteDocument: async (collectionId: string, docId: string): Promise<{ success: boolean; message: string }> => {
@@ -781,13 +827,26 @@ export const knowledgeApi = {
     return response.data
   },
 
-  search: async (query: string, collectionIds?: string[], top_k?: number): Promise<{ query: string; results: KnowledgeSearchResult[]; total: number }> => {
-    const response = await api.post('/knowledge/search', { query, collection_ids: collectionIds, top_k })
+  search: async (query: string, collectionIds?: string[], top_k?: number, mode?: string): Promise<{ query: string; mode?: string; results: KnowledgeSearchResult[]; total: number }> => {
+    const response = await api.post('/knowledge/search', { query, collection_ids: collectionIds, top_k, mode: mode || 'chat' })
     return response.data
   },
 
-  queryCollection: async (collectionId: string, query: string, top_k?: number): Promise<{ query: string; collection_id: string; results: KnowledgeSearchResult[]; total: number }> => {
-    const response = await api.post(`/knowledge/collections/${collectionId}/query`, { query, top_k })
+  queryCollection: async (collectionId: string, query: string, top_k?: number, mode?: string): Promise<{ query: string; collection_id: string; mode?: string; results: KnowledgeSearchResult[]; total: number }> => {
+    const response = await api.post(`/knowledge/collections/${collectionId}/query`, { query, top_k, mode: mode || 'chat' })
+    return response.data
+  },
+
+  reindexEstimate: async (collectionId: string, docIds?: string[]): Promise<{ doc_count: number; est_tokens: number; require_confirm: boolean; doc_ids: string[] }> => {
+    const response = await api.post(`/knowledge/collections/${collectionId}/reindex/estimate`, { doc_ids: docIds })
+    return response.data
+  },
+
+  reindexCollection: async (collectionId: string, options?: { doc_ids?: string[]; confirm?: boolean }): Promise<{ success: boolean; scheduled: number; status: string }> => {
+    const response = await api.post(`/knowledge/collections/${collectionId}/reindex`, {
+      doc_ids: options?.doc_ids,
+      confirm: options?.confirm ?? false,
+    })
     return response.data
   },
 
@@ -837,6 +896,13 @@ export const meetingApi = {
     return response.data
   },
 
+  fetchAudio: async (transcriptionId: string): Promise<Blob> => {
+    const response = await api.get(`/meeting/${transcriptionId}/audio`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
   approveToKnowledge: async (id: string, summary: string, keyPoints: string[]): Promise<{ success: boolean; message: string; knowledge_doc_id: string }> => {
     const response = await api.post(`/meeting/${id}/approve-to-knowledge`, { summary, key_points: keyPoints })
     return response.data
@@ -844,6 +910,62 @@ export const meetingApi = {
 
   updateSummary: async (id: string, summary: string, keyPoints: string[]): Promise<{ success: boolean }> => {
     const response = await api.put(`/meeting/${id}/summary`, { summary, key_points: keyPoints })
+    return response.data
+  },
+
+  getPromptTemplates: async (): Promise<{
+    templates: Array<{ id: string; name: string; description: string; prompt: string; is_default?: boolean }>
+    custom_prompt?: string
+    active_template: string
+  }> => {
+    const response = await api.get('/meeting/settings/templates')
+    return response.data
+  },
+
+  getAsrSettings: async (): Promise<{
+    backend: string
+    configured_backend?: string
+    model: string
+    whisper_model: string
+    whisper_model_options: Array<{ id: string; label: string }>
+    language_default: string
+    output_script: string
+    realtime_mode?: string
+    preprocess_enabled?: boolean
+    language_options: Array<{ id: string; label: string }>
+  }> => {
+    const response = await api.get('/meeting/settings/asr')
+    return response.data
+  },
+
+  setAsrSettings: async (payload: {
+    whisper_model: string
+  }): Promise<{ success: boolean; message?: string; whisper_model?: string; model?: string }> => {
+    const response = await api.put('/meeting/settings/asr', payload)
+    return response.data
+  },
+
+  getModelSettings: async (): Promise<{ provider: string; model: string; endpoint_id?: string | null; source?: string }> => {
+    const response = await api.get('/meeting/settings/model')
+    return response.data
+  },
+
+  setModelSettings: async (payload: {
+    provider: string
+    model: string
+    endpoint_id?: string
+  }): Promise<{ success: boolean; message?: string }> => {
+    const response = await api.put('/meeting/settings/model', payload)
+    return response.data
+  },
+
+  saveCustomPrompt: async (prompt: string): Promise<{ success: boolean }> => {
+    const response = await api.put('/meeting/settings/prompt', { prompt })
+    return response.data
+  },
+
+  resetCustomPrompt: async (): Promise<{ success: boolean; active_template?: string; message?: string }> => {
+    const response = await api.delete('/meeting/settings/prompt')
     return response.data
   },
 }

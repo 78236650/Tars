@@ -37,7 +37,35 @@ def ensure_knowledge_chunks_table(db) -> None:
         "CREATE INDEX IF NOT EXISTS idx_kchunks_coll_tenant ON knowledge_chunks(collection_id, tenant_id)"
     )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_kchunks_doc ON knowledge_chunks(doc_id)")
+    try:
+        cursor.execute("ALTER TABLE knowledge_chunks ADD COLUMN metadata_json TEXT DEFAULT '{}'")
+    except Exception:
+        pass
     conn.commit()
+
+
+def _doc_id_from_chunk_id(chunk_id: str) -> str:
+    for sep in ("_chunk_", "_summary_", "_section_", "_keyfact_", "_qa_", "_glossary_"):
+        if sep in chunk_id:
+            return chunk_id.split(sep)[0]
+    return chunk_id
+
+
+def _infer_chunk_type(chunk_id: str, metadata: Dict[str, Any]) -> str:
+    ct = metadata.get("chunk_type")
+    if ct:
+        return str(ct)
+    if "_summary_" in chunk_id:
+        return "doc_summary"
+    if "_section_" in chunk_id:
+        return "section_summary"
+    if "_keyfact_" in chunk_id:
+        return "key_fact"
+    if "_qa_" in chunk_id:
+        return "synthetic_qa"
+    if "_glossary_" in chunk_id:
+        return "glossary"
+    return "passage"
 
 
 def store_chunks(
@@ -69,28 +97,30 @@ def store_chunks(
     cursor = conn.cursor()
     now = _now()
     stored = 0
+    total = len(chunks)
     for i, chunk in enumerate(chunks):
-        chunk_id = f"{doc_id}_chunk_{chunk['chunk_index']}"
+        chunk_id = chunk.get("chunk_id") or f"{doc_id}_chunk_{i}"
         emb_blob = None
         if embeddings and i < len(embeddings):
             emb_blob = serialize_vector(embeddings[i])
         cursor.execute(
             """
             INSERT INTO knowledge_chunks
-            (id, collection_id, tenant_id, doc_id, chunk_index, chunk_total, file_name, content, embedding, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, collection_id, tenant_id, doc_id, chunk_index, chunk_total, file_name, content, embedding, created_at, metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 chunk_id,
                 collection_id,
                 tenant_id,
                 doc_id,
-                chunk["chunk_index"],
-                chunk.get("chunk_total", len(chunks)),
+                i,
+                chunk.get("chunk_total", total),
                 file_name,
                 chunk["text"],
                 emb_blob,
                 now,
+                json.dumps(chunk.get("metadata") or {}, ensure_ascii=False),
             ),
         )
         stored += 1
@@ -104,6 +134,44 @@ def delete_chunks(db, doc_id: str) -> None:
     cursor = conn.cursor()
     cursor.execute("DELETE FROM knowledge_chunks WHERE doc_id = ?", (doc_id,))
     conn.commit()
+
+
+def get_passage_chunks(db, doc_id: str, *, section_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return passage chunks for a document."""
+    ensure_knowledge_chunks_table(db)
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, chunk_index, content, file_name, metadata_json
+        FROM knowledge_chunks
+        WHERE doc_id = ?
+        ORDER BY chunk_index ASC
+        """,
+        (doc_id,),
+    )
+    passages = []
+    for chunk_id, chunk_index, content, file_name, meta_json in cursor.fetchall():
+        meta: Dict[str, Any] = {}
+        if meta_json:
+            try:
+                meta = json.loads(meta_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        chunk_type = _infer_chunk_type(chunk_id, meta)
+        if chunk_type != "passage":
+            continue
+        if section_id and meta.get("section_id") and meta.get("section_id") != section_id:
+            continue
+        passages.append(
+            {
+                "chunk_index": chunk_index,
+                "text": content,
+                "file_name": file_name or "",
+                "section_id": meta.get("section_id"),
+            }
+        )
+    return passages
 
 
 def search_chunks(
@@ -124,7 +192,7 @@ def search_chunks(
     placeholders = ",".join("?" * len(collection_ids))
     cursor.execute(
         f"""
-        SELECT id, content, file_name, chunk_index, chunk_total, collection_id, embedding
+        SELECT id, content, file_name, chunk_index, chunk_total, collection_id, embedding, metadata_json
         FROM knowledge_chunks
         WHERE tenant_id = ? AND collection_id IN ({placeholders})
         """,
@@ -146,7 +214,17 @@ def search_chunks(
             print(f"[KnowledgeSQLite] Query embedding failed: {e}")
 
     for row in rows:
-        chunk_id, content, file_name, chunk_index, chunk_total, collection_id, emb_blob = row
+        chunk_id, content, file_name, chunk_index, chunk_total, collection_id, emb_blob, meta_json = row
+        meta: Dict[str, Any] = {}
+        if meta_json:
+            try:
+                meta = json.loads(meta_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        chunk_type = _infer_chunk_type(chunk_id, meta)
+        doc_id = meta.get("doc_id") or _doc_id_from_chunk_id(chunk_id)
+        meta["doc_id"] = doc_id
+        meta["chunk_type"] = chunk_type
         score = 0.0
         if query_vec and emb_blob:
             vec = deserialize_vector(emb_blob)
@@ -166,10 +244,13 @@ def search_chunks(
                     "id": chunk_id,
                     "text": content,
                     "metadata": {
-                        "doc_id": chunk_id.rsplit("_chunk_", 1)[0],
+                        **meta,
+                        "doc_id": doc_id,
                         "file_name": file_name,
                         "chunk_index": chunk_index,
                         "chunk_total": chunk_total,
+                        "collection_id": collection_id,
+                        "chunk_type": chunk_type,
                     },
                     "score": score,
                     "source": {
@@ -177,6 +258,7 @@ def search_chunks(
                         "file_name": file_name,
                         "chunk_index": chunk_index,
                         "chunk_total": chunk_total,
+                        "doc_id": doc_id,
                     },
                 },
             )

@@ -635,7 +635,7 @@ async def get_datasource_brief(
     tables = (ds.schema_snapshot or {}).get("tables") or {}
     metrics = _metric_store.list_by_datasource(datasource_id, tenant_id)
     snapshot = (latest.insight_snapshot_json if latest else None) or {}
-    from ..snapshot_utils import split_snapshot_questions
+    from ..snapshot_utils import repair_schema_annotations, split_snapshot_questions
 
     open_questions, llm_errors, llm_status = split_snapshot_questions(snapshot)
     cfg = get_insight_config()
@@ -662,7 +662,7 @@ async def get_datasource_brief(
             else None
         ),
         "insight_snapshot": snapshot,
-        "schema_annotations": annotations,
+        "schema_annotations": repair_schema_annotations(annotations),
         "metrics": [
             {
                 "id": m.id,

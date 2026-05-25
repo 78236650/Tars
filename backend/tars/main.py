@@ -1,11 +1,16 @@
+from pathlib import Path
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from pathlib import Path
 import uvicorn
-import os
 import asyncio
 import json
 import traceback
@@ -55,7 +60,7 @@ from tars.insight.api import router as insight_router
 from tars.insight.api.router import init_insight_api
 from tars.api.knowledge import router as knowledge_router, init_knowledge_api
 from tars.api.meeting import router as meeting_router, init_meeting_api
-from tars.api.memory import router as memory_router, init_memory_api
+from tars.api.memory import router as memory_router, init_memory_api, set_memory_provider_resolver
 from tars.api.audit import router as audit_router, init_audit_api
 from tars.api.approvals import router as approvals_router, init_approval_api
 from tars.api.handoffs import router as handoffs_router, init_handoff_api
@@ -66,7 +71,7 @@ from tars.tenant import TenantContextCache
 from tars.cron import CronRuntime
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="4.3.0")
+app = FastAPI(title="TARS Agent", version="4.3.1")
 
 # CORS 配置
 _cors_origins = os.environ.get(
@@ -131,7 +136,7 @@ tool_registry.register(PythonExecTool(workspace_dir=str(project_dir.parent)))
 tool_registry.register(ArchivalInsertTool(db=db))
 
 # 会议语音识别工具（provider 在 agent 初始化后注入）
-meeting_tool = MeetingRecognizerTool(model_size="base")
+meeting_tool = MeetingRecognizerTool()
 tool_registry.register(meeting_tool)
 
 # 任务规划工具
@@ -316,7 +321,7 @@ cron_runtime = CronRuntime(
     outbound=_outbound,
 )
 cronjob_tool.set_runtime(cron_runtime)
-memory_scheduler = MemoryScheduler(memory_manager.compressor, get_scheduler())
+memory_scheduler = MemoryScheduler(memory_manager, get_scheduler())
 memory_scheduler.ensure_started()
 
 # 注入 LLM provider 到会议识别工具（用于摘要生成）
@@ -374,12 +379,14 @@ if module_registry.is_enabled("insight") and module_registry.check_dependencies(
 elif module_registry.is_enabled("insight"):
     print("[Startup] InsightForge 已配置但依赖未满足 (需要 bi + knowledge)")
 if module_registry.is_enabled("knowledge"):
-    init_knowledge_api(db, vector_store, embedding_provider)
+    from tars.knowledge.config import load_knowledge_config
+    init_knowledge_api(db, vector_store, embedding_provider, knowledge_config=load_knowledge_config())
 if module_registry.is_enabled("meeting"):
     init_meeting_api(db, meeting_tool, vector_store, embedding_provider)
 else:
     print("[Startup] 会议助手模块已禁用 (config/modules.yaml → meeting.enabled)")
 init_memory_api(db, memory_manager)
+set_memory_provider_resolver(lambda: agent.provider)
 init_audit_api(db)
 init_approval_api(
     db,
@@ -1004,6 +1011,18 @@ def _serialize_reminder_notification(notification, include_logs: bool = True) ->
     return data
 
 
+def _resolve_cron_user_id(
+    user_id: Optional[str] = None,
+    x_tenant_id: Optional[str] = None,
+) -> str:
+    """Resolve cron/reminder scope: explicit query param > X-Tenant-Id header > default."""
+    if user_id:
+        return user_id
+    if x_tenant_id:
+        return x_tenant_id
+    return "default"
+
+
 def _serialize_cronjob(job, include_config: bool = False) -> Dict[str, Any]:
     data = {
         "id": job.id,
@@ -1029,9 +1048,12 @@ def _serialize_cronjob(job, include_config: bool = False) -> Dict[str, Any]:
     return data
 
 @app.get("/api/cronjobs", response_model=CronJobResponse)
-async def get_cronjobs(user_id: str = "default"):
+async def get_cronjobs(
+    user_id: Optional[str] = None,
+    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-Id"),
+):
     """获取用户的定时任务列表"""
-    jobs = db.get_user_cronjobs(user_id)
+    jobs = db.get_user_cronjobs(_resolve_cron_user_id(user_id, x_tenant_id))
     return {
         "success": True,
         "message": "success",
@@ -1057,11 +1079,13 @@ async def get_cronjob(job_id: str):
 
 @app.get("/api/reminder-notifications", response_model=CronJobResponse)
 async def list_reminder_notifications(
-    user_id: str = "default",
+    user_id: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
+    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-Id"),
 ):
-    notifications = db.list_reminder_notifications(user_id, limit=limit, offset=offset)
+    effective_user_id = _resolve_cron_user_id(user_id, x_tenant_id)
+    notifications = db.list_reminder_notifications(effective_user_id, limit=limit, offset=offset)
     return {
         "success": True,
         "message": "success",
@@ -1070,8 +1094,8 @@ async def list_reminder_notifications(
                 _serialize_reminder_notification(notification, include_logs=False)
                 for notification in notifications
             ],
-            "total": db.count_reminder_notifications(user_id),
-            "unread_total": db.count_unread_reminder_notifications(user_id),
+            "total": db.count_reminder_notifications(effective_user_id),
+            "unread_total": db.count_unread_reminder_notifications(effective_user_id),
             "limit": limit,
             "offset": offset,
         },
@@ -1102,10 +1126,14 @@ async def mark_reminder_notification_read(notification_id: str):
     }
 
 @app.post("/api/cronjobs", response_model=CronJobResponse)
-async def create_cronjob(request: CronJobCreateRequest, user_id: str = "default"):
+async def create_cronjob(
+    request: CronJobCreateRequest,
+    user_id: Optional[str] = None,
+    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-Id"),
+):
     """创建定时任务"""
     job = db.create_cronjob(
-        user_id=user_id,
+        user_id=_resolve_cron_user_id(user_id, x_tenant_id),
         name=request.name,
         cron_expression=request.cron,
         task_type=request.task_type,
@@ -1313,8 +1341,9 @@ async def startup_event():
 async def shutdown_event():
     """关闭事件"""
     await shutdown_scheduler()
-    from tars.tools.builtin.meeting_recognizer import shutdown_whisper_pool
-    shutdown_whisper_pool()
+    from tars.meeting.asr.pool import shutdown_asr_pool
+
+    shutdown_asr_pool()
     # v4.0.0: close shared connection pool
     from tars.models.connection_pool import close_connection_pool
     await close_connection_pool()

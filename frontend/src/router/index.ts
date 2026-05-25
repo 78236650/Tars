@@ -134,6 +134,14 @@ const router = createRouter({
       }
     },
     {
+      path: '/bi/query',
+      redirect: { path: '/bi', query: { tab: 'query' } },
+    },
+    {
+      path: '/bi/datasources',
+      redirect: { path: '/bi', query: { tab: 'datasources' } },
+    },
+    {
       path: '/insight',
       name: 'insight',
       component: () => import('@/views/InsightView.vue'),
@@ -188,6 +196,12 @@ router.beforeEach((to) => {
     const settings = useSettingsStore()
     const enabled = settings.enabledModules
     if (enabled.length && !enabled.includes(to.meta.module as string)) {
+      return '/'
+    }
+    if (
+      settings.roleAllowedModules !== null
+      && !settings.roleAllowedModules.includes(to.meta.module as string)
+    ) {
       return '/'
     }
   }

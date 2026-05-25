@@ -209,7 +209,7 @@ cases:
         expect_status: 200
         expect_json:
           capability: insight-forge
-          version: INS-2.0.0
+          version: INS-2.1.0
       - method: GET
         path: /api/insight/datasources/{datasource_id}/workflow
         query:

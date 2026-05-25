@@ -86,6 +86,16 @@ class ApplyEngine:
         self._batch_id = str(uuid.uuid4())
         return self._batch_id
 
+    @staticmethod
+    def _invalidate_prompt_cache(tenant_id: str) -> None:
+        """Drop cached static system prompt so next Agent turn rebuilds it."""
+        try:
+            from ..cache.prompt_cache import prompt_cache, hash_key
+            if prompt_cache:
+                prompt_cache.invalidate(hash_key("sys_static", tenant_id))
+        except Exception as exc:
+            logger.warning("prompt_cache invalidate failed: %s", exc)
+
     def _persist_apply_log(self, record: ApplyRecord, before_content: str, *, created_at: str) -> None:
         self.db.insert_evolution_apply_log(
             apply_id=record.id,
@@ -156,6 +166,7 @@ class ApplyEngine:
             diff_summary=f"updated {len(params)} parameters",
         )
         self._persist_apply_log(record, before, created_at=now)
+        self._invalidate_prompt_cache(tenant_id)
         return record
 
     def apply_prompt(self, tenant_id: str, prompt_type: str, content: str) -> ApplyRecord:
@@ -180,6 +191,7 @@ class ApplyEngine:
             diff_summary=f"prompt {prompt_type}",
         )
         self._persist_apply_log(record, before, created_at=now)
+        self._invalidate_prompt_cache(tenant_id)
         return record
 
     def _subagent_config_path(self, tenant_id: str) -> Path:
@@ -228,6 +240,7 @@ class ApplyEngine:
             diff_summary=f"subagent keys: {', '.join(sorted(config.keys()))}",
         )
         self._persist_apply_log(record, before, created_at=now)
+        self._invalidate_prompt_cache(tenant_id)
         return record
 
     def read_prompt(self, tenant_id: str, prompt_type: str) -> str:
@@ -251,6 +264,9 @@ class ApplyEngine:
                 raise RollbackConflictError(f"rollback conflict for {apply_id}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(before_content, encoding="utf-8")
+        tenant_id = log.get("tenant_id")
+        if tenant_id:
+            self._invalidate_prompt_cache(tenant_id)
         return True
 
     def rollback_batch(self, batch_id: str, *, force: bool = False) -> list[str]:
@@ -300,6 +316,7 @@ class ApplyEngine:
             diff_summary=f"skill {skill_id} description",
         )
         self._persist_apply_log(record, before, created_at=now)
+        self._invalidate_prompt_cache(tenant_id)
         return record
 
     def read_personality_params(self, tenant_id: str) -> Dict[str, float]:

@@ -48,7 +48,7 @@ def test_backfill_workflow_ready_after_completed_run():
     bi = DataSourceStore(db)
     ds = bi.create("default", "ds-a", "postgresql", "postgresql://localhost/x")
     run_store = InsightProfileRunStore(db)
-    run = run_store.create(ds.id, "default", "INS-2.0.0", {})
+    run = run_store.create(ds.id, "default", "INS-2.1.0", {})
     run_store.complete(run.id, "default", insight_snapshot={"tables": 1})
 
     conn = db._get_conn()
@@ -59,7 +59,7 @@ def test_backfill_workflow_ready_after_completed_run():
     loaded = bi.get(ds.id, "default")
     workflow = (loaded.schema_snapshot or {}).get("insight", {}).get("workflow", {})
     assert workflow.get("state") == "ready"
-    assert workflow.get("ins_version") == "INS-2.0.0"
+    assert workflow.get("ins_version") == "INS-2.1.0"
 
 
 def test_backfill_workflow_needs_forge_without_run():

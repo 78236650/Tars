@@ -181,13 +181,21 @@ async def test_profile_pipeline_e2e(file_datasource, bi_sqlite_db):
 
 @pytest.mark.anyio
 async def test_job_runner_updates_datasource(file_datasource, bi_sqlite_db):
+    from unittest.mock import patch
+
     from tars.insight.job_runner import InsightJobRunner
+    from tars.insight.knowledge_publisher import KnowledgePublisher
 
     ds_store = DataSourceStore(bi_sqlite_db)
     run_store = InsightProfileRunStore(bi_sqlite_db)
-    run = run_store.create(file_datasource.id, "default", "INS-1.0.0", {})
+    run = run_store.create(file_datasource.id, "default", "INS-2.1.0", {})
     runner = InsightJobRunner(bi_sqlite_db)
-    await runner.start_profile(run.id, file_datasource.id, "default")
+
+    with patch(
+        "tars.insight.profile_pipeline.get_default_llm_provider",
+        return_value=None,
+    ), patch.object(KnowledgePublisher, "publish", return_value="doc-test"):
+        await runner.start_profile(run.id, file_datasource.id, "default")
 
     finished = run_store.get(run.id, "default")
     assert finished.status == "completed"
@@ -198,3 +206,107 @@ async def test_job_runner_updates_datasource(file_datasource, bi_sqlite_db):
     metric_store = InsightMetricStore(bi_sqlite_db)
     # metrics may be empty without LLM
     assert metric_store.list_by_datasource(file_datasource.id, "default") is not None
+
+
+@pytest.fixture
+def multi_table_datasource(bi_sqlite_db, tmp_path):
+    from tests.insight.fixtures.profile_perf_db import build_sqlite
+
+    db_file = tmp_path / "multi.db"
+    url = build_sqlite(db_file, n_tables=5, n_columns=6, n_rows=20)
+    store = DataSourceStore(bi_sqlite_db)
+    return store.create("default", "multi-table", "sqlite", url)
+
+
+@pytest.mark.anyio
+async def test_profile_snapshot_includes_perf(multi_table_datasource):
+    pipeline = ProfilePipeline(llm_provider=None)
+    result = await pipeline.run(multi_table_datasource)
+    snap = result["insight_snapshot"]
+    assert "perf" in snap
+    assert snap["perf"]["phases_ms"]["stats"] > 0
+    assert snap["perf"]["stats"]["tables_total"] == 5
+    assert snap["profile_run_type"] == "full"
+
+
+@pytest.mark.anyio
+async def test_incremental_second_run_reuses_tables(multi_table_datasource):
+    pipeline = ProfilePipeline(llm_provider=None)
+    r1 = await pipeline.run(multi_table_datasource)
+    r2 = await pipeline.run(
+        multi_table_datasource,
+        previous_snapshot=r1["insight_snapshot"],
+    )
+    snap2 = r2["insight_snapshot"]
+    assert snap2["profile_run_type"] == "incremental"
+    assert snap2["incremental"]["reused"] >= 4
+    assert snap2["incremental"]["resampled"] >= 4
+
+
+@pytest.mark.anyio
+async def test_job_runner_incremental_second_run(file_datasource, bi_sqlite_db):
+    from unittest.mock import patch
+
+    from tars.insight.job_runner import InsightJobRunner
+    from tars.insight.knowledge_publisher import KnowledgePublisher
+
+    run_store = InsightProfileRunStore(bi_sqlite_db)
+    runner = InsightJobRunner(bi_sqlite_db)
+
+    with patch(
+        "tars.insight.profile_pipeline.get_default_llm_provider",
+        return_value=None,
+    ), patch.object(KnowledgePublisher, "publish", return_value="doc-test"):
+        run1 = run_store.create(file_datasource.id, "default", "INS-2.1.0", {})
+        await runner.start_profile(run1.id, file_datasource.id, "default")
+        assert run_store.get(run1.id, "default").status == "completed"
+
+        run2 = run_store.create(file_datasource.id, "default", "INS-2.1.0", {})
+        await runner.start_profile(run2.id, file_datasource.id, "default")
+        finished = run_store.get(run2.id, "default")
+        assert finished.status == "completed"
+        snap = finished.insight_snapshot_json or {}
+        assert snap.get("profile_run_type") == "incremental"
+        assert (snap.get("incremental") or {}).get("reused", 0) >= 1
+
+
+@pytest.mark.anyio
+async def test_force_profile_run_ignores_incremental(multi_table_datasource):
+    pipeline = ProfilePipeline(llm_provider=None)
+    r1 = await pipeline.run(multi_table_datasource)
+    r2 = await pipeline.run(
+        multi_table_datasource,
+        previous_snapshot=r1["insight_snapshot"],
+        force=True,
+    )
+    snap2 = r2["insight_snapshot"]
+    assert snap2["profile_run_type"] == "full"
+    assert snap2["incremental"]["reused"] == 0
+
+
+@pytest.mark.anyio
+async def test_llm_annotation_reused_on_incremental(multi_table_datasource):
+    calls = {"n": 0}
+
+    class CountingLlm:
+        async def chat(self, *a, **kw):
+            calls["n"] += 1
+            return type("R", (), {"content": '{"tables":{}}'})()
+
+    pipeline = ProfilePipeline(llm_provider=CountingLlm())
+    r1 = await pipeline.run(multi_table_datasource)
+    n1 = calls["n"]
+    r2 = await pipeline.run(
+        multi_table_datasource,
+        previous_snapshot=r1["insight_snapshot"],
+    )
+    assert calls["n"] == n1
+    snap2 = r2["insight_snapshot"]
+    assert snap2["perf"]["synthesize"]["tables_annotation_reused"] >= 4
+
+
+@pytest.mark.anyio
+async def test_snapshot_includes_completed_at(multi_table_datasource):
+    pipeline = ProfilePipeline(llm_provider=None)
+    result = await pipeline.run(multi_table_datasource)
+    assert result["insight_snapshot"].get("completed_at")

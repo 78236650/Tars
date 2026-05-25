@@ -118,7 +118,27 @@ class InsightJobRunner:
         )
 
         try:
-            result = await pipeline.run(ds, run_id=run_id)
+            previous_run = self.run_store.latest_completed_for_datasource(
+                datasource_id, tenant_id
+            )
+            previous_snapshot = None
+            previous_completed_at = None
+            if previous_run and previous_run.insight_snapshot_json:
+                previous_snapshot = previous_run.insight_snapshot_json
+                previous_completed_at = (
+                    previous_run.finished_at
+                    or previous_snapshot.get("completed_at")
+                )
+
+            force = bool((run.budget_json or {}).get("force"))
+
+            result = await pipeline.run(
+                ds,
+                run_id=run_id,
+                previous_snapshot=previous_snapshot,
+                force=force,
+                previous_completed_at=previous_completed_at,
+            )
             if not result.get("success"):
                 err = result.get("error", "profile failed")
                 self.run_store.complete(

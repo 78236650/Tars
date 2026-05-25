@@ -119,6 +119,7 @@ class WebSocketChannel(Channel):
             "user_decision",
             "message_feedback",
             "subagent_handoff_action",
+            "stop_generation",
         )
 
     async def _handle_control_message(self, data: dict) -> None:
@@ -165,6 +166,39 @@ class WebSocketChannel(Channel):
                     "code": "handoff_error",
                     "timestamp": now_iso(),
                 })
+            return
+
+        if data.get("type") == "stop_generation":
+            await self._handle_stop_generation(data)
+            return
+
+    async def _handle_stop_generation(self, data: dict) -> None:
+        session_id = data.get("session_id", "default")
+        queue = getattr(self.agent, "follow_up_queue", None) if self.agent else None
+        if not queue:
+            return
+
+        was_busy = queue.is_busy(session_id)
+        queue.request_cancel(session_id)
+        cleared = queue.clear_pending(session_id)
+
+        if cleared:
+            await self._emit_queue_status(session_id, 0)
+
+        if not was_busy:
+            await self.send(session_id, {
+                "type": "generation_stopped",
+                "session_id": session_id,
+                "reason": "user_cancelled",
+                "cleared_pending": cleared,
+                "timestamp": now_iso(),
+            })
+            await self.send(session_id, {
+                "type": "generation_end",
+                "session_id": session_id,
+                "timestamp": now_iso(),
+            })
+            queue.reset_cancel(session_id)
 
     async def _emit_queue_status(self, session_id: str, pending: int) -> None:
         await self.send(session_id, {
@@ -176,47 +210,58 @@ class WebSocketChannel(Channel):
 
     async def _execute_agent_turn(self, raw_message: str, data: dict) -> None:
         session_id = data.get("session_id", "default")
+        queue = getattr(self.agent, "follow_up_queue", None) if self.agent else None
+        if queue:
+            queue.reset_cancel(session_id)
 
-        await self.send("default", {
+        await self.send(session_id, {
             "type": "generation_start",
+            "session_id": session_id,
             "timestamp": now_iso()
         })
 
-        message = await self.receive(raw_message)
-        if self.manager and self.connection_id:
-            self.manager.bind_session(message.session_id, self.connection_id)
-        print(f"[WebSocket] 解析后消息内容: {message.content[:200] if message.content else 'empty'}...")
+        try:
+            message = await self.receive(raw_message)
+            if self.manager and self.connection_id:
+                self.manager.bind_session(message.session_id, self.connection_id)
+            print(f"[WebSocket] 解析后消息内容: {message.content[:200] if message.content else 'empty'}...")
 
-        file_ids = data.get("file_ids")
+            file_ids = data.get("file_ids")
 
-        if self.agent:
-            await self.agent.handle_message(
-                session_id=message.session_id,
-                user_content=message.content,
-                channel=self,
-                file_ids=file_ids,
-                tenant_context=self.tenant_context,
-                request_context=self._request_context,
-            )
-        else:
-            print(f"[WebSocket] Agent 未设置!")
-            await self.send(message.session_id, {
-                "type": "error",
-                "session_id": message.session_id,
-                "message": "Agent 未初始化",
-                "code": "agent_not_ready",
+            if self.agent:
+                await self.agent.handle_message(
+                    session_id=message.session_id,
+                    user_content=message.content,
+                    channel=self,
+                    file_ids=file_ids,
+                    tenant_context=self.tenant_context,
+                    request_context=self._request_context,
+                )
+            else:
+                print(f"[WebSocket] Agent 未设置!")
+                await self.send(message.session_id, {
+                    "type": "error",
+                    "session_id": message.session_id,
+                    "message": "Agent 未初始化",
+                    "code": "agent_not_ready",
+                    "timestamp": now_iso()
+                })
+        finally:
+            await self.send(session_id, {
+                "type": "generation_end",
+                "session_id": session_id,
                 "timestamp": now_iso()
             })
-
-        await self.send(message.session_id, {
-            "type": "generation_end",
-            "timestamp": now_iso()
-        })
 
     async def _drain_follow_up_queue(self, session_id: str) -> None:
         if not self.agent:
             return
         queue = self.agent.follow_up_queue
+        if queue.is_cancelled(session_id):
+            queue.clear_pending(session_id)
+            queue.reset_cancel(session_id)
+            await self._emit_queue_status(session_id, 0)
+            return
         while True:
             item = queue.pop(session_id)
             if item is None:

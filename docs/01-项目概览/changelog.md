@@ -1,5 +1,31 @@
 # Changelog
 
+## v4.3.1 Patch (2026-05-25)
+
+综合 patch：会议助手 ASR/摘要/原音频、知识库深度入库、BI 连接、Insight INS-2.1 画像性能、聊天停止生成。
+
+### 会议助手
+- ✅ Whisper/SenseVoice ASR 抽象、离线模型、`meeting.yaml` 配置
+- ✅ 流式录音 WebM 拼接、实时转写、幻觉过滤与繁简规范化
+- ✅ 录音持久化 + `GET /meeting/{id}/audio` 原音频播放
+- ✅ 摘要 LLM 解析修复；设置页 Whisper 尺寸与摘要模型
+
+### 知识库（深度入库 M1–M4）
+- ✅ KnowledgeEnricher、DocProfile、`DocumentDetailDrawer`
+- ✅ 结构解析、指标抽取、browse 搜索与 reindex API
+- ✅ 记忆 → KB 晋升、回合知识发布
+
+### BI / Insight / 聊天
+- ✅ BI 数据源连接配置与安全 SQL；ChartRenderer 增强
+- ✅ INS-2.1 画像性能（batch stats、增量规划、schema fingerprint）
+- ✅ WebSocket 停止生成、Toast、follow-up 队列小修
+
+### 运维
+- ✅ 验收脚本：`knowledge-deep-ingest.sh`、`insightforge-profile-perf.sh`
+- ✅ 本地 vectorstore / 会议录音不入库（`.gitignore`）
+
+---
+
 ## v4.2.0 "Data Copilot & Evolution" (功能完成 — 分支 `v4.2.0`)
 
 > 基于 v4.1.2 稳定线，不影响 `v4.1.2` / `v4.1.4` 已发布能力文档。

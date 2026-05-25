@@ -15,6 +15,7 @@
             <span v-if="coll.description" class="coll-desc">{{ coll.description }}</span>
           </div>
           <div class="coll-actions">
+            <button class="btn-icon" :title="t('knowledge.reindex')" @click="reindexCollection(coll.id)">♻️</button>
             <button class="btn-icon" :title="t('knowledge.searchTest')" @click="openSearch(coll)">🔍</button>
             <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteCollection(coll.id)">🗑️</button>
           </div>
@@ -22,13 +23,27 @@
         <div class="card-body">
           <DocumentUploader
             :collection-id="coll.id"
+            :default-doc-type="coll.default_doc_type"
             @uploaded="onDocumentUploaded"
           />
           <div class="documents-list">
-            <div v-for="doc in getDocuments(coll.id)" :key="doc.id" class="doc-item">
-              <span class="doc-name">📄 {{ doc.file_name }}</span>
+            <div
+              v-for="doc in getDocuments(coll.id)"
+              :key="doc.id"
+              class="doc-item clickable"
+              data-test="doc-row"
+              @click="openDocumentDetail(coll.id, doc)"
+            >
+              <div class="doc-main">
+                <span class="doc-name">📄 {{ doc.file_name }}</span>
+                <span v-if="doc.one_liner" class="doc-oneliner">{{ doc.one_liner }}</span>
+                <div class="doc-tags">
+                  <span v-if="doc.doc_type" class="doc-type-tag">{{ t(`knowledge.docType.${doc.doc_type || 'generic'}`) }}</span>
+                  <span class="doc-status-tag" :class="doc.status">{{ t(`knowledge.docStatus.${doc.status}`, doc.status) }}</span>
+                </div>
+              </div>
               <span class="doc-meta">{{ t('knowledge.documentMeta', { count: doc.chunk_count, status: doc.status }) }}</span>
-              <button class="btn-icon-small" @click="deleteDocument(coll.id, doc.id)">✕</button>
+              <button class="btn-icon-small" @click.stop="deleteDocument(coll.id, doc.id)">✕</button>
             </div>
           </div>
         </div>
@@ -51,6 +66,16 @@
           <label>{{ t('knowledge.descriptionLabel') }}</label>
           <input v-model="createForm.description" type="text" :placeholder="t('knowledge.descriptionPlaceholder')" />
         </div>
+        <div class="form-group">
+          <label>{{ t('knowledge.defaultDocTypeLabel') }}</label>
+          <select v-model="createForm.default_doc_type" class="doc-type-select-full">
+            <option value="">{{ t('knowledge.uploadDocTypeAuto') }}</option>
+            <option value="policy">{{ t('knowledge.docType.policy') }}</option>
+            <option value="proposal">{{ t('knowledge.docType.proposal') }}</option>
+            <option value="metrics">{{ t('knowledge.docType.metrics') }}</option>
+            <option value="generic">{{ t('knowledge.docType.generic') }}</option>
+          </select>
+        </div>
       </div>
 
       <template #footer>
@@ -72,50 +97,94 @@
     >
       <div class="space-y-4">
         <div class="search-box">
+          <select v-model="searchMode" class="search-mode">
+            <option value="browse">{{ t('knowledge.searchModeBrowse') }}</option>
+            <option value="chat">{{ t('knowledge.searchModeChat') }}</option>
+          </select>
           <input v-model="searchQuery" type="text" :placeholder="t('knowledge.searchPlaceholder')" @keyup.enter="performSearch" />
           <button class="btn-primary" :disabled="searching" @click="performSearch">
             {{ searching ? t('knowledge.searching') : t('common.search') }}
           </button>
         </div>
-        <div v-if="searchResults.length > 0" class="search-results">
+        <div v-if="browseResults.length > 0" class="search-group">
+          <h4>{{ t('knowledge.searchGroupDocs') }}</h4>
+          <div v-for="(r, idx) in browseResults" :key="'b'+idx" class="result-item browse">
+            <div class="result-source">📄 {{ r.source.file_name }} · {{ r.chunk_type || r.metadata?.chunk_type || 'summary' }}</div>
+            <div v-if="r.citation?.one_liner" class="result-oneliner">{{ r.citation.one_liner }}</div>
+            <div class="result-text">{{ r.text }}</div>
+            <div class="result-score">{{ t('knowledge.similarity', { score: (r.score * 100).toFixed(1) }) }}</div>
+          </div>
+        </div>
+        <div v-if="passageResults.length > 0" class="search-group">
+          <h4>{{ t('knowledge.searchGroupPassages') }}</h4>
+          <div v-for="(r, idx) in passageResults" :key="'p'+idx" class="result-item">
+            <div class="result-source">{{ t('knowledge.resultSource', { fileName: r.source.file_name, index: r.source.chunk_index + 1, total: r.source.chunk_total }) }}</div>
+            <div class="result-text">{{ r.text }}</div>
+            <div class="result-score">{{ t('knowledge.similarity', { score: (r.score * 100).toFixed(1) }) }}</div>
+          </div>
+        </div>
+        <div v-if="searchResults.length > 0 && searchMode === 'chat'" class="search-results">
           <div v-for="(r, idx) in searchResults" :key="idx" class="result-item">
             <div class="result-source">{{ t('knowledge.resultSource', { fileName: r.source.file_name, index: r.source.chunk_index + 1, total: r.source.chunk_total }) }}</div>
             <div class="result-text">{{ r.text }}</div>
             <div class="result-score">{{ t('knowledge.similarity', { score: (r.score * 100).toFixed(1) }) }}</div>
           </div>
         </div>
-        <div v-else-if="searched" class="search-empty">{{ t('knowledge.searchEmpty') }}</div>
+        <div v-else-if="searched && searchResults.length === 0" class="search-empty">{{ t('knowledge.searchEmpty') }}</div>
       </div>
     </AppSurfaceDrawer>
+
+    <DocumentDetailDrawer
+      :open="detailOpen"
+      :collection-id="detailCollectionId"
+      :document="detailDocument"
+      @close="detailOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { knowledgeApi } from '@/api'
-import type { KnowledgeCollection, KnowledgeDocument } from '@/types'
+import type { KnowledgeCollection, KnowledgeDocument, KnowledgeSearchResult } from '@/types'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import DocumentUploader from './DocumentUploader.vue'
+import DocumentDetailDrawer from './DocumentDetailDrawer.vue'
 
 const collections = ref<KnowledgeCollection[]>([])
 const documentsMap = reactive<Record<string, KnowledgeDocument[]>>({})
 const loading = ref(false)
 const showCreateModal = ref(false)
 const showSearchModal = ref(false)
+const detailOpen = ref(false)
+const detailCollectionId = ref('')
+const detailDocument = ref<KnowledgeDocument | null>(null)
 const creating = ref(false)
 const activeCollection = ref<KnowledgeCollection | null>(null)
 const searchQuery = ref('')
+const searchMode = ref<'browse' | 'chat'>('browse')
 const searching = ref(false)
 const searched = ref(false)
-const searchResults = ref<any[]>([])
+const searchResults = ref<KnowledgeSearchResult[]>([])
+
+const browseResults = computed(() =>
+  searchMode.value === 'browse'
+    ? searchResults.value.filter(r => ['doc_summary', 'section_summary', 'key_fact'].includes(r.chunk_type || r.metadata?.chunk_type || ''))
+    : [],
+)
+const passageResults = computed(() =>
+  searchMode.value === 'browse'
+    ? searchResults.value.filter(r => (r.chunk_type || r.metadata?.chunk_type || 'passage') === 'passage')
+    : [],
+)
 const { t } = useI18n()
 const toast = useToast()
 
-const createForm = ref({ name: '', description: '' })
+const createForm = ref({ name: '', description: '', default_doc_type: '' })
 
 async function loadCollections() {
   loading.value = true
@@ -152,9 +221,13 @@ async function createCollection() {
   }
   creating.value = true
   try {
-    await knowledgeApi.createCollection(createForm.value)
+    await knowledgeApi.createCollection({
+      name: createForm.value.name,
+      description: createForm.value.description,
+      default_doc_type: createForm.value.default_doc_type || undefined,
+    })
     showCreateModal.value = false
-    createForm.value = { name: '', description: '' }
+    createForm.value = { name: '', description: '', default_doc_type: '' }
     await loadCollections()
   } catch (e: any) {
     toast.error(t('knowledge.createFailed', { message: getErrorDetail(e) || e.message }))
@@ -187,12 +260,40 @@ function onDocumentUploaded(collectionId: string) {
   loadDocuments(collectionId)
 }
 
+function openDocumentDetail(collectionId: string, doc: KnowledgeDocument) {
+  detailCollectionId.value = collectionId
+  detailDocument.value = doc
+  detailOpen.value = true
+}
+
 function openSearch(coll: KnowledgeCollection) {
   activeCollection.value = coll
   searchQuery.value = ''
   searchResults.value = []
   searched.value = false
+  searchMode.value = 'browse'
   showSearchModal.value = true
+}
+
+async function reindexCollection(collectionId: string) {
+  try {
+    const estimate = await knowledgeApi.reindexEstimate(collectionId)
+    let confirm = true
+    if (estimate.require_confirm) {
+      confirm = window.confirm(
+        t('knowledge.reindexConfirm', {
+          count: estimate.doc_count,
+          tokens: estimate.est_tokens,
+        }),
+      )
+    }
+    if (!confirm) return
+    await knowledgeApi.reindexCollection(collectionId, { confirm: estimate.require_confirm })
+    toast.success(t('knowledge.reindexStarted', { count: estimate.doc_count }))
+    await loadDocuments(collectionId)
+  } catch (e: any) {
+    toast.error(getErrorDetail(e) || t('knowledge.reindexFailed'))
+  }
 }
 
 async function performSearch() {
@@ -200,7 +301,12 @@ async function performSearch() {
   searching.value = true
   searched.value = false
   try {
-    const res = await knowledgeApi.queryCollection(activeCollection.value.id, searchQuery.value.trim(), 5)
+    const res = await knowledgeApi.queryCollection(
+      activeCollection.value.id,
+      searchQuery.value.trim(),
+      8,
+      searchMode.value,
+    )
     searchResults.value = res.results
     searched.value = true
   } catch (e) {
@@ -326,14 +432,60 @@ onMounted(loadCollections)
 
 .doc-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   background: rgba(255,255,255,0.03);
-  border-radius: 4px;
-  margin-bottom: 4px;
+  border-radius: 6px;
+  margin-bottom: 6px;
   font-size: 13px;
 }
+
+.doc-item.clickable {
+  cursor: pointer;
+}
+
+.doc-item.clickable:hover {
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.doc-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-oneliner {
+  display: block;
+  color: #78716c;
+  font-size: 12px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.doc-type-tag,
+.doc-status-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: #a8a29e;
+}
+
+.doc-status-tag.ready { color: #86efac; }
+.doc-status-tag.enrichment_failed,
+.doc-status-tag.failed { color: #fca5a5; }
+.doc-status-tag.pending,
+.doc-status-tag.parsing,
+.doc-status-tag.enriching,
+.doc-status-tag.indexing { color: #fbbf24; }
 
 .doc-name {
   flex: 1;
@@ -402,6 +554,45 @@ onMounted(loadCollections)
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.search-mode {
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  color: #d6d3d1;
+  font-size: 13px;
+}
+
+.search-group {
+  margin-bottom: 16px;
+}
+
+.search-group h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.result-item.browse {
+  border-left: 3px solid #d97706;
+}
+
+.result-oneliner {
+  font-size: 12px;
+  color: #78716c;
+  margin-bottom: 4px;
+}
+
+.doc-type-select-full {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  color: #e7e5e4;
+  box-sizing: border-box;
 }
 
 .search-box input {

@@ -96,7 +96,12 @@ class MemoryManager:
 
     async def extract_turn_memories(self, user_msg: str, assistant_msg: str) -> List[dict]:
         """从单轮对话提取可保存的记忆要点（供前端预览确认）。"""
-        from .extractor import LLMMemoryExtractor
+        from .extractor import (
+            HeuristicTurnExtractor,
+            LLMMemoryExtractor,
+            RegexExtractor,
+            TURN_EXTRACTION_PROMPT,
+        )
 
         user_msg = (user_msg or "").strip()
         assistant_msg = (assistant_msg or "").strip()
@@ -104,7 +109,17 @@ class MemoryManager:
             return []
 
         conversation = f"User: {user_msg}\nAssistant: {assistant_msg}"
-        raw = await LLMMemoryExtractor().extract(conversation, self.provider)
+        extractor = LLMMemoryExtractor()
+        raw = await extractor.extract(
+            conversation,
+            self.provider,
+            prompt_template=TURN_EXTRACTION_PROMPT,
+        )
+        if not raw:
+            raw = HeuristicTurnExtractor().extract(user_msg, assistant_msg)
+        if not raw:
+            raw = RegexExtractor().extract(conversation)
+
         items: List[dict] = []
         seen = set()
         for entry in raw:
@@ -125,11 +140,23 @@ class MemoryManager:
             )
         return items[:8]
 
-    async def save_turn_memories(self, items: List[dict]) -> dict:
-        """保存用户确认后的记忆要点。"""
+    async def save_turn_memories(
+        self,
+        items: List[dict],
+        *,
+        user_context: str = "",
+        publish_to_knowledge: bool = False,
+        promotion_group_id: Optional[str] = None,
+    ) -> dict:
+        """保存用户确认后的记忆要点。默认仅写 episodic 记忆；KB 需显式发布或达阈值自动升格。"""
+        from .kb_promotion import default_promotion_group_id, promote_group_to_kb
+
         saved = []
         skipped = 0
         allowed = set(self._EXTRACT_CATEGORY_MAP.values())
+        group_id = promotion_group_id or default_promotion_group_id(self.tenant_id)
+        saved_ids: List[str] = []
+
         for item in items:
             content = str(item.get("content", "")).strip()
             if len(content) < 5:
@@ -146,10 +173,41 @@ class MemoryManager:
                 source="manual_extract",
             )
             if mem:
+                self.db.set_memory_promotion_meta(
+                    mem.id,
+                    tenant_id=self.tenant_id,
+                    promotion_group_id=group_id,
+                    kb_promotion_status="pending",
+                    memory_type="episodic",
+                )
                 saved.append(mem)
+                saved_ids.append(mem.id)
             else:
                 skipped += 1
-        return {"saved": saved, "skipped": skipped}
+
+        knowledge_doc_ids: List[str] = []
+        promotion_trigger = "none"
+
+        if publish_to_knowledge and saved_ids:
+            doc_id = await promote_group_to_kb(
+                self,
+                group_id,
+                user_context=user_context,
+                memory_ids=saved_ids,
+            )
+            if doc_id:
+                knowledge_doc_ids.append(doc_id)
+                promotion_trigger = "manual"
+        elif saved_ids:
+            promotion_trigger = "pending"
+
+        return {
+            "saved": saved,
+            "skipped": skipped,
+            "knowledge_doc_ids": knowledge_doc_ids,
+            "promotion_group_id": group_id,
+            "promotion_trigger": promotion_trigger,
+        }
 
     def search_memories(self, query: str, limit: int = 5):
         return self.search.search(query, limit)

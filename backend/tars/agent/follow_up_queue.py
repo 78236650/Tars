@@ -1,6 +1,7 @@
 """Lightweight follow-up queue while an agent turn is running."""
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Optional
@@ -30,6 +31,7 @@ class FollowUpQueue:
     def __init__(self) -> None:
         self._pending: Dict[str, Deque[FollowUpItem]] = defaultdict(deque)
         self._busy_sessions: set[str] = set()
+        self._cancel_events: Dict[str, asyncio.Event] = {}
 
     def is_busy(self, session_id: str) -> bool:
         return session_id in self._busy_sessions
@@ -59,3 +61,25 @@ class FollowUpQueue:
 
     def pending(self, session_id: str) -> int:
         return len(self._pending.get(session_id, ()))
+
+    def _cancel_event(self, session_id: str) -> asyncio.Event:
+        if session_id not in self._cancel_events:
+            self._cancel_events[session_id] = asyncio.Event()
+        return self._cancel_events[session_id]
+
+    def reset_cancel(self, session_id: str) -> None:
+        self._cancel_event(session_id).clear()
+
+    def request_cancel(self, session_id: str) -> None:
+        self._cancel_event(session_id).set()
+
+    def is_cancelled(self, session_id: str) -> bool:
+        return self._cancel_event(session_id).is_set()
+
+    def clear_pending(self, session_id: str) -> int:
+        queue = self._pending.get(session_id)
+        if not queue:
+            return 0
+        count = len(queue)
+        queue.clear()
+        return count

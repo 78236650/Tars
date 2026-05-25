@@ -1,9 +1,17 @@
 """Schema 抓取与理解"""
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
+
+from ..utils.text_encoding import repair_mojibake
+
+
+def _mysql_connect_args(connection_url: str) -> dict:
+    if connection_url.startswith("mysql") or ":9030" in connection_url:
+        return {"connect_timeout": 10, "charset": "utf8mb4"}
+    return {"connect_timeout": 10}
 
 
 class SchemaExplorer:
@@ -23,7 +31,7 @@ class SchemaExplorer:
             if self.connection_url.startswith("sqlite"):
                 kwargs["connect_args"] = {"check_same_thread": False}
             else:
-                kwargs["connect_args"] = {"connect_timeout": 10}
+                kwargs["connect_args"] = _mysql_connect_args(self.connection_url)
                 kwargs["execution_options"] = {"isolation_level": "READ COMMITTED"}
             self._engine = create_engine(self.connection_url, **kwargs)
         return self._engine
@@ -80,7 +88,7 @@ class SchemaExplorer:
                         "type": str(col.get("type", "")),
                         "nullable": col.get("nullable", True),
                         "default": str(col.get("default", "")) if col.get("default") is not None else None,
-                        "comment": col.get("comment", ""),
+                        "comment": repair_mojibake(col.get("comment") or ""),
                     })
             except Exception:
                 pass
@@ -126,7 +134,7 @@ class SchemaExplorer:
                 if hasattr(inspector, "get_table_comment"):
                     comment = inspector.get_table_comment(table_name)
                     if comment:
-                        table_info["comment"] = comment.get("text", "")
+                        table_info["comment"] = repair_mojibake(comment.get("text", "") or "")
             except Exception:
                 pass
 
@@ -145,6 +153,3 @@ class SchemaExplorer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         return False
-
-
-from typing import Tuple

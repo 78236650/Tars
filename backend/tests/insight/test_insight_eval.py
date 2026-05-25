@@ -103,7 +103,7 @@ async def test_insight_eval_case(case):
     if case.get("expect_citations"):
         bridge = KnowledgeBridge(db=db, retriever=MagicMock())
 
-        def fake_retrieve(tenant_id, datasource_id, question, *, metric_key=None):
+        async def fake_retrieve(tenant_id, datasource_id, question, *, metric_key=None):
             return [
                 MetricCitation(
                     doc_id="eval-doc",

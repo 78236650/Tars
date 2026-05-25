@@ -6,23 +6,14 @@ import hashlib
 from typing import Any, Dict, List, Optional
 
 from tars.tools.base import BaseTool, ToolResult
-from tars.database.bi_store import DataSourceStore
-from tars.database.base import Database
+from tars.database.bi_store import get_bi_store
 from tars.bi.schema_explorer import SchemaExplorer
 from tars.bi.sql_agent import SQLAgent
 from tars.bi.chart_generator import ChartGenerator
 
 
-# 全局 DataSourceStore 实例（在 main.py 启动时注入）
-_bi_store: Optional[DataSourceStore] = None
-
-
-def _get_store() -> DataSourceStore:
-    global _bi_store
-    if _bi_store is None:
-        db = Database()
-        _bi_store = DataSourceStore(db)
-    return _bi_store
+def _get_store():
+    return get_bi_store()
 
 
 class BIListDataSourcesTool(BaseTool):

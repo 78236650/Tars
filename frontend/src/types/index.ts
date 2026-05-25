@@ -337,6 +337,7 @@ export interface KnowledgeCollection {
   id: string
   name: string
   description?: string
+  default_doc_type?: string | null
   created_at: string
   updated_at: string
 }
@@ -348,17 +349,77 @@ export interface KnowledgeDocument {
   chunk_count: number
   status: string
   created_at: string
+  doc_type?: string
+  profile_ready?: boolean
+  one_liner?: string | null
+}
+
+export interface DocumentSectionSummary {
+  section_id: string
+  title: string
+  summary?: string
+  key_facts?: string[]
+  page_or_slide?: number | null
+}
+
+export interface DocProfileGlossaryItem {
+  term: string
+  definition?: string
+}
+
+export interface DocProfile {
+  doc_id: string
+  file_name?: string
+  doc_type?: string
+  status?: string
+  title?: string
+  one_liner?: string
+  summary?: string
+  key_points?: string[]
+  sections?: DocumentSectionSummary[]
+  key_facts?: string[]
+  glossary?: DocProfileGlossaryItem[]
+  tags?: string[]
+  chunk_count?: number
+  confidence?: number
+  enriched_at?: string
+  profile_ready?: boolean
+}
+
+export interface DocumentStatusResponse {
+  doc_id: string
+  status: string
+  profile_ready?: boolean
+  one_liner?: string | null
+  doc_type?: string
+  chunk_count?: number
+  status_message?: string | null
+}
+
+export interface DocumentPassage {
+  chunk_index: number
+  text: string
+  file_name?: string
+  section_id?: string | null
 }
 
 export interface KnowledgeSearchResult {
   text: string
   metadata: Record<string, any>
   score: number
+  chunk_type?: string
+  citation?: {
+    doc_id?: string
+    doc_title?: string
+    one_liner?: string
+    chunk_type?: string
+  }
   source: {
     collection_id: string
     file_name: string
     chunk_index: number
     chunk_total: number
+    doc_id?: string
   }
 }
 
@@ -457,15 +518,35 @@ export interface ModelSwitchResult {
 
 // ========= BI Analytics =========
 
+export interface DataSourceConnection {
+  db_type: string
+  host?: string
+  port?: number | null
+  username?: string
+  database?: string
+  has_password?: boolean
+}
+
 export interface DataSource {
   id: string
   name: string
   db_type: string
   readonly: boolean
+  connection?: DataSourceConnection
   schema_snapshot: Record<string, any>
   schema_annotations: Record<string, any>
   created_at: string
   updated_at: string
+}
+
+export interface DataSourceConnectionInput {
+  db_type: string
+  host?: string
+  port?: number | null
+  username?: string
+  password?: string
+  database?: string
+  connection_url?: string
 }
 
 export interface BIQueryResult {
@@ -504,6 +585,7 @@ export interface Transcription {
   error_message: string | null
   approved_at: string | null
   knowledge_doc_id: string | null
+  has_audio?: boolean
 }
 
 export interface TranscriptionListData {
