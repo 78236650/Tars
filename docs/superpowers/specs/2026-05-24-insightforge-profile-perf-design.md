@@ -448,7 +448,7 @@ profile:
 
 - **微基准（fixture）：** `INSIGHT_PERF_BENCH=1 pytest -m insight_perf` — 严格阈值断言（见 §7）
 - **真实数据集 (manual)：** `scripts/acceptance/insightforge-profile-perf.sh demo` — 在 demo MySQL 跑 forge → 比对 perf 段
-- **线上观测：** Grafana 看 `insight_snapshot.perf.total_ms` 分位 P50/P95（v4.4 再做）
+- **线上观测：** Grafana 看 `insight_snapshot.perf.total_ms` 分位 P50/P95（v4.3.2+ 再做；INS-2.1 核心已于 v4.3.1 交付）
 
 ---
 

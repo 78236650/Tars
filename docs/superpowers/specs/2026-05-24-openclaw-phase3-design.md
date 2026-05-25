@@ -33,7 +33,7 @@
 |---|------|------|
 | 5 | **轻量 Follow-up Queue** | Agent 运行中用户新消息入队，当前 turn 结束后处理（非 OpenClaw 全套 collect 模式） |
 
-### 1.4 Out of Scope（v4.4+ 或不做）
+### 1.4 Out of Scope（v4.3.2+ 或不做）
 
 - 飞书 / Slack / Telegram 实接
 - 语音 / Discord voice
@@ -159,7 +159,7 @@ ToolDispatcher.execute_tool(name, args)
 **前端：**
 
 - Chat 内 `ApprovalDialog` 展示命令摘要 + Approve/Deny
-- 预留 `channel_id` 字段，v4.4 IM 按钮复用同一 `ApprovalService`
+- 预留 `channel_id` 字段，v4.3.2+ IM 按钮复用同一 `ApprovalService`
 
 **与 OpenClaw 对齐点：** 单一 `/approve` 语义；Phase 3 仅 Web UI。
 

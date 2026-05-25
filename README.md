@@ -343,7 +343,7 @@ Web 工具搜索结果通过反思器自动沉淀为 `source=web` 的 archival �
 
 详见 [docs/superpowers/specs/2026-05-06-memory-v3-letta-design.md](docs/superpowers/specs/2026-05-06-memory-v3-letta-design.md)
 
-## 快速开始（v4.3.0）
+## 快速开始（v4.3.1）
 
 > 前端 dev 默认 `http://localhost:5173`，API/WS 代理到后端 `http://localhost:8000`。
 
@@ -386,7 +386,7 @@ python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
 ./scripts/migrate-evolution-workspace.sh
 ```
 
-验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.0**）。
+验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.1**）。
 
 ### 3. 前端启动
 

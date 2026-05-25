@@ -4,7 +4,8 @@
 
 TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模型（Ollama）和云端 API（DeepSeek、阿里通义等）。用户通过技能/插件适配垂直场景，平台提供安全隔离、记忆管理、工具调度等基础能力。
 
-**当前版本: v4.2.0 "Data Copilot & Evolution"**（功能完成，分支 `v4.2.0`；下一版 v4.3.0 OpenClaw）  
+**当前版本: v4.3.1**（分支 `v4.3.1`：会议 ASR、知识库深度入库、BI 连接、INS-2.1；基于 v4.3.0 OpenClaw）  
+**上一主线: v4.3.0** Channels & Execution · **v4.2.0** Data Copilot & Evolution  
 **稳定基线: v4.1.2**（生产/内网部署参考）
 
 ## 核心特性

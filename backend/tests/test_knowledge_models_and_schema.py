@@ -1,4 +1,4 @@
-"""v4.4 知识库深度入库：schema 迁移与领域模型单测。"""
+"""v4.3.1 知识库深度入库：schema 迁移与领域模型单测。"""
 import os
 import sqlite3
 import tempfile
@@ -57,7 +57,7 @@ def test_new_database_has_v44_columns(tmp_db_path):
 
 
 def test_legacy_database_migrates_in_place(tmp_db_path):
-    """旧库（无 v4.4 新字段）首次连接应自动迁移。"""
+    """旧库（无 v4.3.1 新字段）首次连接应自动迁移。"""
     conn = sqlite3.connect(tmp_db_path)
     conn.execute(
         "CREATE TABLE document_collections (id TEXT PRIMARY KEY, tenant_id TEXT, name TEXT, "

@@ -1,6 +1,6 @@
 """知识库索引器 — 文档 → 分块 → embedding → 向量索引。
 
-v4.4：在保留旧 `index_document(text=...)` passage-only 路径的同时，新增
+v4.3.1：在保留旧 `index_document(text=...)` passage-only 路径的同时，新增
 `index_parsed(parsed, profile, ...)` 支持结构化解析 + 衍生 chunk 写入。
 """
 from __future__ import annotations
@@ -68,7 +68,7 @@ class KnowledgeIndexer:
             tenant_id=tenant_id,
         )
 
-    # ----- v4.4 新 API：结构化 + 画像 -----
+    # ----- v4.3.1 新 API：结构化 + 画像 -----
 
     def index_parsed(
         self,

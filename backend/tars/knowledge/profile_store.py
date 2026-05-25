@@ -1,4 +1,4 @@
-"""document_profiles CRUD — v4.4 知识库深度入库。"""
+"""document_profiles CRUD — v4.3.1 知识库深度入库。"""
 from __future__ import annotations
 
 import json

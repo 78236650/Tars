@@ -1,4 +1,4 @@
-"""KnowledgeEnricher — v4.4 LLM 深度理解。"""
+"""KnowledgeEnricher — v4.3.1 LLM 深度理解。"""
 from __future__ import annotations
 
 import asyncio

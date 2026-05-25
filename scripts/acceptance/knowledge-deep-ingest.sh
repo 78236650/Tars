@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 知识库深度入库 v4.4 验收脚本
+# 知识库深度入库 v4.3.1 验收脚本
 set -euo pipefail
 
 BASE="${BASE_URL:-http://127.0.0.1:8000/api/knowledge}"

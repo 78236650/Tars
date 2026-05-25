@@ -743,7 +743,7 @@ class Database:
             except Exception:
                 pass
 
-        # === Knowledge Base: 文档画像表（v4.4 深度入库）===
+        # === Knowledge Base: 文档画像表（v4.3.1 深度入库）===
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_profiles (
                 doc_id TEXT PRIMARY KEY,

@@ -1,4 +1,4 @@
-# 知识库深度入库与文档浏览 — 实施计划（v4.4）
+# 知识库深度入库与文档浏览 — 实施计划（v4.3.1）
 
 > **For agentic workers:** 推荐使用 superpowers:subagent-driven-development 按 Task 逐步执行。步骤使用 `- [ ]` 跟踪进度。
 
@@ -353,12 +353,12 @@ Week 2: Task 10–12 (M3) → Task 13–14 (M4)
 
 > **Task 0 不可跳过：** Provider 注入与异步骨架是 M1 验收的前提，若按原计划同步入库，中等 PDF 会撞超时。
 
-**最小可用版本（MVP）：** 完成 Task 0 + M1 + M2 即可发布 v4.4.0-beta，M3/M4 后续小版本迭代。
+**最小可用版本（MVP）：** 完成 Task 0 + M1 + M2 即可发布 **v4.3.1**；M3/M4 已随 v4.3.1 patch 一并交付（2026-05-25）。
 
 ---
 
 ## 完成后文档更新
 
-- [ ] `docs/01-项目概览/changelog.md` — v4.4.0 知识库深度入库
-- [ ] `docs/03-实施计划/roadmap.md` — 标记 v4.4 知识库项
+- [x] `docs/01-项目概览/changelog.md` — v4.3.1 知识库深度入库
+- [x] `docs/03-实施计划/roadmap.md` — 标记 v4.3.1 知识库项
 - [ ] `docs/04-运维文档/` — 新增 `knowledge-deep-ingest-user-guide.md`（用户向：如何浏览摘要、re-enrich）

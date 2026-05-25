@@ -1,4 +1,4 @@
-"""知识库深度入库领域模型（v4.4）。
+"""知识库深度入库领域模型（v4.3.1）。
 
 包含解析层 ParsedDocument、enrich 层 DocProfile、metrics 专路 MetricsTable。
 所有模型支持 round-trip JSON 序列化，便于持久化与跨进程传输。

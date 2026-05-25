@@ -2,7 +2,9 @@
 
 ## v4.3.1 Patch (2026-05-25)
 
-综合 patch：会议助手 ASR/摘要/原音频、知识库深度入库、BI 连接、Insight INS-2.1 画像性能、聊天停止生成。
+> 📄 [v4.3.1 发布说明](./v4.3.1-release-notes.md)
+
+综合 patch：会议助手 ASR/摘要/原音频、知识库深度入库（原设计稿版本号 v4.4，已并入本 patch）、BI 连接、Insight INS-2.1 画像性能、聊天停止生成。
 
 ### 会议助手
 - ✅ Whisper/SenseVoice ASR 抽象、离线模型、`meeting.yaml` 配置
@@ -57,10 +59,15 @@
 - 📄 计划：[evolution-phase2-plan.md](../superpowers/plans/2026-05-24-evolution-phase2-plan.md)
 - 📄 运维：[EVOLUTION_GUIDE.md](../04-运维文档/EVOLUTION_GUIDE.md)
 
-### 下一版本 v4.3.0（📋 已批准）
+### v4.3.0 Channels & Execution（✅ 已完成）
 
-- OpenClaw Phase 3：ChannelRouter、Cron、工具审批、Subagent handoff
-- 📄 [openclaw-phase3-plan.md](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
+- ✅ ChannelRouter、Cron delegate/prompt、工具审批、Subagent handoff、Follow-up Queue
+- 📄 [v4.3.0-release-notes.md](./v4.3.0-release-notes.md) · [openclaw-phase3-plan.md](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
+
+### 后续版本（📋 规划中）
+
+- v4.3.2+：出站直调完全迁移、IM 渠道（原 OpenClaw Out of Scope 项）
+- Insight 线上 Grafana 观测（`insight_snapshot.perf` P50/P95）
 
 ---
 

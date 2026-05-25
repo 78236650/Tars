@@ -1,8 +1,8 @@
-# 知识库深度入库与文档浏览升级设计（v4.4）
+# 知识库深度入库与文档浏览升级设计（v4.3.1）
 
-> **版本：** v4.4.0 设计稿  
+> **版本：** v4.3.1（已于 2026-05-25 patch 交付；原稿标 v4.4，已与平台版本对齐）  
 > **日期：** 2026-05-24  
-> **状态：** Draft — 待评审  
+> **状态：** ✅ 已交付（v4.3.1）  
 > **关联：** [向量搜索与知识库升级设计](./2026-05-16-vector-search-knowledge-upgrade-design.md)、[会议纪要入知识库设计](./2026-05-16-meeting-to-knowledge-design.md)
 
 ---
@@ -306,7 +306,7 @@ single_call_budget = min(
 
 ### 5.3 入库异步化与成本控制
 
-**关键变更（v4.4 修订）：** enrichment 同步阻塞会让中等 PDF 卡 1–2 分钟，触发 nginx/浏览器超时。**M1 即采用异步入库**，参考 [api/meeting.py:266-270](../../../backend/tars/api/meeting.py#L266-L270) `asyncio.create_task` 模式：
+**关键变更（v4.3.1 设计修订）：** enrichment 同步阻塞会让中等 PDF 卡 1–2 分钟，触发 nginx/浏览器超时。**M1 即采用异步入库**，参考 [api/meeting.py:266-270](../../../backend/tars/api/meeting.py#L266-L270) `asyncio.create_task` 模式：
 
 ```python
 @router.post("/collections/{coll_id}/documents")

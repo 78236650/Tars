@@ -255,20 +255,36 @@ gantt
 - ✅ 聊天顶栏精简、Ctrl/⌘+Enter 发送、回复复制
 - ✅ 记住要点：`extract-from-turn` / `save-from-turn` + RememberMemoryDialog
 
-### v4.2.0 "Data Copilot & Evolution" (🚧 开发中 — 分支 `v4.2.0`)
-**目标:** 内网数据 Copilot + 完整自进化；基于 v4.1.2，不影响稳定线
-**分支:** `v4.2.0`
+### v4.3.1 Platform Patch (✅ 完成 — 分支 `v4.3.1`)
+**发布日期:** 2026-05-25
 
-- ✅ 基线：记忆图谱 + 虚拟滚动（已合入）
-- 🚧 Phase 1：Data Copilot（模块 gating、KnowledgeBridge、business_analyst）
-- 🚧 Phase 2：Evolution（设计 ✅ + 计划 ✅）
-- 📋 Phase 3：v4.3.0 OpenClaw 对齐（设计 ✅ + 计划 ✅，依赖 v4.2.0 完成）
+- ✅ 会议助手：Whisper/SenseVoice、流式转写、原音频、摘要修复
+- ✅ 知识库深度入库 M1–M4（原规划独立版本号 v4.4，已并入 v4.3.1）
+- ✅ BI 数据源连接与安全 SQL；INS-2.1 建档性能；聊天停止生成
 
 **文档：**
-- [v4.2.0 发布说明（草案）](../01-项目概览/v4.2.0-release-notes.md)
+- [v4.3.1 发布说明](../01-项目概览/v4.3.1-release-notes.md)
+- [知识库深度入库设计](../superpowers/specs/2026-05-24-knowledge-deep-ingest-design.md) · [计划](../superpowers/plans/2026-05-24-knowledge-deep-ingest-plan.md)
+- [INS-2.1 性能](../03-实施计划/insightforge-ins-2.1-profile-perf.md)
+
+### v4.3.0 "Channels & Execution" (✅ 完成 — 分支 `v4.3.0`)
+**目标:** OpenClaw Phase 3 — ChannelRouter、Cron、工具审批、Handoff、Follow-up Queue
+
+**文档：**
+- [v4.3.0 发布说明](../01-项目概览/v4.3.0-release-notes.md)
+- [Phase 3 设计](../superpowers/specs/2026-05-24-openclaw-phase3-design.md) · [计划](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
+
+### v4.2.0 "Data Copilot & Evolution" (✅ 完成 — 分支 `v4.2.0`)
+**目标:** 内网数据 Copilot + 完整自进化；基于 v4.1.2，不影响稳定线
+
+- ✅ Phase 1：Data Copilot（模块 gating、KnowledgeBridge、business_analyst）
+- ✅ Phase 2：Evolution（反馈、写回、eval 门控）
+- ✅ 基线：记忆图谱 + 虚拟滚动
+
+**文档：**
+- [v4.2.0 发布说明](../01-项目概览/v4.2.0-release-notes.md)
 - [Phase 1 设计](../superpowers/specs/2026-05-24-data-copilot-phase1-design.md) · [计划](../superpowers/plans/2026-05-24-data-copilot-phase1-plan.md)
 - [Phase 2 设计](../superpowers/specs/2026-05-24-evolution-phase2-design.md) · [计划](../superpowers/plans/2026-05-24-evolution-phase2-plan.md)
-- [Phase 3 设计](../superpowers/specs/2026-05-24-openclaw-phase3-design.md) · [计划](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
 
 ### v4.1.4 "Memory Entity Tree" (✅ 完成)
 **目标:** 记忆管理页按实体鸟瞰结构，保留原有人格/近期/长期/全部 Tab
@@ -325,6 +341,6 @@ gantt
 
 ---
 
-*文档版本: v1.12*
+*文档版本: v1.13（对齐 TARS v4.3.1）*
 *创建日期: 2026-05-05*
 *更新日期: 2026-05-19*

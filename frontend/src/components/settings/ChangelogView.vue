@@ -13,6 +13,34 @@ interface VersionSection {
 
 const versions: VersionSection[] = [
   {
+    version: 'v4.3.1',
+    subtitle: 'Platform Patch',
+    releaseDateKey: 'settings.changelog.v431ReleaseDate',
+    features: [
+      'settings.changelog.v431.feature1',
+      'settings.changelog.v431.feature2',
+      'settings.changelog.v431.feature3',
+      'settings.changelog.v431.feature4',
+    ],
+    improvements: [
+      'settings.changelog.v431.improvement1',
+    ],
+  },
+  {
+    version: 'v4.3.0',
+    subtitle: 'Channels & Execution',
+    releaseDateKey: 'settings.changelog.v430ReleaseDate',
+    features: [
+      'settings.changelog.v430.feature1',
+      'settings.changelog.v430.feature2',
+      'settings.changelog.v430.feature3',
+      'settings.changelog.v430.feature4',
+    ],
+    improvements: [
+      'settings.changelog.v430.improvement1',
+    ],
+  },
+  {
     version: 'v4.2.0',
     subtitle: 'Data Copilot & Evolution',
     releaseDateKey: 'settings.changelog.v420ReleaseDate',
