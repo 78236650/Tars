@@ -19,6 +19,13 @@ class SkillParameter:
 
 
 @dataclass
+class VerifyStep:
+    command: str
+    expect: str = "exit_code == 0"
+    timeout_sec: int = 30
+
+
+@dataclass
 class Skill:
     id: str
     name: str
@@ -41,12 +48,18 @@ class Skill:
     # PromptSkill
     prompt_template: Optional[str] = None
     parameters: List[SkillParameter] = field(default_factory=list)
-    # v2.2 SkillRouter
+    # v2.2 SkillRouter (legacy skill.yaml trigger section)
     trigger_intents: List[str] = field(default_factory=list)
     trigger_entities: List[str] = field(default_factory=list)
     trigger_keywords: List[str] = field(default_factory=list)
     trigger_conditions: str = "any"
+    # v4.3.2 Superpowers-style routing (SKILL.md frontmatter)
+    triggers: List[str] = field(default_factory=list)
+    skip_when: List[str] = field(default_factory=list)
     priority: int = 50
+    # v4.3.2 Verification Gate
+    verify: List[VerifyStep] = field(default_factory=list)
+    verify_mode: str = "strict"
     lifecycle: str = "per_turn"
     hooks: Dict[str, str] = field(default_factory=dict)
     # v4.1.0 多租户

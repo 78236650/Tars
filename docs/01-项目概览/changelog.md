@@ -1,5 +1,23 @@
 # Changelog
 
+## v4.3.2 Patch (2026-05-25)
+
+> 📄 [v4.3.2 发布说明](./v4.3.2-release-notes.md) · [Superpowers 升级指南](../UPGRADE_GUIDE_v4.3.2.md)
+
+Superpowers 融合（原设计稿 v4.4，已并入 v4.3.x patch）：Skill 路由、Plan 审批门控、Verification Gate、计划 retry 恢复、路由采纳率 → SkillOptimizer。
+
+### Superpowers（M1–M4）
+- ✅ **SkillRouter** — `triggers` / `skip_when` / embedding；eval 命中率 ≥80%
+- ✅ **Plan 门控** — WebSocket 审批、checkpoint、`PlanReviewDialog`、REST `/api/plans`
+- ✅ **Verification Gate** — skill `verify` 块、strict/lenient、`verification_audit`
+- ✅ **联调** — 全链路 E2E；`POST /api/plans/{id}/retry` → `TaskExecutor.resume()`
+- ✅ **Evolution** — `skill_routing_events` + 低采纳率 trigger 建议
+
+### 文档
+- ✅ [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · [SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
+
+---
+
 ## v4.3.1 Patch (2026-05-25)
 
 > 📄 [v4.3.1 发布说明](./v4.3.1-release-notes.md)
@@ -66,7 +84,7 @@
 
 ### 后续版本（📋 规划中）
 
-- v4.3.2+：出站直调完全迁移、IM 渠道（原 OpenClaw Out of Scope 项）
+- v4.3.3+：出站直调完全迁移、IM 渠道（原 OpenClaw Out of Scope 项）
 - Insight 线上 Grafana 观测（`insight_snapshot.perf` P50/P95）
 
 ---

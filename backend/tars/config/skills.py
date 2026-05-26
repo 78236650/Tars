@@ -39,6 +39,9 @@ def load_skills_config() -> Dict[str, Any]:
             "top_k": 3,
             "min_score": 0.25,
             "auto_archive_days": 30,
+            "use_embedding": True,
+            "embedding_model": "BAAI/bge-small-zh-v1.5",
+            "cache_ttl_sec": 300,
         },
         "install": {
             "confirm_dangerous_permissions": True,
@@ -81,6 +84,9 @@ class SkillsConfig:
         self.skill_top_k = int(rt.get("top_k", 3))
         self.skill_min_score = float(rt.get("min_score", 0.25))
         self.auto_archive_days = int(rt.get("auto_archive_days", 30))
+        self.use_embedding = bool(rt.get("use_embedding", True))
+        self.embedding_model = str(rt.get("embedding_model", "BAAI/bge-small-zh-v1.5"))
+        self.cache_ttl_sec = int(rt.get("cache_ttl_sec", 300))
 
         self.confirm_dangerous_permissions = bool(inst.get("confirm_dangerous_permissions", True))
         self.default_install_scope = str(inst.get("default_scope", "tenant"))

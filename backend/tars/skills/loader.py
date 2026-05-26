@@ -6,7 +6,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .base import Skill, SkillType, SkillParameter
+from .base import Skill, SkillType, SkillParameter, VerifyStep
 from .registry import SkillRegistry
 from .tenant_paths import TenantSkillPaths, TENANTS_DIR, GLOBAL_DIR
 from ..tools.registry import ToolRegistry
@@ -14,6 +14,19 @@ from ..tools.plugin_loader import load_plugin_tool
 
 CACHE_DIR = Path.home() / ".tars" / "cache"
 MANIFEST_FILE = CACHE_DIR / "skills_manifest.json"
+CACHE_SCHEMA_VERSION = 3
+
+
+def _parse_verify_steps(raw) -> List[VerifyStep]:
+    steps: List[VerifyStep] = []
+    for item in raw or []:
+        if isinstance(item, dict) and item.get("command"):
+            steps.append(VerifyStep(
+                command=str(item["command"]),
+                expect=str(item.get("expect", "exit_code == 0")),
+                timeout_sec=int(item.get("timeout_sec", 30)),
+            ))
+    return steps
 
 
 class SkillLoader:
@@ -121,6 +134,8 @@ class SkillLoader:
         try:
             with open(MANIFEST_FILE) as f:
                 cache = json.load(f)
+            if cache.get("schema_version", 1) < CACHE_SCHEMA_VERSION:
+                return False
             return cache.get("snapshot") == current_snapshot
         except Exception:
             return False
@@ -145,6 +160,11 @@ class SkillLoader:
                     source=entry.get("source", "local"),
                     scope=entry.get("scope", "global"),
                     tenant_id=entry.get("tenant_id", "global"),
+                    triggers=entry.get("triggers", []),
+                    skip_when=entry.get("skip_when", []),
+                    priority=entry.get("priority", 50),
+                    verify=_parse_verify_steps(entry.get("verify", [])),
+                    verify_mode=entry.get("verify_mode", "strict"),
                     _dir_path=entry["_dir_path"],
                 )
                 if self.skill_registry:
@@ -178,10 +198,23 @@ class SkillLoader:
                     "entry_point": s.entry_point, "permissions": s.permissions,
                     "dependencies": s.dependencies, "source": s.source,
                     "scope": s.scope, "tenant_id": s.tenant_id,
+                    "triggers": getattr(s, "triggers", []) or [],
+                    "skip_when": getattr(s, "skip_when", []) or [],
+                    "priority": getattr(s, "priority", 50),
+                    "verify": [
+                        {"command": v.command, "expect": v.expect, "timeout_sec": v.timeout_sec}
+                        for v in (getattr(s, "verify", None) or [])
+                    ],
+                    "verify_mode": getattr(s, "verify_mode", "strict"),
                     "_dir_path": getattr(s, '_dir_path', ''),
                 })
             with open(MANIFEST_FILE, "w") as f:
-                json.dump({"snapshot": snapshot, "skills": entries, "saved_at": time.time()}, f)
+                json.dump({
+                    "schema_version": CACHE_SCHEMA_VERSION,
+                    "snapshot": snapshot,
+                    "skills": entries,
+                    "saved_at": time.time(),
+                }, f)
         except Exception:
             pass
 
@@ -209,6 +242,11 @@ class SkillLoader:
                 output_config=smd.outputs,
                 tars_version_min=smd.tars_version_min,
                 requires_packages=smd.requires_packages,
+                triggers=list(smd.triggers),
+                skip_when=list(smd.skip_when),
+                priority=smd.priority,
+                verify=_parse_verify_steps(smd.verify),
+                verify_mode=smd.verify_mode,
                 source="local",
                 scope=scope,
                 tenant_id=tenant_id,
@@ -352,6 +390,11 @@ class SkillLoader:
 
             trigger = data.get("trigger", {}) or {}
             hooks = data.get("hooks", {}) or {}
+            triggers = list(data.get("triggers", []) or [])
+            if not triggers:
+                for ti in trigger.get("intents", []) or []:
+                    triggers.append(f"intent:{ti}" if not str(ti).startswith("intent:") else ti)
+                triggers.extend(trigger.get("keywords", []) or [])
 
             skill = Skill(
                 id=data.get("id", skill_dir.name),
@@ -376,7 +419,11 @@ class SkillLoader:
                 trigger_entities=trigger.get("entities", []),
                 trigger_keywords=trigger.get("keywords", []),
                 trigger_conditions=trigger.get("conditions", "any"),
+                triggers=triggers,
+                skip_when=list(data.get("skip_when", []) or []),
                 priority=data.get("priority", 50),
+                verify=_parse_verify_steps(data.get("verify", [])),
+                verify_mode=str(data.get("verify_mode", "strict")),
                 lifecycle=data.get("lifecycle", "per_turn"),
                 hooks=hooks,
                 scope=data.get("scope", scope),

@@ -1,6 +1,17 @@
 ---
 name: summarizer
 description: 内容摘要助手，提取关键信息生成简洁总结。使用此技能当用户要求"摘要""总结""提取要点""概括"等。
+triggers:
+  - "摘要"
+  - "总结"
+  - "提取要点"
+  - "概括"
+  - "summarize"
+  - "intent:writing.summarize"
+skip_when:
+  - "会议"
+  - "会议纪要"
+priority: 65
 ---
 
 # Summarizer

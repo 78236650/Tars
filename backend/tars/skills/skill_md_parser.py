@@ -21,6 +21,11 @@ class SKILL:
                  outputs: dict = None,
                  tars_version_min: str = "",
                  requires_packages: list = None,
+                 triggers: list = None,
+                 skip_when: list = None,
+                 priority: int = 50,
+                 verify: list = None,
+                 verify_mode: str = "strict",
                  has_pdca: bool = False, has_scripts: bool = False):
         self.name = name
         self.description = description
@@ -31,6 +36,11 @@ class SKILL:
         self.outputs = outputs or {}
         self.tars_version_min = tars_version_min
         self.requires_packages = requires_packages or []
+        self.triggers = triggers or []
+        self.skip_when = skip_when or []
+        self.priority = priority
+        self.verify = verify or []
+        self.verify_mode = verify_mode or "strict"
         self.has_pdca = has_pdca
         self.has_scripts = has_scripts
 
@@ -94,6 +104,11 @@ def parse_skill_md(file_path: str) -> Optional[SKILL]:
         outputs=meta.get("outputs", {}),
         tars_version_min=meta.get("tars_version_min", ""),
         requires_packages=meta.get("requires_packages", []),
+        triggers=meta.get("triggers", []) or [],
+        skip_when=meta.get("skip_when", []) or [],
+        priority=int(meta.get("priority", 50)),
+        verify=meta.get("verify", []) or [],
+        verify_mode=str(meta.get("verify_mode", "strict")),
         has_pdca=has_pdca,
         has_scripts=has_scripts,
     )

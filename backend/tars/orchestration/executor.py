@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
-from .models import TaskPlan, TaskStep, StepStatus
+from .models import TaskPlan, TaskStep, StepStatus, PlanStatus, PlanCheckpoint
 from .verifier import StepVerifier, verifier as default_verifier
 from .act_policy import ActPolicy, ActDecision
 from .artifacts_collector import ArtifactsCollector
@@ -31,8 +31,20 @@ class TaskExecutor:
         self.act_policy = ActPolicy()
         self._pending_decisions: Dict[str, asyncio.Future] = {}
 
-    async def execute(self, plan: TaskPlan, session_id: str, channel,
-                      workspace_path: str = ".") -> Dict[int, ToolResult]:
+    async def execute(
+        self,
+        plan: TaskPlan,
+        session_id: str,
+        channel,
+        workspace_path: str = ".",
+        plan_id: Optional[str] = None,
+        plan_store=None,
+        start_from_step_id: int = 1,
+        skill_id: Optional[str] = None,
+        skill_registry=None,
+        verification_gate=None,
+        audit_store=None,
+    ) -> Dict[int, ToolResult]:
         """执行计划，返回每步的结果。
 
         流程：Do → Check → {pass → next / fail → Act(retry×3 → ask → abort/skip)}
@@ -40,19 +52,35 @@ class TaskExecutor:
         results: Dict[int, ToolResult] = {}
         collector = ArtifactsCollector(workspace_path)
         collector.take_snapshot()
+        effective_plan_id = plan_id or plan.id
 
         await channel.send(session_id, {
             "type": "plan_created",
             "session_id": session_id,
+            "plan_id": effective_plan_id,
             "plan": plan.to_dict(),
             "timestamp": now_iso(),
         })
 
         for step in plan.steps:
+            if step.id < start_from_step_id:
+                continue
+
+            if plan_store and effective_plan_id:
+                stored = plan_store.get(effective_plan_id)
+                if stored and stored.status in (PlanStatus.CANCELLED, PlanStatus.REJECTED):
+                    await channel.send(session_id, {
+                        "type": "plan_complete",
+                        "session_id": session_id,
+                        "plan_id": effective_plan_id,
+                        "status": stored.status.value,
+                        "timestamp": now_iso(),
+                    })
+                    return results
+
             step_dict = step.to_dict()
             resolved_args = self._resolve_placeholders(step.arguments, results)
 
-            # 执行（带 Check + Act）
             step_result = await self._execute_step_with_act(
                 step, step_dict, resolved_args, session_id, channel, workspace_path
             )
@@ -61,13 +89,26 @@ class TaskExecutor:
             if step_result.success:
                 step.status = StepStatus.COMPLETED
                 step.output = step_result.output
+                cp_status = "done"
             else:
                 step.status = StepStatus.FAILED
                 step.error = step_result.error
+                cp_status = "failed"
+
+            if plan_store and effective_plan_id:
+                plan_store.add_checkpoint(PlanCheckpoint(
+                    plan_id=effective_plan_id,
+                    step_id=step.id,
+                    status=cp_status,
+                    output=(step.output or step.error or "")[:500],
+                    timestamp=now_iso(),
+                    retry_count=step.retries,
+                ))
 
             await channel.send(session_id, {
                 "type": "plan_step_complete",
                 "session_id": session_id,
+                "plan_id": effective_plan_id,
                 "step_id": step.id,
                 "success": step_result.success,
                 "output": (step_result.output or "")[:500],
@@ -75,36 +116,128 @@ class TaskExecutor:
                 "timestamp": now_iso(),
             })
 
-            # 失败后用户决策
             if not step_result.success:
+                if plan_store and effective_plan_id:
+                    plan_store.update_status(effective_plan_id, PlanStatus.FAILED)
                 decision = await self._ask_user_decision(step, session_id, channel)
                 if decision == "abort":
                     await channel.send(session_id, {
                         "type": "plan_complete",
                         "session_id": session_id,
+                        "plan_id": effective_plan_id,
                         "status": "aborted",
                         "timestamp": now_iso(),
                     })
                     return results
                 if decision == "skip":
                     step.status = StepStatus.SKIPPED
+                    if plan_store and effective_plan_id:
+                        plan_store.add_checkpoint(PlanCheckpoint(
+                            plan_id=effective_plan_id,
+                            step_id=step.id,
+                            status="skipped",
+                            output=step.error,
+                            timestamp=now_iso(),
+                            retry_count=step.retries,
+                        ))
                     continue
 
-        # 采集 artifacts
         artifacts = collector.collect_new_files()
         for step in plan.steps:
             artifacts.extend(ArtifactsCollector.collect_from_step(step.to_dict()))
         artifacts = list(set(artifacts))
 
+        step_failed = any(
+            s.status == StepStatus.FAILED for s in plan.steps if s.id >= start_from_step_id
+        )
+        final_status = "failed" if step_failed else "completed"
+
+        if not step_failed and skill_id and skill_registry:
+            skill = skill_registry.get(skill_id)
+            verify_steps = getattr(skill, "verify", None) if skill else None
+            if verify_steps:
+                from .verification import get_verification_gate
+                gate = verification_gate or get_verification_gate()
+                verify_result = await gate.run(
+                    verify_steps,
+                    mode=getattr(skill, "verify_mode", "strict"),
+                    cwd=workspace_path,
+                )
+                if audit_store and effective_plan_id:
+                    audit_store.record(effective_plan_id, skill_id, verify_result)
+                await channel.send(session_id, {
+                    "type": "verification_complete" if verify_result.passed else "verification_failed",
+                    "session_id": session_id,
+                    "plan_id": effective_plan_id,
+                    "skill_id": skill_id,
+                    "passed": verify_result.passed,
+                    "status": verify_result.status,
+                    "step_results": [
+                        {
+                            "command": s.command,
+                            "expect": s.expect,
+                            "passed": s.passed,
+                            "message": s.message,
+                        }
+                        for s in verify_result.step_results
+                    ],
+                    "timestamp": now_iso(),
+                })
+                if not verify_result.passed:
+                    final_status = "failed"
+                elif verify_result.status == "done_with_warnings":
+                    final_status = "completed_with_warnings"
+
+        if plan_store and effective_plan_id:
+            if final_status in ("failed",):
+                plan_store.update_status(effective_plan_id, PlanStatus.FAILED)
+            else:
+                plan_store.update_status(effective_plan_id, PlanStatus.DONE)
+
         await channel.send(session_id, {
             "type": "plan_complete",
             "session_id": session_id,
-            "status": "completed",
+            "plan_id": effective_plan_id,
+            "status": final_status,
             "steps": [s.to_dict() for s in plan.steps],
             "artifacts": artifacts,
             "timestamp": now_iso(),
         })
         return results
+
+    async def resume(
+        self,
+        plan_id: str,
+        session_id: str,
+        channel,
+        workspace_path: str = ".",
+        plan_store=None,
+        skill_registry=None,
+        audit_store=None,
+        verification_gate=None,
+    ) -> Dict[int, ToolResult]:
+        if not plan_store:
+            raise ValueError("plan_store required for resume")
+        plan = plan_store.get(plan_id)
+        if not plan:
+            raise ValueError(f"plan not found: {plan_id}")
+        last_done = plan_store.get_last_done_step(plan_id)
+        start_from = last_done + 1 if last_done else 1
+        plan_store.update_status(plan_id, PlanStatus.EXECUTING)
+        plan.status = PlanStatus.EXECUTING
+        return await self.execute(
+            plan,
+            session_id,
+            channel,
+            workspace_path=workspace_path,
+            plan_id=plan_id,
+            plan_store=plan_store,
+            start_from_step_id=start_from,
+            skill_id=plan.skill_id,
+            skill_registry=skill_registry,
+            audit_store=audit_store,
+            verification_gate=verification_gate,
+        )
 
     async def _execute_step_with_act(self, step: TaskStep, step_dict: dict,
                                        args: Dict, session_id: str, channel,

@@ -77,8 +77,8 @@ class TaskPlannerTool(BaseTool):
 
         return ToolResult(
             success=True,
-            output=f"计划已提交: {goal}（{len(plan.steps)} 步）。系统将按计划执行。",
-            metadata={"plan": plan.to_dict(), "is_plan": True},
+            output=f"计划已提交: {goal}（{len(plan.steps)} 步）。等待审批后将按计划执行。",
+            metadata={"plan": plan.to_dict(), "is_plan": True, "status": "draft"},
         )
 
     def pop_pending_plan(self):

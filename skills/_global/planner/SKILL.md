@@ -1,6 +1,15 @@
 ---
 name: planner
 description: 任务规划助手，将复杂任务分解为可执行步骤并给出时间估算。使用此技能当用户提出"规划""计划""分解""方案"等需求时。
+triggers:
+  - "规划"
+  - "计划"
+  - "分解"
+  - "方案"
+  - "任务分解"
+  - "intent:planning.task"
+  - "/plan"
+priority: 65
 ---
 
 # Planner

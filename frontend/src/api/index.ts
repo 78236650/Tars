@@ -457,6 +457,36 @@ export const approvalsApi = {
   },
 }
 
+export const plansApi = {
+  list: async (): Promise<{ plans: Record<string, unknown>[] }> => {
+    const response = await api.get('/plans')
+    return response.data
+  },
+
+  get: async (planId: string): Promise<Record<string, unknown>> => {
+    const response = await api.get(`/plans/${planId}`)
+    return response.data
+  },
+
+  approve: async (
+    planId: string,
+    steps?: Record<string, unknown>[],
+  ): Promise<{ success: boolean; plan_id: string; status: string }> => {
+    const response = await api.post(`/plans/${planId}/approve`, { steps })
+    return response.data
+  },
+
+  reject: async (planId: string): Promise<{ success: boolean; plan_id: string; status: string }> => {
+    const response = await api.post(`/plans/${planId}/reject`)
+    return response.data
+  },
+
+  retry: async (planId: string): Promise<{ success: boolean; plan_id: string; status: string }> => {
+    const response = await api.post(`/plans/${planId}/retry`)
+    return response.data
+  },
+}
+
 export const handoffsApi = {
   accept: async (handoffId: string): Promise<{ success: boolean; handoff_id: string; status: string }> => {
     const response = await api.post(`/handoffs/${handoffId}/accept`)

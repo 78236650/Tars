@@ -5,6 +5,22 @@ permissions:
   - shell
   - file_write
   - git_push
+triggers:
+  - "部署"
+  - "发布"
+  - "上线"
+  - "deploy"
+  - "production"
+  - "构建并发布"
+skip_when:
+  - "解释"
+  - "什么是"
+priority: 70
+verify_mode: strict
+verify:
+  - command: "echo deploy-verify-ok"
+    expect: 'stdout contains "deploy-verify-ok"'
+    timeout_sec: 10
 ---
 
 # Deploy

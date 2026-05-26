@@ -1,12 +1,17 @@
 ---
 name: meeting_notes
 description: 会议助手，转录会议录音并生成结构化摘要。使用此技能当用户要求"转录会议录音""会议文件转录""总结会议文件"等。仅支持文件路径输入，实时录音请使用前端页面。
-trigger_keywords:
-  - 转录会议录音
-  - 会议文件转录
-  - 总结会议文件
-  - 会议纪要
-  - 会议转写
+triggers:
+  - "转录会议"
+  - "会议文件转录"
+  - "总结会议"
+  - "会议纪要"
+  - "会议转写"
+  - "会议录音"
+  - "intent:meeting.notes"
+skip_when:
+  - intent:general_chat
+priority: 70
 ---
 
 # Meeting Notes

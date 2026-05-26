@@ -3,6 +3,20 @@ name: bi_analytics
 description: BI 数据分析技能。支持连接多种数据库（MySQL/PostgreSQL/Oracle/SQL Server/ClickHouse/SQLite），自动生成 SQL 查询，生成图表和数据分析报告。当用户需要进行数据查询、统计分析、趋势查看、报表生成时使用此技能。
 permissions: [database_read]
 depends_on: []
+triggers:
+  - "查询数据"
+  - "查一下.*数据"
+  - "生成报表"
+  - "看一下.*指标"
+  - "统计分析"
+  - "趋势"
+  - "GMV"
+  - "intent:data.analyze"
+skip_when:
+  - "解释.*代码"
+  - intent:general_chat
+  - context:no_datasource
+priority: 80
 outputs:
   chart:
     type: object

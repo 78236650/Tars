@@ -255,6 +255,17 @@ gantt
 - ✅ 聊天顶栏精简、Ctrl/⌘+Enter 发送、回复复制
 - ✅ 记住要点：`extract-from-turn` / `save-from-turn` + RememberMemoryDialog
 
+### v4.3.2 Platform Patch (✅ 完成 — 分支 `v4.3.2`)
+**发布日期:** 2026-05-25
+
+- ✅ Superpowers 融合：Skill 路由、Plan 门控、Verification Gate（原设计 v4.4 → 对齐 v4.3.2）
+- ✅ 计划 retry → `TaskExecutor.resume()`；路由采纳率 → SkillOptimizer
+
+**文档：**
+- [v4.3.2 发布说明](../01-项目概览/v4.3.2-release-notes.md)
+- [Superpowers 升级指南](../UPGRADE_GUIDE_v4.3.2.md)
+- [skill-routing-plan-gate 设计](../superpowers/specs/2026-05-25-skill-routing-plan-gate-design.md) · [计划](../superpowers/plans/2026-05-25-skill-routing-plan-gate-plan.md)
+
 ### v4.3.1 Platform Patch (✅ 完成 — 分支 `v4.3.1`)
 **发布日期:** 2026-05-25
 
@@ -341,6 +352,6 @@ gantt
 
 ---
 
-*文档版本: v1.13（对齐 TARS v4.3.1）*
+*文档版本: v1.14（对齐 TARS v4.3.2）*
 *创建日期: 2026-05-05*
 *更新日期: 2026-05-19*

@@ -36,3 +36,22 @@ modules:
       enabled: true
       description: "SkillHub 技能市场"
       routes: ["/api/skillhub"]
+
+# v4.3.2 Superpowers integration
+skill_routing:
+  enabled: true
+
+plan_gate:
+  enabled: true
+  always_approve: false
+  force_auto_approve: false
+  auto_approve_threshold: 3
+  review_timeout_sec: 600
+  reminder_at_sec: 300
+  fallback_auto_approve: true
+
+verification:
+  enabled: true
+  default_mode: strict
+  lenient_pass_rate: 0.8
+  fail_action: rollback

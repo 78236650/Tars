@@ -2,8 +2,8 @@
 
 一个完整的 AI 助手应用，支持多用户权限管理、SkillHub 本地技能生态、知识库主动检索、Admin 管理台、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理（含**实体树 / 谱系 / 图谱**）与自动压缩。
 
-> **开发版本 v4.2.0 "Data Copilot & Evolution"**（分支 `v4.2.0`）  
-> 基于 v4.1.2 稳定线 · 详见 [Changelog](docs/01-项目概览/changelog.md) · [v4.2.0 发布说明（草案）](docs/01-项目概览/v4.2.0-release-notes.md)
+> **开发版本 v4.3.2 "Superpowers Integration"**  
+> v4.3.2 patch：Skill 路由 + Plan 门控 + Verification Gate · [升级指南](docs/UPGRADE_GUIDE_v4.3.2.md) · 详见 [Changelog](docs/01-项目概览/changelog.md)
 
 ### v4.2.0 规划（本分支）
 
@@ -343,7 +343,7 @@ Web 工具搜索结果通过反思器自动沉淀为 `source=web` 的 archival �
 
 详见 [docs/superpowers/specs/2026-05-06-memory-v3-letta-design.md](docs/superpowers/specs/2026-05-06-memory-v3-letta-design.md)
 
-## 快速开始（v4.3.1）
+## 快速开始（v4.3.2）
 
 > 前端 dev 默认 `http://localhost:5173`，API/WS 代理到后端 `http://localhost:8000`。
 
@@ -386,7 +386,7 @@ python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
 ./scripts/migrate-evolution-workspace.sh
 ```
 
-验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.1**）；鉴数能力版本见 `GET /api/insight/version`（当前 **INS-2.1.0**，与平台号双轨，见 [版本对照](docs/01-项目概览/README.md#平台版本-vs-insightforge-能力版本双轨方案-a)）。
+验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.2**）；鉴数能力版本见 `GET /api/insight/version`（当前 **INS-2.1.0**，与平台号双轨，见 [版本对照](docs/01-项目概览/README.md#平台版本-vs-insightforge-能力版本双轨方案-a)）。
 
 ### 3. 前端启动
 

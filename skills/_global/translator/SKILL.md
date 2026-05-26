@@ -1,6 +1,14 @@
 ---
 name: translator
 description: 翻译助手，支持中英互译及多语种翻译。使用此技能当用户要求"翻译""translate""英译""中译"等。
+triggers:
+  - "翻译"
+  - "translate"
+  - "英译"
+  - "中译"
+  - "译成"
+  - "intent:writing.translate"
+priority: 60
 ---
 
 # Translator

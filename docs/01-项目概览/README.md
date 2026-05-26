@@ -4,21 +4,21 @@
 
 TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模型（Ollama）和云端 API（DeepSeek、阿里通义等）。用户通过技能/插件适配垂直场景，平台提供安全隔离、记忆管理、工具调度等基础能力。
 
-**当前版本: v4.3.1**（分支 `v4.3.1`：会议 ASR、知识库深度入库、BI 连接、INS-2.1；基于 v4.3.0 OpenClaw）  
-**上一主线: v4.3.0** Channels & Execution · **v4.2.0** Data Copilot & Evolution  
+**当前版本: v4.3.2**（Superpowers 融合：Skill 路由 + Plan 门控 + Verification Gate；v4.3.x patch）  
+**上一版本: v4.3.1**（会议 ASR、知识库深度入库、BI 连接、INS-2.1）  
 **稳定基线: v4.1.2**（生产/内网部署参考）
 
 ### 平台版本 vs InsightForge 能力版本（双轨，方案 A）
 
 | TARS 平台 | InsightForge（`GET /api/insight/version`） | 说明 |
 |-----------|---------------------------------------------|------|
-| **v4.3.1**（当前） | **INS-2.1.0** | 建档性能（batch stats、增量 reuse、SQL 超时）；随 v4.3.1 patch 交付 |
-| v4.3.0 | INS-2.0.0 | 对话优先 Copilot、WorkflowStrip、Metric QA |
+| **v4.3.2**（当前） | **INS-2.1.0** | Superpowers 融合：Skill 自动路由、Plan 审批、Verify 门控 |
+| v4.3.1 | INS-2.1.0 | 建档性能（batch stats、增量 reuse、SQL 超时） |
 | v4.2.0 | INS-2.0.0 | Data Copilot 与 KnowledgeBridge 联动 |
 | — | INS-1.0.0 | 早期 Profile 流水线（历史 tag `insight-v1.0.0`） |
 
-- 平台号：`backend/tars/main.py` → OpenAPI **4.3.1**
-- 能力号：`backend/tars/insight/version.py` → **INS-2.1.0**（勿与 `4.3.1` 混用同一字符串）
+- 平台号：`backend/tars/main.py` → OpenAPI **4.3.2**
+- 能力号：`backend/tars/insight/version.py` → **INS-2.1.0**（勿与 `4.3.2` 混用同一字符串）
 - Git 能力 tag 建议：`insight-v2.1.0`（与 `insight-v2.0.0` 并列，不替代平台分支名）
 
 ## 核心特性
@@ -63,6 +63,13 @@ TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模�
 - 📚 **10 个技能** — bi_analytics、calculator、code_assistant、deploy、meeting_notes、planner、release_notes、run_tests、summarizer、translator
 - 📊 **模块化启动** — modules.yaml 控制可选模块（BI、会议、知识库、SkillHub）按需加载
 - 📈 **技能统计** — Curator 记录调用次数/成功率，支持归档管理
+
+### Superpowers 融合（v4.3.2）
+
+- 🎯 **Skill 自动路由** — `triggers` / `skip_when` + embedding，Router 推荐 top-K 技能
+- 📋 **Plan 审批门控** — 复杂计划 WebSocket 审批 + checkpoint 断点恢复
+- ✅ **Verification Gate** — 计划完成后跑 skill 声明的 verify 命令，失败阻断 done
+- 📖 升级说明：[UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · Skill 编写：[SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
 
 ## 技术栈
 

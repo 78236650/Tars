@@ -3,6 +3,18 @@ name: insight_analyst
 description: InsightForge 鉴数分析师。在已鉴数数据源上问数、解释口径、启动鉴数、采用官方指标。禁止画图与执行 Python。
 permissions: [database_read]
 depends_on: [insight]
+triggers:
+  - "问数"
+  - "指标"
+  - "口径"
+  - "鉴数"
+  - "官方指标"
+  - "intent:data.analyze"
+skip_when:
+  - "画.*图"
+  - "chart"
+  - "echarts"
+priority: 85
 ---
 
 # Insight Analyst

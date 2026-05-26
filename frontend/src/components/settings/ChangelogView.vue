@@ -13,6 +13,20 @@ interface VersionSection {
 
 const versions: VersionSection[] = [
   {
+    version: 'v4.3.2',
+    subtitle: 'Superpowers Integration',
+    releaseDateKey: 'settings.changelog.v432ReleaseDate',
+    features: [
+      'settings.changelog.v432.feature1',
+      'settings.changelog.v432.feature2',
+      'settings.changelog.v432.feature3',
+      'settings.changelog.v432.feature4',
+    ],
+    improvements: [
+      'settings.changelog.v432.improvement1',
+    ],
+  },
+  {
     version: 'v4.3.1',
     subtitle: 'Platform Patch',
     releaseDateKey: 'settings.changelog.v431ReleaseDate',

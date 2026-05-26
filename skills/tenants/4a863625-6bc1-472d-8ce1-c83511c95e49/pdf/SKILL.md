@@ -2,6 +2,14 @@
 name: pdf
 description: Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents, and handling forms. When Claude needs to fill in a PDF form or programmatically process, generate, or analyze PDF documents at scale.
 license: Proprietary. LICENSE.txt has complete terms
+triggers:
+  - "PDF"
+  - "pdf"
+  - "文档提取"
+  - "合并.*pdf"
+  - "拆分.*pdf"
+  - "intent:document.process"
+priority: 75
 ---
 
 # PDF Processing Guide

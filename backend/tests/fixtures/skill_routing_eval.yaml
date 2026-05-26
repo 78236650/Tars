@@ -1,0 +1,137 @@
+# Skill routing eval set — 50 labeled intents for M1 acceptance (A4/A5)
+# Run: SKILL_EVAL=1 pytest -m skill_eval tests/test_skill_router.py
+
+version: 1
+top_k: 3
+min_hit_rate: 0.80
+max_false_trigger_rate: 0.05
+
+cases:
+  # --- bi_analytics (8) ---
+  - message: "帮我查一下上个月的订单数据"
+    expected_skill: bi_analytics
+  - message: "查询数据，看看 GMV 趋势"
+    expected_skill: bi_analytics
+  - message: "生成报表，统计各产品线销量"
+    expected_skill: bi_analytics
+  - message: "看一下销售指标同比变化"
+    expected_skill: bi_analytics
+  - message: "帮我做统计分析，按地区汇总"
+    expected_skill: bi_analytics
+  - message: "查一下用户增长数据"
+    expected_skill: bi_analytics
+  - message: "生成一份数据分析报告"
+    expected_skill: bi_analytics
+  - message: "SQL 查询最近七天的转化率"
+    expected_skill: bi_analytics
+
+  # --- code_assistant (6) ---
+  - message: "帮我写一段 Python 代码读取 CSV"
+    expected_skill: code_assistant
+  - message: "这段代码有 bug，帮我 debug"
+    expected_skill: code_assistant
+  - message: "请做代码审查，看看有没有安全问题"
+    expected_skill: code_assistant
+  - message: "重构这个函数，提高可读性"
+    expected_skill: code_assistant
+  - message: "编程实现一个二叉树遍历"
+    expected_skill: code_assistant
+  - message: "解释一下这段 JavaScript 并修复错误"
+    expected_skill: code_assistant
+
+  # --- deploy (4) ---
+  - message: "帮我把服务部署到生产环境"
+    expected_skill: deploy
+  - message: "发布新版本到 production"
+    expected_skill: deploy
+  - message: "上线这个分支"
+    expected_skill: deploy
+  - message: "构建并发布前端"
+    expected_skill: deploy
+
+  # --- insight_analyst (5) ---
+  - message: "对这个数据源问数，看 DAU 指标"
+    expected_skill: insight_analyst
+  - message: "解释一下这个指标的口径"
+    expected_skill: insight_analyst
+  - message: "启动鉴数流程"
+    expected_skill: insight_analyst
+  - message: "采用官方指标定义"
+    expected_skill: insight_analyst
+  - message: "问数：本月留存率是多少"
+    expected_skill: insight_analyst
+
+  # --- meeting_notes (4) ---
+  - message: "转录会议录音 /data/meeting.mp3"
+    expected_skill: meeting_notes
+  - message: "帮我做会议文件转录"
+    expected_skill: meeting_notes
+  - message: "总结会议录音内容"
+    expected_skill: meeting_notes
+  - message: "生成会议纪要"
+    expected_skill: meeting_notes
+
+  # --- planner (4) ---
+  - message: "帮我规划一下迁移方案"
+    expected_skill: planner
+  - message: "把这个需求分解成可执行步骤"
+    expected_skill: planner
+  - message: "制定下周开发计划"
+    expected_skill: planner
+  - message: "/plan 重构认证模块"
+    expected_skill: planner
+
+  # --- run_tests (3) ---
+  - message: "运行测试，看看有没有回归"
+    expected_skill: run_tests
+  - message: "跑一下 pytest"
+    expected_skill: run_tests
+  - message: "验证代码，执行 test suite"
+    expected_skill: run_tests
+
+  # --- summarizer (3) ---
+  - message: "帮我摘要这篇文章的要点"
+    expected_skill: summarizer
+  - message: "总结下面这段长文的结论"
+    expected_skill: summarizer
+  - message: "提取要点，概括核心观点"
+    expected_skill: summarizer
+
+  # --- translator (3) ---
+  - message: "把这段话翻译成英文"
+    expected_skill: translator
+  - message: "translate this paragraph to Chinese"
+    expected_skill: translator
+  - message: "中译：Hello world"
+    expected_skill: translator
+
+  # --- pdf (4) ---
+  - message: "帮我处理这个 PDF 文件"
+    expected_skill: pdf
+  - message: "从 pdf 里提取表格"
+    expected_skill: pdf
+  - message: "合并两个 PDF 文档"
+    expected_skill: pdf
+  - message: "拆分 pdf 按页保存"
+    expected_skill: pdf
+
+  # --- negative / skip_when (6) — must NOT trigger forbidden skills ---
+  - message: "你好，今天天气怎么样"
+    expected_skill: null
+    forbidden_skills: [bi_analytics, deploy, code_assistant]
+  - message: "解释一下这段 Python 代码的逻辑"
+    expected_skill: code_assistant
+    forbidden_skills: [bi_analytics]
+  - message: "什么是 deploy 的意思"
+    expected_skill: null
+    forbidden_skills: [deploy]
+  - message: "随便聊聊"
+    expected_skill: null
+    forbidden_skills: [bi_analytics, insight_analyst, deploy]
+  - message: "查询数据"
+    expected_skill: bi_analytics
+    context: {no_datasource: true}
+    forbidden_skills: [bi_analytics]
+  - message: "帮我画一个 GMV 趋势图"
+    expected_skill: bi_analytics
+    forbidden_skills: [insight_analyst]

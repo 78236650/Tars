@@ -9,8 +9,11 @@ skillhub:
 router:
   enabled: true
   top_k: 3
-  min_score: 0.25
+  min_score: 0.3
   auto_archive_days: 30
+  use_embedding: true
+  embedding_model: BAAI/bge-small-zh-v1.5
+  cache_ttl_sec: 300
 
 install:
   confirm_dangerous_permissions: true

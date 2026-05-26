@@ -17,6 +17,7 @@ import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue
 import QueueStatus from '@/components/chat/QueueStatus.vue'
 import WarningBanner from '@/components/chat/WarningBanner.vue'
 import ApprovalDialog from '@/components/chat/ApprovalDialog.vue'
+import PlanReviewDialog from '@/components/chat/PlanReviewDialog.vue'
 import HandoffDialog from '@/components/chat/HandoffDialog.vue'
 
 defineOptions({ name: 'ChatView' })
@@ -398,6 +399,7 @@ const onInsightClarify = async (payload: {
       </p>
       <WarningBanner />
       <ApprovalDialog />
+      <PlanReviewDialog />
       <HandoffDialog />
 
       <footer class="border-t border-amber-100/10 px-6 py-4">
