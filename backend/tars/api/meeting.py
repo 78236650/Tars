@@ -33,6 +33,7 @@ _db: Optional[Database] = None
 _meeting_tool: Optional[MeetingRecognizerTool] = None
 _vector_store: Any = None
 _embedding_provider: Any = None
+_wiki_event_handler = None
 
 # 文件限制
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
@@ -41,6 +42,11 @@ STORAGE_PATH = "storage/meetings"
 
 def _default_asr_model() -> str:
     return display_model_name()
+
+
+def set_meeting_wiki_handler(handler) -> None:
+    global _wiki_event_handler
+    _wiki_event_handler = handler
 
 
 def init_meeting_api(
@@ -362,6 +368,15 @@ async def _do_summarization(transcription_id: str, transcript: str, language: Op
             key_points=json.dumps(summary_data.get("key_points", []), ensure_ascii=False),
             summary_type="structured",
         )
+        if _wiki_event_handler is not None:
+            row = _db.get_transcription(transcription_id)
+            title = (row.title if row and getattr(row, "title", None) else None) or f"会议 {transcription_id[:8]}"
+            source = f"{transcript}\n\n## 摘要\n{summary_text}"
+            task = asyncio.create_task(
+                _wiki_event_handler.on_meeting_ended(source, title)
+            )
+            _transcription_tasks.add(task)
+            task.add_done_callback(_transcription_tasks.discard)
     except Exception as e:
         _db.update_transcription(
             transcription_id,

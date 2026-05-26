@@ -86,6 +86,9 @@ backend/uploads/
 # Local Chroma vector index (runtime; do not commit)
 backend/data/vectorstore/
 
+# LLM Wiki compiled pages (runtime; index regenerated on startup)
+backend/data/wiki/
+
 # Meeting recordings and uploads (per-user runtime)
 backend/storage/meetings/
 

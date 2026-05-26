@@ -9,7 +9,12 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tars.api.knowledge import init_knowledge_api, resolve_upload_doc_type, router as knowledge_router
+from tars.api.knowledge import (
+    clear_wiki_upload_routing,
+    init_knowledge_api,
+    resolve_upload_doc_type,
+    router as knowledge_router,
+)
 from tars.database import Database
 
 
@@ -20,12 +25,14 @@ class _FakeEmbedding:
 
 @pytest.fixture
 def kb_client(tmp_path):
+    clear_wiki_upload_routing()
     db = Database(str(tmp_path / "kb.db"))
     app = FastAPI()
     app.include_router(knowledge_router)
     init_knowledge_api(db, vector_store=None, embedding_provider=_FakeEmbedding())
     with TestClient(app) as client:
         yield client, db
+    clear_wiki_upload_routing()
 
 
 def test_resolve_upload_doc_type_priority():

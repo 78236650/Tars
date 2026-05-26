@@ -3,14 +3,27 @@
     <div v-if="highlightDocId" class="doc-highlight-banner">
       已定位文档引用：<code>{{ highlightDocId }}</code>
     </div>
-    <KnowledgeManager />
+    <el-tabs v-model="activeTab" class="knowledge-tabs">
+      <el-tab-pane :label="t('knowledge.title', '知识库')" name="knowledge">
+        <KnowledgeManager />
+      </el-tab-pane>
+      <el-tab-pane label="Wiki" name="wiki">
+        <WikiViewer />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 import KnowledgeManager from '@/components/knowledge/KnowledgeManager.vue'
+import WikiViewer from '@/components/knowledge/WikiViewer.vue'
+
+const activeTab = ref('knowledge')
 
 const route = useRoute()
 const highlightDocId = computed(() => String(route.query.doc_id || '').trim())
@@ -21,6 +34,15 @@ const highlightDocId = computed(() => String(route.query.doc_id || '').trim())
   height: 100%;
   overflow-y: auto;
   background: transparent;
+}
+
+.knowledge-tabs {
+  height: 100%;
+}
+
+.knowledge-tabs :deep(.el-tabs__content) {
+  height: calc(100% - 40px);
+  overflow: auto;
 }
 
 .doc-highlight-banner {

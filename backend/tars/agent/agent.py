@@ -39,6 +39,7 @@ class AgentV2:
         task_executor=None,
         knowledge_retriever=None,
         evolution_manager=None,
+        wiki_store=None,
     ):
         self.db = db or Database()
         self.workspace = workspace or WorkspaceManager()
@@ -57,6 +58,7 @@ class AgentV2:
         self.file_parser = file_parser
         self.task_executor = task_executor
         self.knowledge_retriever = knowledge_retriever
+        self.wiki_store = wiki_store
 
         # 斜杠命令系统
         from ..commands import CommandRegistry, CommandParser
@@ -90,7 +92,12 @@ class AgentV2:
         if self.mem_config.skill_router_enabled:
             from ..skills.router import SkillRouter
             from ..config.skills import skills_config
-            self.skill_router = SkillRouter(self.skill_registry, skills_config)
+            embed = getattr(self.memory_manager, "embedding_provider", None)
+            self.skill_router = SkillRouter(
+                self.skill_registry,
+                skills_config,
+                embedding_provider=embed,
+            )
         else:
             self.skill_router = None
 
@@ -666,10 +673,41 @@ class AgentV2:
             if planner_tool and hasattr(planner_tool, "pop_pending_plan"):
                 plan = planner_tool.pop_pending_plan()
                 if plan:
+                    import json
+                    import uuid
+                    from ..orchestration.models import PlanStatus
+                    from ..database.plan_store import get_plan_store
+                    from ..orchestration.plan_gate import get_plan_gate
+
+                    plan.id = str(uuid.uuid4())
+                    plan.session_id = session_id
+                    plan.tenant_id = tenant_id
+
                     # 解析 workspace 路径
-                    import json, uuid
                     from ..orchestration.workspace_resolver import resolve_workspace_path
                     ws_path, ws_source = resolve_workspace_path(session_id, title=plan.goal[:30])
+                    plan.workspace_path = ws_path
+
+                    plan_store = get_plan_store()
+                    plan_store.create(plan)
+
+                    plan_gate = get_plan_gate()
+                    if plan_gate:
+                        approved = await plan_gate.submit_for_review(plan, channel)
+                        if not approved:
+                            await channel.send(session_id, {
+                                "type": "plan_review_rejected",
+                                "session_id": session_id,
+                                "plan_id": plan.id,
+                                "timestamp": now_iso(),
+                            })
+                            return
+                        refreshed = plan_store.get(plan.id)
+                        if refreshed:
+                            plan = refreshed
+
+                    plan_store.update_status(plan.id, PlanStatus.EXECUTING)
+                    plan.status = PlanStatus.EXECUTING
 
                     # v2.5: 先取 PDCA 配置（require_git 检查和变量替换都要用）
                     pdca_config, pdca_ref = (
@@ -703,6 +741,7 @@ class AgentV2:
                         if pdca_ref and pdca_ref.startswith("skill://"):
                             skill_id_from_ref = pdca_ref.replace("skill://", "").split("/")[0]
                             self._active_skill_id = skill_id_from_ref
+                            plan.skill_id = skill_id_from_ref
 
                     # 持久化任务到 SQLite
                     task_id = str(uuid.uuid4())
@@ -761,7 +800,18 @@ class AgentV2:
                             self.task_executor.act_policy.on_final_failure = act["on_final_failure"]
 
                     # 执行计划（v2.4: 危险命令检查已集成在 executor 内）
-                    results = await self.task_executor.execute(plan, session_id, channel, workspace_path=ws_path)
+                    from ..database.audit_store import get_verification_audit_store
+                    results = await self.task_executor.execute(
+                        plan,
+                        session_id,
+                        channel,
+                        workspace_path=ws_path,
+                        plan_id=plan.id,
+                        plan_store=plan_store,
+                        skill_id=skill_id_from_ref,
+                        skill_registry=self.skill_registry,
+                        audit_store=get_verification_audit_store(),
+                    )
 
                     # 采集 artifacts
                     from ..orchestration.artifacts_collector import ArtifactsCollector
@@ -904,11 +954,18 @@ class AgentV2:
             matched = getattr(self, "_current_matched_skills", None)
             if matched is None:
                 matched = self._route_skills_for_message(user_content, tenant_id)
+            if matched and self.skill_router:
+                intent = self.skill_router._intent_extractor.extract(user_content)
+                candidates = self.skill_router.match(intent, tenant_id=tenant_id)
+                recommendations = self.skill_router.build_recommendations(candidates)
+                if recommendations:
+                    sp += f"\n\n{recommendations}"
+                self._record_routing_candidates(session_id, candidates)
             if matched:
                 injection = self._build_skill_injection(matched)
                 if injection:
                     sp += f"\n\n{injection}"
-                self._record_skill_activations(matched)
+                self._record_skill_activations(matched, session_id=session_id)
             elif hasattr(self, '_active_skill_id') and self._active_skill_id:
                 active_skill = self.skill_registry.get(self._active_skill_id, tenant_id)
                 if active_skill and active_skill.prompt_template:
@@ -925,6 +982,15 @@ class AgentV2:
             "请先调用 knowledge_search 工具检索相关资料。优先使用知识库中的内容回答，而非凭记忆推测。\n"
             "引用知识库内容时，在相关陈述句末标注 [ref:doc_id|文档标题]（doc_id 与标题来自检索结果中的 ref: 与来源字段）。"
         )
+
+        if self.wiki_store:
+            wiki_index = self.wiki_store.read_index()
+            if wiki_index.strip() and wiki_index != "# Wiki Index\n\n":
+                sp += (
+                    "\n\n## 你的知识 Wiki\n"
+                    "以下是你维护的结构化知识库索引，需要详细信息时使用 read_wiki 工具查阅具体页面：\n\n"
+                    f"{wiki_index}\n"
+                )
 
         sp += (
             "\n\n## 子代理审查规则\n"
@@ -996,13 +1062,31 @@ class AgentV2:
                 sections.append(f"## 已激活技能: {skill.name}\n{skill.prompt_template}")
         return "\n\n".join(sections)
 
-    def _record_skill_activations(self, matched) -> None:
+    def _record_skill_activations(self, matched, session_id: str = "default") -> None:
         try:
             from ..skills.curator import skill_curator
             if not skill_curator:
                 return
             for skill, _ in matched:
                 skill_curator.record_activation(skill.id)
+        except Exception:
+            pass
+        try:
+            from ..database.skill_routing_store import get_skill_routing_store
+            store = get_skill_routing_store()
+            if not store:
+                return
+            for skill, _ in matched:
+                store.mark_adopted(session_id, skill.id)
+        except Exception:
+            pass
+
+    def _record_routing_candidates(self, session_id: str, candidates) -> None:
+        try:
+            from ..database.skill_routing_store import get_skill_routing_store
+            store = get_skill_routing_store()
+            if store and candidates:
+                store.record_recommendations(session_id, candidates)
         except Exception:
             pass
 

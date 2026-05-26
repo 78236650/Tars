@@ -3,7 +3,7 @@ import asyncio
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form, Query
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +26,22 @@ _retriever: Optional[KnowledgeRetriever] = None
 _llm_settings_store = None  # InsightLlmSettingsStore，按租户解析 LLM provider
 _knowledge_config: Optional[Dict[str, Any]] = None
 _ingest_tasks: "set[asyncio.Task]" = set()
+_wiki_router = None
+_wiki_event_handler = None
+_wiki_compile_tasks: "set[asyncio.Task]" = set()
+
+
+def init_wiki_upload_routing(wiki_event_handler, wiki_router=None) -> None:
+    global _wiki_event_handler, _wiki_router
+    _wiki_event_handler = wiki_event_handler
+    _wiki_router = wiki_router
+
+
+def clear_wiki_upload_routing() -> None:
+    """Reset wiki routing globals (for isolated tests)."""
+    global _wiki_event_handler, _wiki_router
+    _wiki_event_handler = None
+    _wiki_router = None
 
 
 def init_knowledge_api(
@@ -232,12 +248,37 @@ def resolve_upload_doc_type(
     return None, "generic"
 
 
+def _file_format_from_name(file_name: str) -> str:
+    ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+    return ext or "bin"
+
+
+def _decode_upload_text(content: bytes, file_format: str) -> str:
+    if file_format in ("md", "txt"):
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError:
+            return content.decode("utf-8", errors="replace")
+    return ""
+
+
+def _schedule_wiki_compile(text: str, file_name: str) -> None:
+    if _wiki_event_handler is None:
+        return
+    task = asyncio.create_task(
+        _wiki_event_handler.on_small_file_uploaded(text, file_name)
+    )
+    _wiki_compile_tasks.add(task)
+    task.add_done_callback(_wiki_compile_tasks.discard)
+
+
 @router.post("/collections/{coll_id}/documents")
 async def upload_document(
     coll_id: str,
     file: UploadFile = File(...),
     metric_ids: Optional[str] = Form(default=None),
     doc_type: Optional[str] = Form(default=None),
+    target: str = Query(default="auto", pattern="^(auto|wiki|rag)$"),
     x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _db is None or _indexer is None:
@@ -266,6 +307,51 @@ async def upload_document(
 
     try:
         content = await file.read()
+        file_format = _file_format_from_name(file.filename or "")
+        text_preview = _decode_upload_text(content, file_format)
+        text_size = len(text_preview) if text_preview else len(content)
+
+        route_decision = "rag"
+        route_reason = "default_rag"
+        if _wiki_router is not None:
+            from tars.wiki.router import WikiRagRouter
+
+            router = _wiki_router or WikiRagRouter(llm_provider=None)
+            user_override = target if target != "auto" else None
+            route_decision = router.route(
+                page_count=None,
+                text_size=text_size,
+                file_name=file.filename or "",
+                file_format=file_format,
+                user_override=user_override,
+            )
+            if route_decision == "llm_decide":
+                route_decision = await router.route_with_llm_fallback(
+                    page_count=None,
+                    text_size=text_size,
+                    file_name=file.filename or "",
+                    file_format=file_format,
+                    user_override=user_override,
+                    text_preview=text_preview,
+                )
+            route_reason = "rule_engine" if target == "auto" else f"user_override_{target}"
+
+        if route_decision == "wiki" and _wiki_event_handler is not None:
+            if not text_preview:
+                route_decision = "rag"
+                route_reason = "wiki_unsupported_format_fallback_rag"
+            else:
+                _schedule_wiki_compile(text_preview, file.filename or "upload")
+                return {
+                    "success": True,
+                    "routed_to": "wiki",
+                    "route_reason": route_reason,
+                    "document": {
+                        "file_name": file.filename,
+                        "status": "compiling",
+                    },
+                }
+
         with open(file_path, "wb") as f:
             f.write(content)
 
@@ -299,6 +385,8 @@ async def upload_document(
 
         return {
             "success": True,
+            "routed_to": "rag",
+            "route_reason": route_reason,
             "document": {
                 "id": doc_id,
                 "file_name": file.filename,

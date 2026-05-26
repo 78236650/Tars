@@ -58,11 +58,13 @@ from tars.api.invoke import router as invoke_router, init_invoke_api
 from tars.api.bi import router as bi_router, init_bi_api
 from tars.insight.api import router as insight_router
 from tars.insight.api.router import init_insight_api
-from tars.api.knowledge import router as knowledge_router, init_knowledge_api
+from tars.api.knowledge import router as knowledge_router, init_knowledge_api, init_wiki_upload_routing
+from tars.api.wiki import create_wiki_router
 from tars.api.meeting import router as meeting_router, init_meeting_api
 from tars.api.memory import router as memory_router, init_memory_api, set_memory_provider_resolver
 from tars.api.audit import router as audit_router, init_audit_api
 from tars.api.approvals import router as approvals_router, init_approval_api
+from tars.api.plans import router as plans_router, init_plans_api
 from tars.api.handoffs import router as handoffs_router, init_handoff_api
 from tars.api.admin import router as admin_router, init_admin_api
 from tars.api.roles import router as roles_router, init_roles_api
@@ -71,7 +73,7 @@ from tars.tenant import TenantContextCache
 from tars.cron import CronRuntime
 
 # 初始化应用
-app = FastAPI(title="TARS Agent", version="4.3.1")
+app = FastAPI(title="TARS Agent", version="4.3.2")
 
 # CORS 配置
 _cors_origins = os.environ.get(
@@ -111,6 +113,8 @@ init_endpoint_store(endpoint_store)
 # v4.0.0: Module switch loading & skill curator
 module_registry.load()
 init_skill_curator(db)
+from tars.database.skill_routing_store import init_skill_routing_store
+init_skill_routing_store(db)
 
 # v4.0.1: Per-tenant workspace 隔离
 from tars.tools.tenant_workspace import init_tenant_workspace
@@ -243,6 +247,36 @@ from tars.knowledge.retriever import KnowledgeRetriever
 knowledge_retriever = KnowledgeRetriever(vector_store, embedding_provider)
 tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever, db=db))
 
+# ========= Wiki 系统 =========
+from tars.wiki.store import WikiStore
+from tars.wiki.compiler import WikiCompiler
+from tars.wiki.events import WikiEventHandler
+from tars.wiki.router import WikiRagRouter
+from tars.tools.builtin.wiki_read import WikiReadTool
+
+_wiki_data_dir = Path(__file__).resolve().parent.parent / "data" / "wiki"
+wiki_store = WikiStore(wiki_dir=_wiki_data_dir)
+wiki_router = WikiRagRouter(llm_provider=None)
+wiki_compiler = None
+wiki_event_handler = None
+
+
+def _init_wiki_after_agent() -> None:
+    global wiki_compiler, wiki_event_handler
+    async def llm_call(prompt: str) -> str:
+        resp = await agent.provider.complete(prompt, max_tokens=2000)
+        return resp.content if hasattr(resp, "content") else str(resp)
+
+    wiki_compiler = WikiCompiler(store=wiki_store, llm_provider=llm_call)
+    wiki_event_handler = WikiEventHandler(compiler=wiki_compiler)
+    tool_registry.register(WikiReadTool(store=wiki_store))
+    app.include_router(create_wiki_router(wiki_store), prefix="/api/wiki")
+    if module_registry.is_enabled("knowledge"):
+        init_wiki_upload_routing(wiki_event_handler, wiki_router=wiki_router)
+    if module_registry.is_enabled("meeting"):
+        from tars.api.meeting import set_meeting_wiki_handler
+        set_meeting_wiki_handler(wiki_event_handler)
+
 # ========= 初始化 Agent =========
 # v4.0.0: 从配置加载所有 provider，获取默认实例
 from tars.config.providers_config import load_providers_config
@@ -267,8 +301,10 @@ agent = AgentV2(
     task_executor=task_executor,
     knowledge_retriever=knowledge_retriever,
     evolution_manager=evolution_manager,
+    wiki_store=wiki_store,
 )
 agent.skill_loader = skill_loader
+_init_wiki_after_agent()
 
 if default_provider:
     wrapped = wrap_provider_with_fallback(
@@ -338,6 +374,7 @@ app.include_router(invoke_router)
 app.include_router(memory_router)
 app.include_router(audit_router)
 app.include_router(approvals_router)
+app.include_router(plans_router)
 app.include_router(handoffs_router)
 app.include_router(admin_router)
 app.include_router(roles_router)
@@ -391,6 +428,13 @@ init_audit_api(db)
 init_approval_api(
     db,
     connection_manager,
+    channel_router=channel_router if _use_router else None,
+)
+init_plans_api(
+    db,
+    connection_manager=connection_manager,
+    task_executor=task_executor,
+    skill_registry=skill_registry,
     channel_router=channel_router if _use_router else None,
 )
 init_handoff_api(agent, connection_manager=connection_manager, outbound=_outbound)
