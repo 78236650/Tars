@@ -1,4 +1,12 @@
+---
+status: shipped
+platform_version: 4.3.2
+supersedes: v4.4-draft
+---
+
 # v4.3.2 LLM Wiki + RAG 双路径知识系统设计
+
+> **状态：** ✅ 已交付（v4.3.2） · 用户指南：[guides/wiki-user.md](../../guides/wiki-user.md) · 发布说明：[v4.3.2-release-notes.md](../../01-项目概览/v4.3.2-release-notes.md)
 
 ## 概述
 

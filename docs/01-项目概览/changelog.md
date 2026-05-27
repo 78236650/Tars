@@ -1,10 +1,12 @@
 # Changelog
 
-## v4.3.2 Patch (2026-05-25)
+> 版本真相源：[VERSION.md](./VERSION.md)
 
-> 📄 [v4.3.2 发布说明](./v4.3.2-release-notes.md) · [Superpowers 升级指南](../UPGRADE_GUIDE_v4.3.2.md)
+## v4.3.2 Patch (2026-05-25 — 含 Wiki 2026-05-26 文档对齐)
 
-Superpowers 融合（原设计稿 v4.4，已并入 v4.3.x patch）：Skill 路由、Plan 审批门控、Verification Gate、计划 retry 恢复、路由采纳率 → SkillOptimizer。
+> 📄 [v4.3.2 发布说明](./v4.3.2-release-notes.md) · [升级指南](../UPGRADE_GUIDE_v4.3.2.md) · [Wiki 使用](../guides/wiki-user.md)
+
+v4.3.2 patch：**Superpowers 融合** + **LLM Wiki + RAG 双通路**（原部分设计稿标 v4.4，已并入 v4.3.x）。
 
 ### Superpowers（M1–M4）
 - ✅ **SkillRouter** — `triggers` / `skip_when` / embedding；eval 命中率 ≥80%
@@ -13,8 +15,17 @@ Superpowers 融合（原设计稿 v4.4，已并入 v4.3.x patch）：Skill 路�
 - ✅ **联调** — 全链路 E2E；`POST /api/plans/{id}/retry` → `TaskExecutor.resume()`
 - ✅ **Evolution** — `skill_routing_events` + 低采纳率 trigger 建议
 
-### 文档
-- ✅ [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · [SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
+### Wiki + RAG 双通路
+- ✅ **WikiStore** — `backend/data/wiki/` 平铺 Markdown + `index.md`
+- ✅ **WikiRagRouter** — 上传 `target=auto|wiki|rag`；规则 + LLM 路由
+- ✅ **WikiCompiler** — 事件驱动增量编译
+- ✅ **工具** — `read_wiki`、`write_wiki`；Agent prompt 注入 Wiki 索引
+- ✅ **API** — `/api/wiki` CRUD；知识库 **Wiki** Tab（`WikiViewer`）
+- ✅ **会议钩子** — 摘要可进入 Wiki 管线
+
+### 文档与技能
+- ✅ [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · [SKILL_AUTHORING.md](../SKILL_AUTHORING.md) · [VERSION.md](./VERSION.md)
+- ✅ **self-improving** — workspace 路径（禁止 `~/self-improving`）
 
 ---
 

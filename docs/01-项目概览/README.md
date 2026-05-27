@@ -4,15 +4,16 @@
 
 TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模型（Ollama）和云端 API（DeepSeek、阿里通义等）。用户通过技能/插件适配垂直场景，平台提供安全隔离、记忆管理、工具调度等基础能力。
 
-**当前版本: v4.3.2**（Superpowers 融合：Skill 路由 + Plan 门控 + Verification Gate；v4.3.x patch）  
-**上一版本: v4.3.1**（会议 ASR、知识库深度入库、BI 连接、INS-2.1）  
-**稳定基线: v4.1.2**（生产/内网部署参考）
+**当前版本: v4.3.2** — Superpowers + **LLM Wiki / RAG 双通路**（详见 [VERSION.md](./VERSION.md)）  
+**上一版本: v4.3.1**（会议 ASR、知识库深度入库、BI、INS-2.1）  
+**稳定基线: v4.1.2**（生产/内网部署参考）  
+**Git 分支**: 开发在 `v4.3.1` 分支，产物为 v4.3.2（见 VERSION）
 
 ### 平台版本 vs InsightForge 能力版本（双轨，方案 A）
 
 | TARS 平台 | InsightForge（`GET /api/insight/version`） | 说明 |
 |-----------|---------------------------------------------|------|
-| **v4.3.2**（当前） | **INS-2.1.0** | Superpowers 融合：Skill 自动路由、Plan 审批、Verify 门控 |
+| **v4.3.2**（当前） | **INS-2.1.0** | Superpowers + Wiki/RAG 双通路、`read_wiki` / `write_wiki` |
 | v4.3.1 | INS-2.1.0 | 建档性能（batch stats、增量 reuse、SQL 超时） |
 | v4.2.0 | INS-2.0.0 | Data Copilot 与 KnowledgeBridge 联动 |
 | — | INS-1.0.0 | 早期 Profile 流水线（历史 tag `insight-v1.0.0`） |
@@ -64,12 +65,13 @@ TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模�
 - 📊 **模块化启动** — modules.yaml 控制可选模块（BI、会议、知识库、SkillHub）按需加载
 - 📈 **技能统计** — Curator 记录调用次数/成功率，支持归档管理
 
-### Superpowers 融合（v4.3.2）
+### v4.3.2（Superpowers + Wiki）
 
-- 🎯 **Skill 自动路由** — `triggers` / `skip_when` + embedding，Router 推荐 top-K 技能
-- 📋 **Plan 审批门控** — 复杂计划 WebSocket 审批 + checkpoint 断点恢复
-- ✅ **Verification Gate** — 计划完成后跑 skill 声明的 verify 命令，失败阻断 done
-- 📖 升级说明：[UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · Skill 编写：[SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
+- 🎯 **Skill 自动路由** — `triggers` / `skip_when` + embedding
+- 📋 **Plan 审批门控** — WebSocket 审批 + checkpoint + `PlanReviewDialog`
+- ✅ **Verification Gate** — skill `verify` 命令门控
+- 📖 **LLM Wiki** — 与 RAG 并存；`read_wiki` / `write_wiki`；知识库 Wiki Tab
+- 📖 升级：[UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · Wiki：[guides/wiki-user.md](../guides/wiki-user.md) · Skill：[SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
 
 ## 技术栈
 
@@ -159,20 +161,34 @@ cd ../frontend && npm run dev
 
 ## 文档导航
 
+### 我是…
+
+| 角色 | 先看 |
+|------|------|
+| 产品 / 运维 | [VERSION.md](./VERSION.md) → [v4.3.2 发布说明](./v4.3.2-release-notes.md) → [部署](../04-运维文档/deployment.md) |
+| 从 4.3.1 升级 | [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) |
+| 用 Wiki / 知识库 | [guides/wiki-user.md](../guides/wiki-user.md) |
+| 写 Skill | [SKILL_AUTHORING.md](../SKILL_AUTHORING.md) |
+| 查设计稿 | [superpowers/README.md](../superpowers/README.md) |
+
+### 版本与变更
+
 | 文档 | 说明 |
 |------|------|
-| [v4.1.4 发布说明](./v4.1.4-release-notes.md) | 记忆实体树（当前） |
-| [v4.1.1 发布说明](./v4.1.1-release-notes.md) | 体验层 |
-| [v4.0.5 发布说明](./v4.0.5-release-notes.md) | Skill 生态预览 |
-| [记忆实体树设计](../superpowers/specs/2026-05-19-memory-tree-entity-view-design.md) | v4.1.4 产品与 API |
-| [系统架构](../02-技术方案/architecture/system-overview.md) | 整体架构设计 |
-| [前端设计 v4.0.0](../02-技术方案/v4.0.0-frontend-design.md) | v4 前端适配方案 |
-| [v4.1.0 技术方案](../02-技术方案/v4.1.0-skill-ecosystem-design.md) | 技能生态基线 |
-| [WebSocket 协议](../02-技术方案/api/websocket-protocol.md) | 前后端通信协议 |
-| [部署指南](../04-运维文档/deployment.md) | 内网部署说明 |
-| [Changelog](./changelog.md) | 版本变更记录 |
+| [VERSION.md](./VERSION.md) | **版本真相源**（平台 / INS / Git 分支） |
+| [changelog.md](./changelog.md) | 全量变更记录 |
+| [v4.3.2-release-notes.md](./v4.3.2-release-notes.md) | 当前版本 |
+| [v4.3.1-release-notes.md](./v4.3.1-release-notes.md) | 上一 patch |
+| [roadmap.md](../03-实施计划/roadmap.md) | 里程碑（已完成项链到 changelog） |
+
+### 架构与协议
+
+| 文档 | 说明 |
+|------|------|
+| [系统架构](../02-技术方案/architecture/system-overview.md) | 整体架构 |
+| [WebSocket 协议](../02-技术方案/api/websocket-protocol.md) | 前后端通信 |
+| [guides/](../guides/README.md) | 用户与运维指南索引 |
 
 ---
 
-*文档版本: v4.1.4*
-*更新日期: 2026-05-19*
+*文档版本: v4.3.2 · 更新日期: 2026-05-26*

@@ -1,9 +1,15 @@
+---
+status: shipped
+platform_version: 4.3.2
+supersedes: v4.4-draft
+---
+
 # Skill 自动路由 + Plan 审批门控 + 验证门控 — 设计说明
 
 > **文档日期**: 2026-05-25
 > **目标版本**: TARS **v4.3.2**（v4.3.x patch；原稿 v4.4.0）
-> **状态**: Draft — 待评审
-> **借鉴**: [obra/superpowers](https://github.com/anthropics/claude-code) skill 触发元数据、plan-execute 分离、verification gate
+> **状态**: ✅ 已交付 — 见 [v4.3.2-release-notes.md](../../01-项目概览/v4.3.2-release-notes.md)
+> **借鉴**: [obra/superpowers](https://github.com/obra/superpowers) skill 触发元数据、plan-execute 分离、verification gate
 
 ---
 

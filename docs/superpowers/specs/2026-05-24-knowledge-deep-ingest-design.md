@@ -1,8 +1,14 @@
+---
+status: shipped
+platform_version: 4.3.1
+supersedes: v4.4-draft
+---
+
 # 知识库深度入库与文档浏览升级设计（v4.3.1）
 
 > **版本：** v4.3.1（已于 2026-05-25 patch 交付；原稿标 v4.4，已与平台版本对齐）  
 > **日期：** 2026-05-24  
-> **状态：** ✅ 已交付（v4.3.1）  
+> **状态：** ✅ 已交付 — [v4.3.1-release-notes.md](../../01-项目概览/v4.3.1-release-notes.md)  
 > **关联：** [向量搜索与知识库升级设计](./2026-05-16-vector-search-knowledge-upgrade-design.md)、[会议纪要入知识库设计](./2026-05-16-meeting-to-knowledge-design.md)
 
 ---

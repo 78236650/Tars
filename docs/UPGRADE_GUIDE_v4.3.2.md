@@ -1,11 +1,16 @@
-# TARS v4.3.2 — Superpowers 融合升级指南
+# TARS v4.3.2 — 升级指南（Superpowers + Wiki）
 
-> 借鉴 [Superpowers](https://github.com/obra/superpowers) 框架：Skill 自动路由、Plan 审批门控、Verification Gate。  
-> 归入 **v4.3.x** patch 线（基于 v4.3.1）。
+> 版本对照：[01-项目概览/VERSION.md](./01-项目概览/VERSION.md)  
+> 基于 **v4.3.1** patch；Git 开发分支可能仍名为 `v4.3.1`，与产品号 v4.3.2 见 VERSION 说明。
 
 ## 概述
 
-v4.3.2 在 v4.3.1 基础上新增三项可选能力，均可通过 `backend/config/modules.yaml` 独立开关：
+v4.3.2 在 v4.3.1 基础上新增：
+
+1. **Superpowers**（可选开关）— Skill 路由、Plan 门控、Verification Gate  
+2. **Wiki + RAG 双通路**（随知识库模块）— `read_wiki` / `write_wiki`、知识库 Wiki Tab
+
+Superpowers 三项均可通过 `backend/config/modules.yaml` 独立开关：
 
 | 能力 | 配置键 | 作用 |
 |------|--------|------|
@@ -129,8 +134,33 @@ pytest tests/test_skill_router.py tests/test_skill_routing_e2e.py \
 SKILL_EVAL=1 pytest -m skill_eval tests/test_skill_router.py -q
 ```
 
+## Wiki + RAG（v4.3.2）
+
+### 数据与权限
+
+- Wiki 文件目录：`backend/data/wiki/`（生产环境请挂载持久卷；已在 `.gitignore`）
+- 角色工具白名单需包含 `read_wiki`、`write_wiki`（见 `backend/config/tool_permissions.yaml`）
+
+### 行为
+
+- Agent system prompt 注入 Wiki 索引；用户要求写入 Wiki 时必须调用 **`write_wiki`**
+- 上传 `target=auto|wiki|rag` 控制走 Wiki 编译或 RAG 向量库
+- 与 **Memory** 分工：偏好/纠正 → memory 或 self-improving；客户/流程知识 → Wiki
+
+详见 [guides/wiki-user.md](./guides/wiki-user.md)。
+
+### 测试
+
+```bash
+cd backend
+pytest tests/test_wiki_store.py tests/test_wiki_router.py tests/test_wiki_compiler.py \
+       tests/test_wiki_write_tool.py tests/test_wiki_smoke_e2e.py -q
+```
+
 ## 相关文档
 
-- 设计：[2026-05-25-skill-routing-plan-gate-design.md](./superpowers/specs/2026-05-25-skill-routing-plan-gate-design.md)
-- 实施计划：[2026-05-25-skill-routing-plan-gate-plan.md](./superpowers/plans/2026-05-25-skill-routing-plan-gate-plan.md)
+- [VERSION.md](./01-项目概览/VERSION.md)
+- [wiki-user.md](./guides/wiki-user.md)
+- Superpowers 设计：[2026-05-25-skill-routing-plan-gate-design.md](./superpowers/specs/2026-05-25-skill-routing-plan-gate-design.md)
+- Wiki 设计：[2026-05-25-llm-wiki-rag-dual-path-design.md](./superpowers/specs/2026-05-25-llm-wiki-rag-dual-path-design.md)
 - Skill 编写：[SKILL_AUTHORING.md](./SKILL_AUTHORING.md)

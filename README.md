@@ -1,27 +1,21 @@
-# TARS AI Agent v4.2.0
+# TARS AI Agent v4.3.2
 
-一个完整的 AI 助手应用，支持多用户权限管理、SkillHub 本地技能生态、知识库主动检索、Admin 管理台、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理（含**实体树 / 谱系 / 图谱**）与自动压缩。
+一个完整的 AI 助手应用，支持多用户权限管理、SkillHub 本地技能生态、知识库与 **Wiki**、Admin 管理台、专业子代理委派、可配置人格参数、工具调用（Function Calling）、技能插件系统、文件上传与多模态理解、记忆可视化管理（含**实体树 / 谱系 / 图谱**）与自动压缩。
 
-> **开发版本 v4.3.2 "Superpowers Integration"**  
-> v4.3.2 patch：Skill 路由 + Plan 门控 + Verification Gate · [升级指南](docs/UPGRADE_GUIDE_v4.3.2.md) · 详见 [Changelog](docs/01-项目概览/changelog.md)
+> **当前平台版本 v4.3.2** — Superpowers（Skill 路由 / Plan 门控 / Verify）+ **LLM Wiki + RAG 双通路**  
+> 版本真相源：[docs/01-项目概览/VERSION.md](docs/01-项目概览/VERSION.md) · 升级：[UPGRADE_GUIDE_v4.3.2.md](docs/UPGRADE_GUIDE_v4.3.2.md) · 变更：[Changelog](docs/01-项目概览/changelog.md) · Wiki：[wiki-user.md](docs/guides/wiki-user.md)
 
-### v4.2.0 规划（本分支）
+### 版本一览
 
-| 阶段 | 代号 | 要点 | 状态 |
-|------|------|------|------|
-| 基线 | Memory Graph | 记忆图谱 + 虚拟滚动树 | ✅ 已合入基线 |
-| Phase 1 | Data Copilot | 内网问数 Copilot、知识联动、模块 gating | 🚧 设计中 |
-| Phase 2 | Evolution | 完整自进化闭环 + eval | 📋 设计中 |
+| 版本 | 要点 |
+|------|------|
+| **v4.3.2**（当前） | Superpowers + `read_wiki` / `write_wiki`、Plan 审批、Verify 门控 |
+| v4.3.1 | 会议 ASR、知识库深度入库、BI、INS-2.1 |
+| v4.3.0 | Channels、Cron、工具审批 |
+| v4.2.0 | Data Copilot、Evolution 闭环 |
+| v4.1.x | Skill 生态、记忆实体树等 |
 
-### 近期已发布（v4.1.x）
-
-| 版本 | 代号 | 要点 |
-|------|------|------|
-| v4.1.4 | Memory Entity Tree | 记忆页「实体」Tab、树 API、谱系视图、关系迷你图 |
-| v4.1.3 | Chat Polish & Remember | 聊天精简、Ctrl/⌘+Enter 发送、记住要点 |
-| v4.1.2 | Skill Ops & Platform UI | Curator 运维、Admin 平台工具 |
-| v4.1.1 | Experience Layer | SkillHub 向导、技能条、知识引用 |
-| v4.1.0 | Skill Ecosystem | 技能生态基线 |
+完整说明见 [项目概览](docs/01-项目概览/README.md) 与 [roadmap](docs/03-实施计划/roadmap.md)。
 
 ## 项目结构
 
@@ -386,7 +380,7 @@ python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
 ./scripts/migrate-evolution-workspace.sh
 ```
 
-验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.2**）；鉴数能力版本见 `GET /api/insight/version`（当前 **INS-2.1.0**，与平台号双轨，见 [版本对照](docs/01-项目概览/README.md#平台版本-vs-insightforge-能力版本双轨方案-a)）。
+验证：浏览器打开 `http://localhost:8000/docs`（OpenAPI 版本应为 **4.3.2**）；鉴数能力见 `GET /api/insight/version`（**INS-2.1.0**）；版本对照见 [VERSION.md](docs/01-项目概览/VERSION.md)。
 
 ### 3. 前端启动
 
