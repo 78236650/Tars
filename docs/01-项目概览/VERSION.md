@@ -2,15 +2,16 @@
 
 > **单一真相源**：对外说明「当前是什么版本」以本文件为准；`changelog` / `release-notes` / 根 `README` 均引用此处。
 
-## 当前
+## 当前（稳定版）
 
 | 项 | 值 |
 |----|-----|
-| **平台版本** | **v4.3.2** |
+| **平台版本** | **v4.3.2 stable** |
 | **OpenAPI** | `backend/tars/main.py` → `4.3.2` |
 | **InsightForge 能力** | **INS-2.1.0**（`GET /api/insight/version`） |
 | **上一平台 patch** | v4.3.1 |
-| **稳定部署参考** | v4.1.2 |
+| **推荐 Git tag** | `v4.3.2` 或 `v4.3.2-stable` |
+| **内网新部署** | 直接使用本版本，无需经过 4.3.1 |
 
 ## Git 分支说明
 
@@ -51,7 +52,9 @@
 | 从 4.3.1 升级 | [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) |
 | 用 Wiki | [guides/wiki-user.md](../guides/wiki-user.md) |
 | 写 Skill | [SKILL_AUTHORING.md](../SKILL_AUTHORING.md) |
-| 部署 | [04-运维文档/deployment.md](../04-运维文档/deployment.md) |
+| 稳定版部署 | [deploy/README.md](../../deploy/README.md) · [操作手册](../guides/operations-manual.md) |
+| 发布验收 | [v4.3.2-stable-release-checklist.md](../04-运维文档/v4.3.2-stable-release-checklist.md) |
+| 部署详解 | [04-运维文档/deployment.md](../04-运维文档/deployment.md) |
 | 设计稿索引 | [superpowers/README.md](../superpowers/README.md) |
 
 ---

@@ -1,5 +1,7 @@
 # TARS 部署指南
 
+> **v4.3.2 稳定版**：快速路径 [deploy/README.md](../../deploy/README.md) · [操作手册](../guides/operations-manual.md) · [验收清单](./v4.3.2-stable-release-checklist.md)
+
 ## 环境要求
 
 ### 系统要求
@@ -240,6 +242,32 @@ tar -xzf tars-backup-20260517.tar.gz
 ```
 
 ---
+
+## v4.3.2 稳定版新装
+
+```bash
+git clone <repo-url> /opt/tars && cd /opt/tars
+git checkout v4.3.2
+./scripts/deploy-stable.sh
+
+cd backend && source venv/bin/activate
+python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+或使用 Docker：`cd deploy && cp .env.example .env && docker compose up -d --build`。
+
+**持久化**：`backend/data/`（SQLite、`wiki/`、vectorstore）。**配置**：`modules.yaml` 中 `skill_routing` / `plan_gate` / `verification`；`tool_permissions.yaml` 含 `read_wiki` / `write_wiki`。
+
+## 从 v4.3.1 升级至 v4.3.2
+
+见 [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md)。
+
+```bash
+git checkout v4.3.2
+cd backend && pip install -r requirements.txt
+cd ../frontend && npm ci && npm run build
+# 重启 backend；备份 backend/data/ 后升级
+```
 
 ## 从 v4.0.x 升级至 v4.0.5
 

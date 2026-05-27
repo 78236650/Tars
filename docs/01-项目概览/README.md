@@ -165,7 +165,7 @@ cd ../frontend && npm run dev
 
 | 角色 | 先看 |
 |------|------|
-| 产品 / 运维 | [VERSION.md](./VERSION.md) → [v4.3.2 发布说明](./v4.3.2-release-notes.md) → [部署](../04-运维文档/deployment.md) |
+| 产品 / 运维 | [VERSION.md](./VERSION.md) → [v4.3.2 发布说明](./v4.3.2-release-notes.md) → [稳定版部署](../../deploy/README.md) → [操作手册](../guides/operations-manual.md) |
 | 从 4.3.1 升级 | [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) |
 | 用 Wiki / 知识库 | [guides/wiki-user.md](../guides/wiki-user.md) |
 | 写 Skill | [SKILL_AUTHORING.md](../SKILL_AUTHORING.md) |

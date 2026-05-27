@@ -1,0 +1,39 @@
+# TARS v4.3.2 stable — production compose
+# Usage: cd deploy && cp .env.example .env && docker compose up -d --build
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    ports:
+      - "${TARS_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ../backend/config:/app/config:ro
+      - tars-data:/app/data
+      - ../skills:/app/skills:ro
+    env_file:
+      - .env
+    environment:
+      - TARS_DATA_DIR=/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    ports:
+      - "${TARS_FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  tars-data:

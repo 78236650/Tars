@@ -2,6 +2,7 @@
 
 | 文档 | 适用版本 | 说明 |
 |------|----------|------|
+| [operations-manual.md](./operations-manual.md) | **v4.3.2 stable** | 安装、配置、备份、升级、排障 |
 | [wiki-user.md](./wiki-user.md) | v4.3.2+ | Wiki 与 RAG、Memory 的区别及使用方式 |
 | [../UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) | 4.3.1 → 4.3.2 | Superpowers + Wiki 升级 |
 | [../SKILL_AUTHORING.md](../SKILL_AUTHORING.md) | v4.3.2+ | SKILL.md triggers / verify |
