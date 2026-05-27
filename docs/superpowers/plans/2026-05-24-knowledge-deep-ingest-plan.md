@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.3.1
+catalog: docs/superpowers/README.md
+---
 # 知识库深度入库与文档浏览 — 实施计划（v4.3.1）
 
 > **For agentic workers:** 推荐使用 superpowers:subagent-driven-development 按 Task 逐步执行。步骤使用 `- [ ]` 跟踪进度。

@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # Chat 文件上传与多模态理解实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

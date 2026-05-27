@@ -88,3 +88,7 @@ async def f(principal: Principal = Depends(require_module("insight"))):
 - `platform.providers.usage.read`
 
 参见 `tars.utils.audit_compat.safe_audit`。
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*

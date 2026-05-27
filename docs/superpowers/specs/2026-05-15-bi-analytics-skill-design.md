@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # BI Analytics Skill 设计
 
 ## 核心决策

@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 自定义模型配置功能集成设计
 
 ## 目标

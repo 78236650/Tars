@@ -1,6 +1,6 @@
 # TARS 自进化系统使用文档
 
-> **版本：v4.2.0 Phase 2** — FeedbackCollector → Orchestrator → ApplyEngine 写回闭环
+> **能力基线：v4.2.0 Phase 2**（Evolution 闭环）· **当前平台：v4.3.2** — 见 [VERSION.md](docs/01-项目概览/VERSION.md)
 
 ## Phase 2 架构（v4.2.0）
 
@@ -515,6 +515,6 @@ manager.record_conversation(
 
 ---
 
-**文档版本**: v1.0  
-**更新日期**: 2026-05-05  
-**作者**: TARS Team
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](docs/01-项目概览/VERSION.md) · 更新: 2026-05-26*

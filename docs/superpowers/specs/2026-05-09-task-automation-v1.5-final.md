@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: superseded
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 任务自动化设计（v2.4）— v1.5 最终版
 
 - **日期**：2026-05-09

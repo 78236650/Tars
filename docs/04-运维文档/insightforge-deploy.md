@@ -23,3 +23,7 @@
 feature_flags:
   chat_first_enabled: true    # GA 默认开启；可改为 false 回滚灰度
 ```
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*

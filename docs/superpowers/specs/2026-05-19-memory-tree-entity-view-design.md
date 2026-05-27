@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.1.4
+catalog: docs/superpowers/README.md
+---
 # TARS 记忆树 — 实体视图设计规格
 
 ## 元信息

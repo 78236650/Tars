@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 会议语音识别与总结系统设计文档
 
 **项目名称**: TARS 会议助手  

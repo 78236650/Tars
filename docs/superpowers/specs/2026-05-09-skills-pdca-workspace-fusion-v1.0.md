@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: superseded
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 技能 SOP + PDCA 执行 + TaskWorkspace 融合设计（v2.5）
 
 - 日期：2026-05-09

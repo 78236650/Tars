@@ -1,7 +1,7 @@
 # TARS v4.3.2 — 升级指南（Superpowers + Wiki）
 
 > 版本对照：[01-项目概览/VERSION.md](./01-项目概览/VERSION.md)  
-> 基于 **v4.3.1** patch；Git 开发分支可能仍名为 `v4.3.1`，与产品号 v4.3.2 见 VERSION 说明。
+> 基于 **v4.3.1** patch；Git 开发分支 **`v4.3.2`**（见 [VERSION.md](./01-项目概览/VERSION.md)）。
 
 ## 概述
 
@@ -164,3 +164,7 @@ pytest tests/test_wiki_store.py tests/test_wiki_router.py tests/test_wiki_compil
 - Superpowers 设计：[2026-05-25-skill-routing-plan-gate-design.md](./superpowers/specs/2026-05-25-skill-routing-plan-gate-design.md)
 - Wiki 设计：[2026-05-25-llm-wiki-rag-dual-path-design.md](./superpowers/specs/2026-05-25-llm-wiki-rag-dual-path-design.md)
 - Skill 编写：[SKILL_AUTHORING.md](./SKILL_AUTHORING.md)
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](01-项目概览/VERSION.md) · 更新: 2026-05-26*

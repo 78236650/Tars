@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # TARS v3.9.0 — 记忆管理页面设计文档
 
 ## 概述

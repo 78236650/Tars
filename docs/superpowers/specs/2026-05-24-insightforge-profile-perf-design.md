@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.3.1
+catalog: docs/superpowers/README.md
+---
 # InsightForge 鉴数建档性能优化设计（INS-2.1）
 
 > **版本：** INS-2.1.0 设计稿（v2 评审修订）

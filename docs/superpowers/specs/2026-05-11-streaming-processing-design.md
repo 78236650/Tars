@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 处理流程流式显示 + 任务内嵌设计（v2.6.1）
 
 - **日期**：2026-05-11

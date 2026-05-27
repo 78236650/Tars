@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.2.0
+catalog: docs/superpowers/README.md
+---
 # TARS v4.2.0 Phase 2: Evolution Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

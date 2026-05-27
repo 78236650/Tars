@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 技能 Agent Skills + PDCA + Workspace 融合设计（v2.5）— v1.1
 
 - **日期**：2026-05-09

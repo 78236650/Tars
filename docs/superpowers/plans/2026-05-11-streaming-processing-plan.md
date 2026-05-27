@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 流式处理 + 任务内嵌实施计划（v2.6.1）
 
 - **日期**：2026-05-11

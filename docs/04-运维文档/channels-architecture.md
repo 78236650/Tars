@@ -113,3 +113,7 @@ python3 -m pytest tests/test_channel_router.py tests/test_tool_approval.py \
 - 设计：[openclaw-phase3-design.md](../superpowers/specs/2026-05-24-openclaw-phase3-design.md)
 - 计划：[openclaw-phase3-plan.md](../superpowers/plans/2026-05-24-openclaw-phase3-plan.md)
 - Cron：[CRONJOB_GUIDE.md](../../CRONJOB_GUIDE.md)
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*

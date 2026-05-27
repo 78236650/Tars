@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 记忆系统重构设计 — LLM 提取 + 语义搜索
 
 ## 概述

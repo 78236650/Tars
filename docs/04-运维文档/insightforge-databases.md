@@ -36,3 +36,7 @@ cd deploy/insightforge-db
 
 - 仅 `SELECT` / `SHOW` / `DESCRIBE`（及 Doris/MySQL 的 `information_schema` 读权限）
 - 禁止 DDL/DML
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*

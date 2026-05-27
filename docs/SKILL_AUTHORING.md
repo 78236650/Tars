@@ -126,3 +126,7 @@ pytest tests/test_skill_routing_e2e.py -q
 - 路由：`backend/tars/skills/router.py`
 - 验证：`backend/tars/orchestration/verification.py`
 - 示例 skill：`skills/_global/deploy/SKILL.md`、`skills/_global/bi_analytics/SKILL.md`
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](01-项目概览/VERSION.md) · 更新: 2026-05-26*

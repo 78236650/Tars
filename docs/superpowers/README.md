@@ -2,6 +2,8 @@
 
 本目录为 **设计 spec / 实施 plan** 归档，不是对外发布说明。已交付能力以 [VERSION.md](../01-项目概览/VERSION.md) 与 [changelog](../01-项目概览/changelog.md) 为准。
 
+每个 `.md` 文件头部含 YAML：`doc_type`、`status`（`shipped` / `draft` / `superseded`）、`platform_version`。批量维护脚本：`scripts/tag_superpowers_docs.py`。
+
 ## 状态图例
 
 | status | 含义 |

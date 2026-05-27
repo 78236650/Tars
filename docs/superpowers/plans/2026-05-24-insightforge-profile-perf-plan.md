@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.3.1
+catalog: docs/superpowers/README.md
+---
 # InsightForge 鉴数建档性能优化 — 实施计划（INS-2.1）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 按 Task 逐步执行。步骤使用 `- [ ]` 跟踪进度。

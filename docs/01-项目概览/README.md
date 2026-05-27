@@ -7,7 +7,7 @@ TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模�
 **当前版本: v4.3.2** — Superpowers + **LLM Wiki / RAG 双通路**（详见 [VERSION.md](./VERSION.md)）  
 **上一版本: v4.3.1**（会议 ASR、知识库深度入库、BI、INS-2.1）  
 **稳定基线: v4.1.2**（生产/内网部署参考）  
-**Git 分支**: 开发在 `v4.3.1` 分支，产物为 v4.3.2（见 VERSION）
+**Git 分支**: `v4.3.2`（与产品版本一致，见 [VERSION.md](./VERSION.md)）
 
 ### 平台版本 vs InsightForge 能力版本（双轨，方案 A）
 

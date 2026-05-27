@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.2.0
+catalog: docs/superpowers/README.md
+---
 # InsightForge 鉴数 INS-2.0 — 对话优先重设计
 
 > **产品线代号**: InsightForge（鉴数）  

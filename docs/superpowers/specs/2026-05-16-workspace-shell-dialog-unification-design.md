@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # TARS Workspace — 右栏折叠与核心弹层统一设计文档
 
 ## 概述

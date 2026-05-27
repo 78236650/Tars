@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # Web Search + Web Fetch 设计文档
 
 **日期：** 2026-05-06

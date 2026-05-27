@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.2.0
+catalog: docs/superpowers/README.md
+---
 # 记忆树 v4.2 — 力导向图谱与虚拟滚动
 
 | 字段 | 值 |

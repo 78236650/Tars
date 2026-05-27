@@ -1,6 +1,6 @@
 # TARS 定时任务功能使用文档
 
-> **版本：v4.3.0**（v4.3.0 起支持 `delegate` / `prompt` 执行器 + 审计日志 `cron_execute`）
+> **引入版本：v4.3.0**（`delegate` / `prompt` + `cron_execute`）· **当前平台：v4.3.2** — [VERSION.md](docs/01-项目概览/VERSION.md)
 
 ## 概述
 
@@ -234,3 +234,7 @@ python -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --reload
 
 - [Channels 架构](docs/04-运维文档/channels-architecture.md)
 - [OpenClaw Phase 3 设计](docs/superpowers/specs/2026-05-24-openclaw-phase3-design.md)
+
+---
+
+*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](docs/01-项目概览/VERSION.md) · 更新: 2026-05-26*

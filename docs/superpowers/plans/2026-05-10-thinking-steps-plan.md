@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 系统处理步骤显示实施计划（v2.6）
 
 - **日期**：2026-05-10

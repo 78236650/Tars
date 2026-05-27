@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: draft
+platform_version: 4.0.0
+catalog: docs/superpowers/README.md
+---
 # 记忆与技能认知架构重做设计（v2.2）— 调整版
 
 - **日期**：2026-05-09

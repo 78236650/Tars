@@ -257,7 +257,7 @@ gantt
 - ✅ 聊天顶栏精简、Ctrl/⌘+Enter 发送、回复复制
 - ✅ 记住要点：`extract-from-turn` / `save-from-turn` + RememberMemoryDialog
 
-### v4.3.2 Platform Patch (✅ 完成 — 产品 v4.3.2 / Git 分支 `v4.3.1`)
+### v4.3.2 Platform Patch (✅ 完成 — 分支 `v4.3.2`)
 **发布日期:** 2026-05-25（Wiki 文档对齐 2026-05-26）
 
 - ✅ Superpowers：Skill 路由、Plan 门控、Verification Gate

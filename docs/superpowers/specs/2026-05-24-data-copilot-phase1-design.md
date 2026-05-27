@@ -1,3 +1,9 @@
+---
+doc_type: spec
+status: shipped
+platform_version: 4.2.0
+catalog: docs/superpowers/README.md
+---
 # Phase 1：内网数据/分析 Copilot — 设计说明
 
 > **文档日期**: 2026-05-24  

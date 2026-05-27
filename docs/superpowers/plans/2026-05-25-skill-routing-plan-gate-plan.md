@@ -1,3 +1,9 @@
+---
+doc_type: plan
+status: shipped
+platform_version: 4.3.2
+catalog: docs/superpowers/README.md
+---
 # Skill 路由 + Plan 门控 + Verification Gate — 实施计划
 
 > **Goal:** 借鉴 Superpowers 框架，为 TARS 增加 Skill 自动路由、Plan 审批门控、完成前验证三项能力。
