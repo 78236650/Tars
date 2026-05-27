@@ -58,3 +58,23 @@ async def test_compile_updates_index(compiler):
     await compiler.compile(source_text="XX轮明天到港", source_label="调度通知")
     index = compiler.store.read_index()
     assert "vessel-schedule" in index
+
+
+@pytest.mark.asyncio
+async def test_compile_preserves_existing_summaries(compiler):
+    """Regression: compiling a new page must not lose other pages' summaries."""
+    compiler.llm_provider.return_value = (
+        '{"action": "create", "page_name": "port-ops", '
+        '"content": "# 港口运营", "summary": "港口运营知识"}'
+    )
+    await compiler.compile(source_text="泊位A", source_label="s1")
+
+    compiler.llm_provider.return_value = (
+        '{"action": "create", "page_name": "vessel", '
+        '"content": "# 船舶", "summary": "船舶调度信息"}'
+    )
+    await compiler.compile(source_text="XX轮", source_label="s2")
+
+    index = compiler.store.read_index()
+    assert "港口运营知识" in index
+    assert "船舶调度信息" in index

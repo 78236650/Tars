@@ -64,8 +64,6 @@ class WikiCompiler:
         self.store.write_page(data["page_name"], data["content"])
 
         all_summaries: dict[str, str] = {}
-        for p in self.store.list_pages():
-            all_summaries[p] = data["summary"] if p == data["page_name"] else p
         self._merge_index_summaries(all_summaries, data["page_name"], data["summary"])
 
         return CompileResult(

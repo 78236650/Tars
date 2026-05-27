@@ -40,7 +40,7 @@ BUILTIN_TEMPLATES = [
         is_builtin=True,
         allowed_tools=[
             "weather", "web_search", "web_fetch", "file", "file_list", "file_write",
-            "shell", "command", "python_exec", "memory", "knowledge_search", "cronjob",
+            "shell", "command", "python_exec", "memory", "knowledge_search", "read_wiki", "write_wiki", "cronjob",
             "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
         allowed_modules=["bi", "knowledge", "meeting", "skillhub", "insight"],
@@ -51,7 +51,7 @@ BUILTIN_TEMPLATES = [
         is_builtin=True,
         allowed_tools=[
             "weather", "web_search", "web_fetch", "python_exec", "file", "file_list",
-            "file_write", "knowledge_search",
+            "file_write", "knowledge_search", "read_wiki", "write_wiki",
             "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
         allowed_modules=["bi", "knowledge", "insight"],
@@ -92,7 +92,7 @@ BUILTIN_TEMPLATES = [
         is_builtin=True,
         allowed_tools=[
             "weather", "web_search", "web_fetch", "memory", "knowledge_search",
-            "meeting_recognizer",
+            "read_wiki", "write_wiki", "meeting_recognizer",
             "insight_get_workflow",
             "insight_list_sources",
             "insight_start_forge",
@@ -122,7 +122,7 @@ BUILTIN_TEMPLATES = [
         is_builtin=True,
         allowed_tools=[
             "weather", "web_search", "web_fetch", "file", "file_list", "memory",
-            "knowledge_search", "meeting_recognizer",
+            "knowledge_search", "read_wiki", "write_wiki", "meeting_recognizer",
             "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
         allowed_modules=["bi", "knowledge", "skillhub", "meeting", "insight"],

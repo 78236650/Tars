@@ -4,12 +4,24 @@ import { useI18n } from '@/i18n'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useWsStore } from '@/stores/wsStore'
 
+export interface ChatMessageToolCall {
+  id?: string
+  tool: string
+  parameters?: Record<string, unknown>
+  success?: boolean
+  output?: string
+  error?: string
+  duration?: number
+  timestamp: string
+}
+
 export interface ChatMessageItem {
   id: string
   role: string
   content: string
   timestamp: string
   attachments?: any[]
+  toolCalls?: ChatMessageToolCall[]
   thinking?: {
     isActive: boolean
     steps: Array<{
@@ -207,6 +219,50 @@ export function createChatMessageState(
                 break
               }
             }
+          })
+        } else if (data.type === 'tool_calling') {
+          if (!sessionId) return
+          const streamId = `streaming-${sessionId}`
+          updateMessages(sessionId, msgs => {
+            let last = msgs[msgs.length - 1]
+            if (!last || last.role !== 'assistant' || last.id !== streamId) {
+              msgs.push({
+                id: streamId,
+                role: 'assistant',
+                content: '',
+                timestamp: data.timestamp || new Date().toISOString(),
+                toolCalls: [],
+              })
+              last = msgs[msgs.length - 1]
+            }
+            if (!last.toolCalls) last.toolCalls = []
+            const callId = `${data.tool}-${Date.now()}`
+            last.toolCalls.push({
+              id: callId,
+              tool: data.tool,
+              parameters: data.parameters || {},
+              timestamp: data.timestamp || new Date().toISOString(),
+            })
+          })
+        } else if (data.type === 'tool_result') {
+          if (!sessionId) return
+          const streamId = `streaming-${sessionId}`
+          updateMessages(sessionId, msgs => {
+            const last = msgs[msgs.length - 1]
+            if (!last || last.role !== 'assistant' || last.id !== streamId) return
+            if (!last.toolCalls?.length) {
+              last.toolCalls = [{
+                id: `${data.tool}-result`,
+                tool: data.tool,
+                timestamp: data.timestamp || new Date().toISOString(),
+              }]
+            }
+            const tc = [...(last.toolCalls || [])].reverse().find(t => t.tool === data.tool && t.success === undefined)
+              || last.toolCalls![last.toolCalls!.length - 1]
+            tc.success = data.success
+            tc.output = data.output
+            tc.error = data.error
+            tc.duration = data.duration
           })
         } else if (data.type === 'done' || data.type === 'generation_end' || data.type === 'generation_stopped') {
           if (!sessionId) return

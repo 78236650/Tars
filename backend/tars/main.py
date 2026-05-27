@@ -253,6 +253,7 @@ from tars.wiki.compiler import WikiCompiler
 from tars.wiki.events import WikiEventHandler
 from tars.wiki.router import WikiRagRouter
 from tars.tools.builtin.wiki_read import WikiReadTool
+from tars.tools.builtin.wiki_write import WikiWriteTool
 
 _wiki_data_dir = Path(__file__).resolve().parent.parent / "data" / "wiki"
 wiki_store = WikiStore(wiki_dir=_wiki_data_dir)
@@ -270,6 +271,7 @@ def _init_wiki_after_agent() -> None:
     wiki_compiler = WikiCompiler(store=wiki_store, llm_provider=llm_call)
     wiki_event_handler = WikiEventHandler(compiler=wiki_compiler)
     tool_registry.register(WikiReadTool(store=wiki_store))
+    tool_registry.register(WikiWriteTool(store=wiki_store))
     app.include_router(create_wiki_router(wiki_store), prefix="/api/wiki")
     if module_registry.is_enabled("knowledge"):
         init_wiki_upload_routing(wiki_event_handler, wiki_router=wiki_router)

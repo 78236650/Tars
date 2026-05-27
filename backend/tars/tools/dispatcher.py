@@ -332,10 +332,16 @@ class ToolDispatcher:
             tool_name, arguments = tool_call
             tools_called.append(tool_name)
 
+            proceed = True
             if on_tool_call:
-                await on_tool_call(tool_name, arguments)
-
-            result = await self.execute_tool(tool_name, arguments, context=tool_context)
+                proceed = await on_tool_call(tool_name, arguments)
+                if proceed is False:
+                    block_err = getattr(on_tool_call, "_block_error", None) or "工具调用已拒绝"
+                    result = ToolResult(success=False, output="", error=block_err)
+                else:
+                    result = await self.execute_tool(tool_name, arguments, context=tool_context)
+            else:
+                result = await self.execute_tool(tool_name, arguments, context=tool_context)
 
             if on_tool_result:
                 await on_tool_result(tool_name, result)

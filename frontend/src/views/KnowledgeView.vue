@@ -20,13 +20,13 @@
 
     <div class="knowledge-content">
       <KnowledgeManager v-if="activeTab === 'knowledge'" />
-      <WikiViewer v-else-if="activeTab === 'wiki'" />
+      <WikiViewer v-else-if="activeTab === 'wiki'" :key="wikiRefreshKey" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
 import KnowledgeManager from '@/components/knowledge/KnowledgeManager.vue'
@@ -34,6 +34,11 @@ import WikiViewer from '@/components/knowledge/WikiViewer.vue'
 
 const { t } = useI18n()
 const activeTab = ref<'knowledge' | 'wiki'>('knowledge')
+const wikiRefreshKey = ref(0)
+
+watch(activeTab, (tab) => {
+  if (tab === 'wiki') wikiRefreshKey.value += 1
+})
 
 const tabs = computed(() => [
   { key: 'knowledge' as const, label: t('knowledge.title', '知识库') },

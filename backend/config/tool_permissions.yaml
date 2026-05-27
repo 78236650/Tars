@@ -19,6 +19,8 @@ roles:
       - memory
       - command
       - knowledge_search
+      - read_wiki
+      - write_wiki
       - meeting_recognizer
       - bi_query
       - bi_list_datasources

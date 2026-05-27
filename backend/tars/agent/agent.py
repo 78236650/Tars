@@ -488,22 +488,15 @@ class AgentV2:
         # 8. 定义工具调用回调
         used_web_flag = {"value": False}
 
-        async def on_tool_call(tool_name: str, arguments: Dict):
+        async def on_tool_call(tool_name: str, arguments: Dict) -> bool:
+            """返回 False 时 dispatcher 跳过实际执行（仅发一条 tool_result）。"""
             # v2.5: 权限检查
             if hasattr(self, '_active_skill_id') and self._active_skill_id:
                 from ..skills.permission_engine import permission_engine
                 allowed, reason = permission_engine.can_call(self._active_skill_id, tool_name)
                 if not allowed:
-                    await channel.send(session_id, {
-                        "type": "tool_result",
-                        "session_id": session_id,
-                        "tool": tool_name,
-                        "success": False,
-                        "output": "",
-                        "error": f"权限不足: {reason}",
-                        "timestamp": now_iso(),
-                    })
-                    return
+                    on_tool_call._block_error = f"权限不足: {reason}"
+                    return False
 
             # 记录工具调用开始时间
             import time
@@ -512,16 +505,11 @@ class AgentV2:
             on_tool_call._timers[tool_name] = _tool_start[tool_name]
             # 只读模式下拦截写操作
             if self._is_readonly_mode() and tool_name not in self.READONLY_TOOLS:
-                await channel.send(session_id, {
-                    "type": "tool_result",
-                    "session_id": session_id,
-                    "tool": tool_name,
-                    "success": False,
-                    "output": "",
-                    "error": f"当前处于 {self._active_mode.upper()} 模式，{tool_name} 工具不可用。输入 /yolo 切换执行模式。",
-                    "timestamp": now_iso(),
-                })
-                return  # 不执行工具
+                on_tool_call._block_error = (
+                    f"当前处于 {self._active_mode.upper()} 模式，{tool_name} 工具不可用。"
+                    "输入 /yolo 切换执行模式。"
+                )
+                return False
             if tool_name in ("web", "web_search", "web_fetch"):
                 used_web_flag["value"] = True
             await channel.send(session_id, {
@@ -539,6 +527,7 @@ class AgentV2:
                 "detail": str(arguments)[:100],
                 "timestamp": now_iso(),
             })
+            return True
 
         async def on_tool_result(tool_name: str, result):
             import time
@@ -988,7 +977,7 @@ class AgentV2:
             if wiki_index.strip() and wiki_index != "# Wiki Index\n\n":
                 sp += (
                     "\n\n## 你的知识 Wiki\n"
-                    "以下是你维护的结构化知识库索引，需要详细信息时使用 read_wiki 工具查阅具体页面：\n\n"
+                    "以下是你维护的结构化知识库索引。查阅用 read_wiki，用户要求写入/更新 wiki 时用 write_wiki：\n\n"
                     f"{wiki_index}\n"
                 )
 
@@ -1138,7 +1127,10 @@ class AgentV2:
 
     # ========= 模式权限控制 =========
 
-    READONLY_TOOLS = {"weather", "file", "file_list", "memory", "web_search", "web_fetch"}
+    READONLY_TOOLS = {
+        "weather", "file", "file_list", "memory", "web_search", "web_fetch",
+        "knowledge_search", "read_wiki", "write_wiki",
+    }
 
     def _is_readonly_mode(self) -> bool:
         return self._active_mode in ("plan", "brainstorm")
