@@ -250,7 +250,7 @@ onMounted(() => {
         </svg>
       </div>
       <h2 class="text-xl font-semibold text-white mb-1">PortMeta Agent</h2>
-      <p class="text-xs text-slate-500 mb-2">Miluo Lab</p>
+      <p class="text-xs text-slate-500 mb-2">Miluo Lab 出品</p>
       <p class="text-sm text-slate-400 mb-8">{{ t('chat.workspaceSubtitle') }}</p>
 
       <!-- 快捷入口 -->

@@ -218,12 +218,12 @@ const groupedSessions = computed(() => {
   >
     <div class="p-4 border-b border-amber-100/10">
       <div v-if="!collapsed" class="overflow-hidden">
-        <h1 class="text-xl font-bold tracking-wide text-amber-400">PortMeta</h1>
-        <p class="text-[10px] text-stone-600 -mt-0.5">Miluo Lab</p>
+        <h1 class="text-xl font-bold tracking-wide text-amber-400">PortMeta Agent</h1>
+        <p class="text-[10px] text-stone-500 -mt-0.5">Miluo Lab 出品</p>
         <p class="text-xs text-stone-500 mt-0.5">{{ t('sidebar.assistantSubtitle') }}</p>
       </div>
       <div v-else class="flex justify-center">
-        <span class="text-lg font-bold text-amber-400">T</span>
+        <span class="text-lg font-bold text-amber-400">P</span>
       </div>
     </div>
 
