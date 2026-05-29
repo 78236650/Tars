@@ -18,7 +18,7 @@ const applyInvite = () => {
 </script>
 
 <template>
-  <section class="rounded-[28px] border border-amber-100/10 bg-[#14110f] p-5">
+  <section class="rounded-[28px] border border-amber-100/10 bg-surface-1 p-5">
     <p class="text-sm font-medium text-stone-100">{{ t('login.joinWorkspace') }}</p>
     <p class="mt-2 text-sm text-stone-400">{{ t('login.joinDescription') }}</p>
     <input

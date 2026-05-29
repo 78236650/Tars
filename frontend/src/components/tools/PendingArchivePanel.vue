@@ -47,7 +47,7 @@ defineExpose({ reload: loadPending })
 </script>
 
 <template>
-  <section v-if="loading || items.length > 0" class="mb-6 rounded-[24px] border border-amber-100/10 bg-[#171411]/70 p-5">
+  <section v-if="loading || items.length > 0" class="mb-6 rounded-[24px] border border-amber-100/10 bg-surface-1/70 p-5">
     <div class="mb-4 flex items-center justify-between gap-3">
       <div>
         <h3 class="text-sm font-semibold text-stone-100">{{ t('tools.pendingArchiveTitle') }}</h3>

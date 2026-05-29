@@ -54,7 +54,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       aria-modal="true"
       :aria-label="props.title"
       :class="[
-        'relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-[28px] border border-amber-100/10 bg-[#171411] shadow-[0_30px_100px_rgba(8,7,5,0.65)]',
+        'relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-[28px] border border-amber-100/10 bg-surface-1 shadow-[0_30px_100px_rgba(8,7,5,0.65)]',
         widthClass,
       ]"
     >

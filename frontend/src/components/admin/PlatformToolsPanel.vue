@@ -58,7 +58,7 @@ loadUsage()
 
 <template>
   <div class="mx-auto max-w-4xl space-y-8">
-    <section class="rounded-[24px] border border-amber-100/10 bg-[#171411]/70 p-6">
+    <section class="rounded-[24px] border border-amber-100/10 bg-surface-1/70 p-6">
       <h2 class="text-lg font-semibold text-stone-100">{{ t('admin.providerUsageTitle') }}</h2>
       <p class="mt-1 text-sm text-stone-500">{{ t('admin.providerUsageHint') }}</p>
 
@@ -98,7 +98,7 @@ loadUsage()
       </div>
     </section>
 
-    <section class="rounded-[24px] border border-amber-100/10 bg-[#171411]/70 p-6">
+    <section class="rounded-[24px] border border-amber-100/10 bg-surface-1/70 p-6">
       <h2 class="text-lg font-semibold text-stone-100">{{ t('admin.memoryExportTitle') }}</h2>
       <p class="mt-1 text-sm text-stone-500">{{ t('admin.memoryExportHint') }}</p>
       <div class="mt-4 flex flex-wrap items-end gap-3">

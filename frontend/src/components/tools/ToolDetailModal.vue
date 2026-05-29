@@ -132,7 +132,7 @@ const deleteSkill = async () => {
 
       <div v-if="isPromptSkill && tool.prompt_template">
         <h3 class="mb-2 text-sm font-medium text-stone-400">{{ t('toolDetail.promptTemplate') }}</h3>
-        <pre class="max-h-48 overflow-x-auto overflow-y-auto whitespace-pre-wrap rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4 text-sm text-stone-300">{{ tool.prompt_template }}</pre>
+        <pre class="max-h-48 overflow-x-auto overflow-y-auto whitespace-pre-wrap rounded-2xl border border-amber-100/10 bg-surface-0 p-4 text-sm text-stone-300">{{ tool.prompt_template }}</pre>
       </div>
 
       <div v-if="tool.parameters && tool.parameters.length > 0">
@@ -141,7 +141,7 @@ const deleteSkill = async () => {
           <div
             v-for="param in tool.parameters"
             :key="param.name"
-            class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-3"
+            class="rounded-2xl border border-amber-100/10 bg-surface-0 p-3"
           >
             <div class="flex items-center gap-2">
               <span class="font-mono text-sm text-stone-100">{{ param.name }}</span>
@@ -169,7 +169,7 @@ const deleteSkill = async () => {
 
       <div v-if="tool.usage">
         <h3 class="mb-2 text-sm font-medium text-stone-400">{{ t('toolDetail.usage') }}</h3>
-        <pre class="overflow-x-auto rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4 text-sm text-stone-300">{{ tool.usage }}</pre>
+        <pre class="overflow-x-auto rounded-2xl border border-amber-100/10 bg-surface-0 p-4 text-sm text-stone-300">{{ tool.usage }}</pre>
       </div>
 
       <div

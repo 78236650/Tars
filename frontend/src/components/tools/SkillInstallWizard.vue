@@ -42,7 +42,7 @@ const skillSlug = () => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       @click.self="emit('close')"
     >
-      <div class="w-full max-w-lg rounded-[28px] border border-amber-100/15 bg-[#171411] p-6 shadow-2xl">
+      <div class="w-full max-w-lg rounded-[28px] border border-amber-100/15 bg-surface-1 p-6 shadow-2xl">
         <div class="mb-5 flex items-start justify-between gap-4">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-stone-500">

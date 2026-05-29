@@ -125,7 +125,7 @@ onMounted(() => {
     <main class="flex-1 min-h-0 overflow-hidden">
       <div class="h-full overflow-y-auto px-6 py-6">
         <!-- Header -->
-        <header class="rounded-3xl border border-amber-100/10 bg-[#1a1511]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.3)]">
+        <header class="rounded-3xl border border-amber-100/10 bg-surface-2/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.3)]">
           <div class="flex flex-col gap-2">
             <h1 class="text-2xl font-semibold text-stone-100">{{ t('audit.title') }}</h1>
             <p class="text-sm text-stone-400">{{ t('audit.subtitle') }}</p>

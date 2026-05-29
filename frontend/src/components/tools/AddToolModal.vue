@@ -58,7 +58,7 @@ const submit = async () => {
           v-model="form.id"
           type="text"
           :placeholder="t('addSkill.idPlaceholder')"
-          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+          class="w-full rounded-2xl border border-amber-100/10 bg-surface-0 px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
         />
       </div>
 
@@ -68,7 +68,7 @@ const submit = async () => {
           v-model="form.name"
           type="text"
           :placeholder="t('addSkill.namePlaceholder')"
-          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+          class="w-full rounded-2xl border border-amber-100/10 bg-surface-0 px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
         />
       </div>
 
@@ -78,7 +78,7 @@ const submit = async () => {
           v-model="form.description"
           type="text"
           :placeholder="t('addSkill.descPlaceholder')"
-          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+          class="w-full rounded-2xl border border-amber-100/10 bg-surface-0 px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
         />
       </div>
 
@@ -88,7 +88,7 @@ const submit = async () => {
           v-model="form.tags"
           type="text"
           :placeholder="t('addSkill.tagsPlaceholder')"
-          class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+          class="w-full rounded-2xl border border-amber-100/10 bg-surface-0 px-3 py-2 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
         />
       </div>
 
@@ -98,7 +98,7 @@ const submit = async () => {
           v-model="form.prompt_template"
           rows="8"
           :placeholder="t('addSkill.templatePlaceholder')"
-          class="w-full resize-none rounded-2xl border border-amber-100/10 bg-[#110f0d] px-3 py-2 font-mono text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+          class="w-full resize-none rounded-2xl border border-amber-100/10 bg-surface-0 px-3 py-2 font-mono text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
         ></textarea>
         <p class="mt-1 text-xs text-stone-500">{{ t('addSkill.templateHint') }}</p>
       </div>

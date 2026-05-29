@@ -28,7 +28,7 @@ const onLoginSubmit = async (payload: { identifier: string; password: string; wo
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0c0b09] px-6 py-8 text-white lg:px-10">
+  <div class="min-h-screen bg-surface-0 px-6 py-8 text-white lg:px-10">
     <div class="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
       <LoginHeroPanel />
       <div class="space-y-4">

@@ -438,7 +438,7 @@ onMounted(() => {
               <div
                 v-for="skill in filteredSkills"
                 :key="skill.id"
-                class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 items-center rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-4 transition hover:border-amber-300/25 hover:bg-amber-500/10 mb-2"
+                class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 items-center rounded-2xl border border-amber-100/10 bg-surface-1/82 p-4 transition hover:border-amber-300/25 hover:bg-amber-500/10 mb-2"
               >
                 <!-- 技能名 -->
                 <div class="lg:col-span-3 cursor-pointer" @click="handleToolClick(skill)">
@@ -506,7 +506,7 @@ onMounted(() => {
                 <span>{{ t('tools.installScope') }}</span>
                 <select
                   v-model="installScope"
-                  class="rounded-lg border border-amber-100/10 bg-[#171411] px-2 py-1 text-stone-100"
+                  class="rounded-lg border border-amber-100/10 bg-surface-1 px-2 py-1 text-stone-100"
                 >
                   <option value="tenant">{{ t('tools.scopeTenant') }}</option>
                   <option value="global">{{ t('tools.scopeGlobal') }}</option>
@@ -546,7 +546,7 @@ onMounted(() => {
 
             <!-- 目录结果（空搜索词时的默认展示）-->
             <div v-else-if="filteredHubResults.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div v-for="pkg in filteredHubResults" :key="pkg.id" class="rounded-[24px] border bg-[#171411]/82 p-5 transition"
+              <div v-for="pkg in filteredHubResults" :key="pkg.id" class="rounded-[24px] border bg-surface-1/82 p-5 transition"
                 :class="pkg.installed ? 'border-amber-300/25' : 'border-amber-100/10'">
                 <div class="flex items-start justify-between mb-3">
                   <div>

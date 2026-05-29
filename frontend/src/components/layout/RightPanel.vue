@@ -105,7 +105,7 @@ const clearConversation = () => {
 
 <template>
   <aside
-    class="h-screen flex flex-col transition-all duration-300 bg-[#110f0d]/96 border-l border-amber-100/10"
+    class="h-screen flex flex-col transition-all duration-300 bg-surface-0/96 border-l border-amber-100/10"
     :class="collapsed ? 'w-12' : 'w-64'"
   >
     <div class="p-3 border-b border-amber-100/10 flex items-center justify-between">

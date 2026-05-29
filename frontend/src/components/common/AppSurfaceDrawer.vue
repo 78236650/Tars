@@ -41,7 +41,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       aria-modal="true"
       :aria-label="props.title"
       :class="[
-        'absolute inset-y-0 flex h-full w-full max-w-xl flex-col overflow-hidden bg-[#171411] shadow-[0_30px_100px_rgba(8,7,5,0.65)]',
+        'absolute inset-y-0 flex h-full w-full max-w-xl flex-col overflow-hidden bg-surface-1 shadow-[0_30px_100px_rgba(8,7,5,0.65)]',
         props.side === 'right'
           ? 'right-0 border-l border-amber-100/10'
           : 'left-0 border-r border-amber-100/10',

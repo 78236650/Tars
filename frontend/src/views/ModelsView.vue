@@ -261,7 +261,7 @@ const fetchModels = async (id: string) => {
             <!-- OpenAI Compatible Provider → 显示端点模型 -->
             <template v-else-if="prov.name === 'openai_compat'">
               <div v-if="settingsStore.endpoints.length > 0" class="space-y-3">
-                <div v-for="ep in settingsStore.endpoints" :key="ep.id" class="rounded-xl border border-amber-100/10 bg-[#14110f]/60 p-4">
+                <div v-for="ep in settingsStore.endpoints" :key="ep.id" class="rounded-xl border border-amber-100/10 bg-surface-1/60 p-4">
                   <div class="flex items-center justify-between mb-2">
                     <h4 class="text-sm font-medium text-stone-300">
                       {{ ep.name }}
@@ -352,7 +352,7 @@ const fetchModels = async (id: string) => {
           class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
           @click.self="showAddEndpoint = false"
         >
-          <div class="w-full max-w-md rounded-[28px] border border-amber-100/10 bg-[#171411] p-5 shadow-[0_30px_100px_rgba(8,7,5,0.65)]">
+          <div class="w-full max-w-md rounded-[28px] border border-amber-100/10 bg-surface-1 p-5 shadow-[0_30px_100px_rgba(8,7,5,0.65)]">
             <h3 class="mb-4 text-lg font-semibold text-stone-100">{{ t('modelsPage.createEndpoint') }}</h3>
             <div class="space-y-3">
               <input
@@ -398,7 +398,7 @@ const fetchModels = async (id: string) => {
       class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
       @click.self="closeEdit"
     >
-      <div class="w-full max-w-md rounded-[28px] border border-amber-100/10 bg-[#171411] p-5 shadow-[0_30px_100px_rgba(8,7,5,0.65)]">
+      <div class="w-full max-w-md rounded-[28px] border border-amber-100/10 bg-surface-1 p-5 shadow-[0_30px_100px_rgba(8,7,5,0.65)]">
         <h3 class="mb-4 text-lg font-semibold text-stone-100">{{ t('modelsPage.editEndpoint') }}</h3>
         <div class="space-y-3">
           <input
