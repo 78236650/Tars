@@ -53,7 +53,7 @@ const closeReminderNotifications = () => {
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden bg-[#0c0b09] text-white">
+  <div class="h-screen overflow-hidden bg-surface-0 text-white">
     <div class="grid h-full grid-cols-[auto,1fr,auto]">
       <LeftPanel />
 
@@ -68,7 +68,7 @@ const closeReminderNotifications = () => {
         </header>
 
         <div class="min-h-0 flex-1 overflow-hidden p-4 lg:p-6">
-          <div class="h-full min-h-0 rounded-[28px] border border-amber-100/10 bg-[#14110f]/88 shadow-[0_30px_120px_rgba(8,7,5,0.55)]">
+          <div class="h-full min-h-0 rounded-[28px] border border-amber-100/10 bg-surface-1/88 shadow-[0_30px_120px_rgba(8,7,5,0.55)]">
             <slot />
           </div>
         </div>

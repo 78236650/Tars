@@ -260,7 +260,7 @@ const openReminderNotifications = async () => {
         </svg>
       </button>
 
-      <div v-if="showModelPopover" class="absolute bottom-full left-2 right-2 mb-1 bg-[#1a1511] border border-amber-100/10 rounded-xl shadow-2xl z-50 overflow-hidden max-h-64 flex flex-col">
+      <div v-if="showModelPopover" class="absolute bottom-full left-2 right-2 mb-1 bg-surface-2 border border-amber-100/10 rounded-xl shadow-2xl z-50 overflow-hidden max-h-64 flex flex-col">
         <div class="max-h-48 overflow-y-auto">
           <p class="px-2.5 py-1.5 text-[10px] font-medium text-stone-500 uppercase tracking-wider border-b border-amber-100/10">
             {{ t('sidebar.localModels') }}
