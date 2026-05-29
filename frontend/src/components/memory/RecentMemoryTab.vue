@@ -83,17 +83,17 @@ onMounted(() => {
 
 <template>
   <div class="space-y-4">
-    <div class="grid gap-4 rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 p-4 md:grid-cols-[1fr,220px,140px]">
+    <div class="grid gap-4 rounded-2xl border border-amber-100/10 bg-surface-2/60 p-4 md:grid-cols-[1fr,220px,140px]">
       <input
         v-model="query"
         type="text"
-        class="rounded-xl border border-amber-100/10 bg-[#110f0d] px-4 py-3 text-sm text-stone-100 outline-none focus:border-amber-400/50"
+        class="rounded-xl border border-amber-100/10 bg-surface-0 px-4 py-3 text-sm text-stone-100 outline-none focus:border-amber-400/50"
         :placeholder="t('memory.searchRecent')"
         @keyup.enter="refresh"
       />
       <select
         v-model="category"
-        class="rounded-xl border border-amber-100/10 bg-[#110f0d] px-4 py-3 text-sm text-stone-100 outline-none focus:border-amber-400/50"
+        class="rounded-xl border border-amber-100/10 bg-surface-0 px-4 py-3 text-sm text-stone-100 outline-none focus:border-amber-400/50"
         @change="refresh"
       >
         <option v-for="item in categories" :key="item" :value="item">
@@ -125,10 +125,10 @@ onMounted(() => {
         @delete="deleteMemory(memory.id)"
       />
 
-      <div v-if="loading" class="rounded-xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
+      <div v-if="loading" class="rounded-xl border border-amber-100/10 bg-surface-2/60 px-4 py-6 text-center text-sm text-stone-400">
         {{ t('memory.loading') }}
       </div>
-      <div v-else-if="!items.length" class="rounded-xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
+      <div v-else-if="!items.length" class="rounded-xl border border-amber-100/10 bg-surface-2/60 px-4 py-6 text-center text-sm text-stone-400">
         {{ t('memory.recentEmpty') }}
       </div>
     </div>

@@ -45,13 +45,13 @@ const importancePercent = computed(() => Math.max(0, Math.min(100, Math.round((p
 </script>
 
 <template>
-  <article class="rounded-xl border border-amber-100/10 bg-[#1a1511]/60 p-4">
+  <article class="rounded-xl border border-amber-100/10 bg-surface-2/60 p-4">
     <div class="flex items-start gap-3">
       <input
         v-if="selectable"
         :checked="selected"
         type="checkbox"
-        class="mt-1 h-4 w-4 rounded border-amber-100/20 bg-[#1a1511] text-amber-500 accent-amber-500"
+        class="mt-1 h-4 w-4 rounded border-amber-100/20 bg-surface-2 text-amber-500 accent-amber-500"
         @change="emit('toggle-select')"
       />
 

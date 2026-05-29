@@ -28,7 +28,7 @@ const getProgressNumber = (progress: Record<string, unknown>, key: string) => {
     @close="emit('close')"
   >
     <div v-if="status" class="space-y-4">
-      <section class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
+      <section class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4">
         <div class="flex items-center justify-between text-sm">
           <span class="text-stone-400">{{ t('memory.currentStatus') }}</span>
           <span class="font-medium text-stone-100">{{ status.status }}</span>
@@ -39,14 +39,14 @@ const getProgressNumber = (progress: Record<string, unknown>, key: string) => {
         </div>
       </section>
 
-      <section v-if="status.progress" class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
+      <section v-if="status.progress" class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4">
         <p class="text-sm text-stone-100">{{ t('memory.progressTitle') }}</p>
         <p class="mt-2 text-sm text-stone-400">
           {{ t('memory.progressSummary', { done: getProgressNumber(status.progress, 'entities_done'), total: getProgressNumber(status.progress, 'entities_total') }) }}
         </p>
       </section>
 
-      <section v-if="status.last_report" class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
+      <section v-if="status.last_report" class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4">
         <p class="text-sm text-stone-100">{{ t('memory.reportTitle') }}</p>
         <div class="mt-3 grid gap-3 text-sm text-stone-300 md:grid-cols-2">
           <div class="rounded-2xl border border-amber-100/10 bg-[#0d0b09] px-3 py-3">
@@ -62,7 +62,7 @@ const getProgressNumber = (progress: Record<string, unknown>, key: string) => {
       </section>
     </div>
 
-    <div v-else class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4 text-sm text-stone-400">
+    <div v-else class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4 text-sm text-stone-400">
       {{ t('memory.noCompressStatus') }}
     </div>
 

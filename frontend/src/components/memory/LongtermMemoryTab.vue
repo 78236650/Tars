@@ -173,7 +173,7 @@ onMounted(() => {
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-100/10 bg-surface-2/60 p-4">
       <div>
         <h2 class="text-lg font-semibold text-stone-100">{{ t('memory.longtermTitle') }}</h2>
         <p class="mt-1 text-sm text-stone-400">{{ t('memory.longtermSubtitle') }}</p>
@@ -187,14 +187,14 @@ onMounted(() => {
       </button>
     </div>
 
-    <div v-if="loading" class="rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
+    <div v-if="loading" class="rounded-2xl border border-amber-100/10 bg-surface-2/60 px-4 py-6 text-center text-sm text-stone-400">
       {{ t('memory.loading') }}
     </div>
 
     <section
       v-for="group in groups"
       :key="group.group_name"
-      class="rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 p-4"
+      class="rounded-2xl border border-amber-100/10 bg-surface-2/60 p-4"
     >
       <button class="flex w-full items-center justify-between" @click="toggleGroup(group.group_name)">
         <div class="text-left">
@@ -225,7 +225,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <div v-if="!loading && !groups.length" class="rounded-2xl border border-amber-100/10 bg-[#1a1511]/60 px-4 py-6 text-center text-sm text-stone-400">
+    <div v-if="!loading && !groups.length" class="rounded-2xl border border-amber-100/10 bg-surface-2/60 px-4 py-6 text-center text-sm text-stone-400">
       {{ t('memory.longtermEmpty') }}
     </div>
 
@@ -261,7 +261,7 @@ onMounted(() => {
       @close="closeEditor"
     >
       <div class="space-y-4">
-        <div class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
+        <div class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4">
           <p class="text-xs uppercase tracking-[0.2em] text-stone-500">{{ t('memory.originalContent') }}</p>
           <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-stone-300">
             {{ currentEditingMemory?.summary || currentEditingMemory?.content }}
@@ -276,7 +276,7 @@ onMounted(() => {
             id="longterm-memory-editor"
             v-model="editingContent"
             rows="8"
-            class="w-full rounded-2xl border border-amber-100/10 bg-[#110f0d] px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-amber-300/30"
+            class="w-full rounded-2xl border border-amber-100/10 bg-surface-0 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-amber-300/30"
           />
         </div>
       </div>

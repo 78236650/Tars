@@ -158,7 +158,7 @@ onMounted(() => {
   <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <main class="flex-1 min-h-0 overflow-hidden">
       <div class="h-full overflow-y-auto px-6 py-6">
-        <header class="rounded-3xl border border-amber-100/10 bg-[#1a1511]/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.3)]">
+        <header class="rounded-3xl border border-amber-100/10 bg-surface-2/82 p-6 shadow-[0_24px_80px_rgba(8,7,5,0.3)]">
           <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <div class="flex items-center gap-3">
@@ -242,7 +242,7 @@ onMounted(() => {
           <!-- v4.0.0: Admin 记忆管理面板 -->
           <div v-else-if="activeTab === 'admin'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- 用户列表 -->
-            <div class="lg:col-span-1 rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-5">
+            <div class="lg:col-span-1 rounded-2xl border border-amber-100/10 bg-surface-1/82 p-5">
               <h3 class="text-sm font-medium text-stone-300 mb-3">{{ t('memory.admin.usersTitle') }}</h3>
               <div v-if="adminLoadingUsers" class="text-center py-4 text-xs text-stone-400">
                 <div class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-amber-400 border-t-transparent"></div>
@@ -265,7 +265,7 @@ onMounted(() => {
             </div>
 
             <!-- 记忆详情 + 操作 -->
-            <div class="lg:col-span-2 rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-5">
+            <div class="lg:col-span-2 rounded-2xl border border-amber-100/10 bg-surface-1/82 p-5">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-medium text-stone-300">
                   {{ adminSelectedUserId

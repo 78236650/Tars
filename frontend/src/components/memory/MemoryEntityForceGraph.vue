@@ -137,20 +137,20 @@ watch(
   <div class="relative flex min-h-[420px] flex-col">
     <div
       v-if="loading"
-      class="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[#171411]/80 text-sm text-stone-400"
+      class="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-surface-1/80 text-sm text-stone-400"
     >
       {{ t('memory.loading') }}
     </div>
     <div
       v-if="!loading && !nodes.length"
-      class="flex flex-1 items-center justify-center rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-8 text-sm text-stone-400"
+      class="flex flex-1 items-center justify-center rounded-2xl border border-amber-100/10 bg-surface-1/82 p-8 text-sm text-stone-400"
     >
       {{ t('memory.tree.graphEmpty') }}
     </div>
     <div
       v-show="nodes.length"
       ref="host"
-      class="h-[min(560px,70vh)] w-full rounded-2xl border border-amber-100/10 bg-[#171411]/82"
+      class="h-[min(560px,70vh)] w-full rounded-2xl border border-amber-100/10 bg-surface-1/82"
     />
   </div>
 </template>

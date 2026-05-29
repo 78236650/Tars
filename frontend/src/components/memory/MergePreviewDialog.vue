@@ -28,7 +28,7 @@ const { t } = useI18n()
     @close="emit('close')"
   >
     <div class="space-y-4">
-      <section class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4">
+      <section class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4">
         <p class="text-sm leading-6 text-stone-300">
           {{ t('memory.mergePreviewHint') }}
         </p>
@@ -36,7 +36,7 @@ const { t } = useI18n()
 
       <section
         v-if="preview"
-        class="rounded-2xl border border-amber-100/10 bg-[#110f0d] p-4"
+        class="rounded-2xl border border-amber-100/10 bg-surface-0 p-4"
       >
         <div class="flex flex-wrap items-center gap-3 text-xs text-stone-400">
           <span>{{ t('memory.targetType', { value: preview.memory_type }) }}</span>

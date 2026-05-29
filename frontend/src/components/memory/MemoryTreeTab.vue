@@ -469,7 +469,7 @@ defineExpose({ refresh: refreshAll })
       />
       <ul
         v-if="searchQuery.trim() && (searchHits.length || (!searchLoading && searchQuery.trim()))"
-        class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-amber-100/15 bg-[#1a1511] py-1 shadow-lg"
+        class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-amber-100/15 bg-surface-2 py-1 shadow-lg"
       >
         <li
           v-if="searchLoading"
@@ -515,7 +515,7 @@ defineExpose({ refresh: refreshAll })
         />
       </div>
       <div
-        class="min-h-[280px] rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-5 lg:col-span-2"
+        class="min-h-[280px] rounded-2xl border border-amber-100/10 bg-surface-1/82 p-5 lg:col-span-2"
       >
         <template v-if="!selectedId || selectedKind !== 'entity'">
           <p class="text-sm text-stone-400">{{ t('memory.tree.selectHint') }}</p>
@@ -579,7 +579,7 @@ defineExpose({ refresh: refreshAll })
 
     <div
       v-else-if="!treeData"
-      class="rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-8 text-center text-sm text-stone-400"
+      class="rounded-2xl border border-amber-100/10 bg-surface-1/82 p-8 text-center text-sm text-stone-400"
     >
       {{ t('memory.tree.loadFailed') }}
     </div>
@@ -589,7 +589,7 @@ defineExpose({ refresh: refreshAll })
       class="grid min-h-[420px] grid-cols-1 gap-4 lg:grid-cols-5"
     >
       <div
-        class="max-h-[560px] rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-3 lg:col-span-2"
+        class="max-h-[560px] rounded-2xl border border-amber-100/10 bg-surface-1/82 p-3 lg:col-span-2"
         :class="useVirtualTree ? 'overflow-hidden' : 'overflow-y-auto'"
       >
         <p
@@ -624,7 +624,7 @@ defineExpose({ refresh: refreshAll })
       </div>
 
       <div
-        class="min-h-[280px] rounded-2xl border border-amber-100/10 bg-[#171411]/82 p-5 lg:col-span-3"
+        class="min-h-[280px] rounded-2xl border border-amber-100/10 bg-surface-1/82 p-5 lg:col-span-3"
       >
         <template v-if="!selectedId">
           <p class="text-sm text-stone-400">{{ t('memory.tree.selectHint') }}</p>
