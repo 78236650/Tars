@@ -1,4 +1,4 @@
-# TARS Agent - Writing SubAgent
+# Portmeta Agent - Writing SubAgent
 # 写作子代理
 
 from .base import SubAgent, SubAgentType

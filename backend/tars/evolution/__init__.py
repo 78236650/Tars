@@ -1,6 +1,6 @@
 """
-TARS Agent Self-Evolution Module
-自进化模块 - 让 TARS 能够自我学习和优化
+Portmeta Agent Self-Evolution Module — Miluo Lab
+自进化模块 — 让 Agent 能够自我学习和优化
 """
 
 from .evaluator import ResponseEvaluator, EvaluationResult

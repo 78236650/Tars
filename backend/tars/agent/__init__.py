@@ -1,4 +1,4 @@
-# TARS Agent Package
+# Portmeta Agent Package — Miluo Lab
 from .agent import AgentV2 as Agent
 from .agent import AgentV2
 from .subagent_manager import SubAgentManager

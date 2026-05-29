@@ -1,4 +1,4 @@
-"""TARS Agent v2 - 使用 ToolDispatcher 的新 Agent"""
+"""Portmeta Agent v2 — Miluo Lab"""
 import os
 import json
 import asyncio

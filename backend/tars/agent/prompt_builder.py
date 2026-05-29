@@ -1,4 +1,4 @@
-"""TARS Agent Prompt Builder — System prompt 拼装逻辑（从 agent.py 拆分）。"""
+"""Portmeta Agent Prompt Builder — System prompt 拼装逻辑（从 agent.py 拆分）。"""
 
 from typing import List, Optional
 from ..workspace import WorkspaceManager
