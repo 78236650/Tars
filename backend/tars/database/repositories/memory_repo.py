@@ -3,6 +3,7 @@
 
 import json
 import uuid
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from tars.database.models import (
@@ -11,6 +12,7 @@ from tars.database.models import (
     ReminderNotification, Transcription, AuditLog, ApprovalRequest,
 )
 from tars.database.connection import ConnectionManager
+from tars.database.sql_dialect import fulltext_match_clause
 
 
 class MemoryRepo:
@@ -169,11 +171,12 @@ class MemoryRepo:
         # 1. 尝试 FTS5 搜索
         if safe_query:
             try:
-                cursor.execute("""
+                fts_clause = fulltext_match_clause(self._cm.dialect, "memories_fts")
+                cursor.execute(f"""
                     SELECT m.id, m.tenant_id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
                     FROM memories m
                     JOIN memories_fts fts ON m.rowid = fts.rowid
-                    WHERE memories_fts MATCH ? AND (m.tenant_id = ? OR m.scope = 'shared')
+                    WHERE {fts_clause} AND (m.tenant_id = ? OR m.scope = 'shared')
                     ORDER BY rank
                     LIMIT ?
                 """, (safe_query, tenant_id, limit))
