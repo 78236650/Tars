@@ -1,4 +1,4 @@
-# Portmeta Agent - Research SubAgent
+# PortMeta Agent - Research SubAgent
 # 研究子代理
 
 from .base import SubAgent, SubAgentType

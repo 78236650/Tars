@@ -51,7 +51,7 @@ export const messages: Record<string, Record<string, string>> = {
     'common.switchToChinese': '切换到中文',
 
     // Desktop
-    'desktop.default.title': 'Portmeta 工作台',
+    'desktop.default.title': 'PortMeta 工作台',
     'desktop.default.subtitle': '统一桌面工作台',
     'desktop.chat.title': '聊天工作台',
     'desktop.chat.subtitle': '对话、计划、文件和提醒都在同一个主工作区完成。',
@@ -298,7 +298,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': '当前模型',
-    'sidebar.version': 'Portmeta v4.3.3',
+    'sidebar.version': 'PortMeta v4.3.3',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': '自定义模型',
     'sidebar.openrouter': 'OpenRouter',
@@ -336,15 +336,15 @@ export const messages: Record<string, Record<string, string>> = {
     'rightPanel.cleared': '会话已清空',
 
     // Chat
-    'chat.title': 'Portmeta Agent',
+    'chat.title': 'PortMeta Agent',
     'chat.subtitle': 'AI Assistant',
     'chat.connected': '已连接',
     'chat.restoringHistory': '正在恢复对话…',
     'chat.disconnected': '未连接',
     'chat.placeholder': '输入消息…（Ctrl+Enter 发送）',
-    'chat.welcome': '欢迎使用 Portmeta Agent — Miluo Lab',
+    'chat.welcome': '欢迎使用 PortMeta Agent — Miluo Lab',
     'chat.welcomeHint': '开始对话吧',
-    'chat.thinking': 'Portmeta 思考中...',
+    'chat.thinking': 'PortMeta 思考中...',
     'chat.stop': '停止',
     'chat.stopTitle': '停止当前回复',
     'chat.generationStopped': '已停止生成',
@@ -392,7 +392,7 @@ export const messages: Record<string, Record<string, string>> = {
     'chat.workspaceSubtitle': '你的 AI 工程助手 - 代码、规划、执行',
     'chat.role.user': '你',
     'chat.role.userEn': 'You',
-    'chat.role.assistant': 'Portmeta',
+    'chat.role.assistant': 'PortMeta',
     'chat.role.system': '系统',
     'chat.role.systemEn': 'System',
     'chat.chartFallback': '数据图表',
@@ -1295,7 +1295,7 @@ export const messages: Record<string, Record<string, string>> = {
     'common.switchToChinese': 'Switch to Chinese',
 
     // Desktop
-    'desktop.default.title': 'Portmeta Workspace',
+    'desktop.default.title': 'PortMeta Workspace',
     'desktop.default.subtitle': 'Unified workspace shell',
     'desktop.chat.title': 'Chat Workspace',
     'desktop.chat.subtitle': 'Handle conversations, plans, files, and reminders in one primary workspace.',
@@ -1542,7 +1542,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': 'Current Model',
-    'sidebar.version': 'Portmeta v4.3.3',
+    'sidebar.version': 'PortMeta v4.3.3',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': 'Custom',
     'sidebar.openrouter': 'OpenRouter',
@@ -1580,15 +1580,15 @@ export const messages: Record<string, Record<string, string>> = {
     'rightPanel.cleared': 'Conversation cleared',
 
     // Chat
-    'chat.title': 'Portmeta Agent',
+    'chat.title': 'PortMeta Agent',
     'chat.subtitle': 'AI Assistant',
     'chat.connected': 'Connected',
     'chat.restoringHistory': 'Restoring conversation…',
     'chat.disconnected': 'Disconnected',
     'chat.placeholder': 'Type a message… (Ctrl+Enter to send)',
-    'chat.welcome': 'Welcome to Portmeta Agent — Miluo Lab',
+    'chat.welcome': 'Welcome to PortMeta Agent — Miluo Lab',
     'chat.welcomeHint': 'Start a conversation to get started',
-    'chat.thinking': 'Portmeta is thinking...',
+    'chat.thinking': 'PortMeta is thinking...',
     'chat.stop': 'Stop',
     'chat.stopTitle': 'Stop current reply',
     'chat.generationStopped': 'Generation stopped',
@@ -1636,7 +1636,7 @@ export const messages: Record<string, Record<string, string>> = {
     'chat.workspaceSubtitle': 'Your AI engineering assistant - code, planning, execution',
     'chat.role.user': '你',
     'chat.role.userEn': 'You',
-    'chat.role.assistant': 'Portmeta',
+    'chat.role.assistant': 'PortMeta',
     'chat.role.system': '系统',
     'chat.role.systemEn': 'System',
     'chat.chartFallback': 'Data Chart',

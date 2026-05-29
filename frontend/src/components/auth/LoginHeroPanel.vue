@@ -7,8 +7,8 @@ const { t } = useI18n()
 <template>
   <section class="flex h-full flex-col justify-between rounded-[32px] border border-amber-100/10 bg-[#15110d] p-8 text-stone-100">
     <div>
-      <img src="/miluo_logo.png" alt="Portmeta logo" class="h-14 w-14 rounded-2xl" />
-      <p class="mt-6 text-sm uppercase tracking-[0.24em] text-amber-300">Portmeta</p>
+      <img src="/miluo_logo.png" alt="PortMeta logo" class="h-14 w-14 rounded-2xl" />
+      <p class="mt-6 text-sm uppercase tracking-[0.24em] text-amber-300">PortMeta</p>
       <h1 class="mt-3 text-4xl font-semibold tracking-tight">{{ t('login.heroTitle') }}</h1>
       <p class="mt-4 max-w-xl text-sm leading-7 text-stone-400">
         {{ t('login.heroDescription') }}

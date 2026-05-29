@@ -1,4 +1,4 @@
-# Portmeta Agent - Plan SubAgent
+# PortMeta Agent - Plan SubAgent
 # 规划子代理
 
 from .base import SubAgent, SubAgentType

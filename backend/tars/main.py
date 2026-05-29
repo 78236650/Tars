@@ -74,9 +74,9 @@ from tars.cron import CronRuntime
 
 # 初始化应用
 app = FastAPI(
-    title="Portmeta Agent",
+    title="PortMeta Agent",
     version="4.3.3",
-    description="Portmeta Agent — Miluo Lab | AI Agent 平台",
+    description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 
 # CORS 配置

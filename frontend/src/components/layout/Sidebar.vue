@@ -218,7 +218,7 @@ const groupedSessions = computed(() => {
   >
     <div class="p-4 border-b border-amber-100/10">
       <div v-if="!collapsed" class="overflow-hidden">
-        <h1 class="text-xl font-bold tracking-wide text-amber-400">Portmeta</h1>
+        <h1 class="text-xl font-bold tracking-wide text-amber-400">PortMeta</h1>
         <p class="text-[10px] text-stone-600 -mt-0.5">Miluo Lab</p>
         <p class="text-xs text-stone-500 mt-0.5">{{ t('sidebar.assistantSubtitle') }}</p>
       </div>
