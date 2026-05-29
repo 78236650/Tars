@@ -39,3 +39,10 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+@layer components {
+  .btn-primary { @apply bg-accent text-content-primary hover:bg-accent-hover; }
+  .btn-secondary { @apply bg-surface-2 text-content-secondary border border-border hover:border-border-strong; }
+  .btn-ghost { @apply bg-transparent text-content-secondary hover:bg-surface-1; }
+  .btn-danger { @apply bg-red-900/30 text-red-300 hover:bg-red-900/50; }
+}
