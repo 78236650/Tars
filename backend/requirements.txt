@@ -51,3 +51,4 @@ psycopg2-binary>=2.9.9
 # ruff>=0.1.0
 # black>=24.0.0
 # isort>=5.13.0
+mcp[cli]>=1.2.0
