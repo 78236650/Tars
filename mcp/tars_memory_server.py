@@ -5,20 +5,26 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from mcp.server.fastmcp import FastMCP
+from tars.database.base import Database
 from tars.memory.manager import MemoryManager
 
 mcp = FastMCP("tars-memory")
-_mgr = MemoryManager()
+
+
+def _manager() -> MemoryManager:
+    data_dir = os.environ.get("TARS_DATA_DIR")
+    db_path = os.path.join(data_dir, "tars.db") if data_dir else None
+    return MemoryManager(db=Database(db_path=db_path))
 
 
 def _search_memory(query: str, tenant: str = "default", limit: int = 5) -> str:
-    hits = _mgr.for_tenant(tenant).search_memories(query, limit=limit)
+    hits = _manager().for_tenant(tenant).search_memories(query, limit=limit)
     return "\n".join(getattr(h, "content", str(h)) for h in hits) or "(no results)"
 
 
 def _add_memory(content: str, category: str = "fact", tenant: str = "default") -> str:
     import asyncio
-    asyncio.run(_mgr.for_tenant(tenant).add_manual_memory(content, category=category))
+    asyncio.run(_manager().for_tenant(tenant).add_manual_memory(content, category=category))
     return "saved"
 
 
