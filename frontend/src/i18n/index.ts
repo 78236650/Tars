@@ -51,7 +51,7 @@ export const messages: Record<string, Record<string, string>> = {
     'common.switchToChinese': '切换到中文',
 
     // Desktop
-    'desktop.default.title': 'TARS 工作台',
+    'desktop.default.title': 'Portmeta 工作台',
     'desktop.default.subtitle': '统一桌面工作台',
     'desktop.chat.title': '聊天工作台',
     'desktop.chat.subtitle': '对话、计划、文件和提醒都在同一个主工作区完成。',
@@ -298,7 +298,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': '当前模型',
-    'sidebar.version': 'TARS v4.2.0',
+    'sidebar.version': 'Portmeta v4.3.3',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': '自定义模型',
     'sidebar.openrouter': 'OpenRouter',
@@ -392,7 +392,7 @@ export const messages: Record<string, Record<string, string>> = {
     'chat.workspaceSubtitle': '你的 AI 工程助手 - 代码、规划、执行',
     'chat.role.user': '你',
     'chat.role.userEn': 'You',
-    'chat.role.assistant': 'TARS',
+    'chat.role.assistant': 'Portmeta',
     'chat.role.system': '系统',
     'chat.role.systemEn': 'System',
     'chat.chartFallback': '数据图表',
@@ -1295,7 +1295,7 @@ export const messages: Record<string, Record<string, string>> = {
     'common.switchToChinese': 'Switch to Chinese',
 
     // Desktop
-    'desktop.default.title': 'TARS Workspace',
+    'desktop.default.title': 'Portmeta Workspace',
     'desktop.default.subtitle': 'Unified workspace shell',
     'desktop.chat.title': 'Chat Workspace',
     'desktop.chat.subtitle': 'Handle conversations, plans, files, and reminders in one primary workspace.',
@@ -1542,7 +1542,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': 'Current Model',
-    'sidebar.version': 'TARS v4.2.0',
+    'sidebar.version': 'Portmeta v4.3.3',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': 'Custom',
     'sidebar.openrouter': 'OpenRouter',
@@ -1636,7 +1636,7 @@ export const messages: Record<string, Record<string, string>> = {
     'chat.workspaceSubtitle': 'Your AI engineering assistant - code, planning, execution',
     'chat.role.user': '你',
     'chat.role.userEn': 'You',
-    'chat.role.assistant': 'TARS',
+    'chat.role.assistant': 'Portmeta',
     'chat.role.system': '系统',
     'chat.role.systemEn': 'System',
     'chat.chartFallback': 'Data Chart',
