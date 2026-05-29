@@ -788,3 +788,21 @@ git commit -m "feat(evolution): add metrics API and dashboard view for adoption/
 - ❌ 不重写 Chroma 向量层(已有 `vectorstore/chroma_client.py` 抽象,够用)
 - ❌ evolution MCP server(Task 列出过,但 dashboard 已覆盖对外可见性需求,避免重复)
 
+---
+
+## 验收复核记录(2026-05-30 收尾)
+
+按 plan 对 11 任务做了客观核验,实际结论:
+
+**✅ 完成(9/11)**:Task 1-6、9、11 + Task 10(修复后)。
+- 最大成就:`database/base.py` 2972 → 290 行(-90%),门面模式落地,4 条表征测试全过。
+- Task 10 原代码有 bug(`MemoryManager()` 缺 `db` 参数,从未跑通);已修为从 `TARS_DATA_DIR` 构造 `Database` 注入,测试 1 passed。`mcp[cli]` 已装入环境。
+
+**⏸ 不硬拆,需单独立项(Task 7、8)**:
+- **Task 8(app_factory)**:main.py 1369 行含 **32 个内联 `@app.xxx` 路由 + 大量模块级全局**,路由闭包直接引用全局。抽 `create_app()` 需把几十个全局搬进函数作用域 = 重写 main.py,动 32 个端点热路径。已拆 `lifespan.py`(startup/shutdown),但 `app_factory.py` 的拆分超出"补尾巴"范围。
+- **Task 7(tool_runner/loop)**:agent.py 核心是 740 行的 `handle_message` 方法,`on_tool_call`/`on_tool_result` 闭包重度依赖局部状态(channel/session_id/used_web_flag/turn_tool_results + 多个 self 属性)。抽成独立模块需痛苦外传全部上下文,收益 < 复杂度。已拆 `prompt_builder.py`(能干净拆的部分)。
+
+**决策**:Task 7/8 的独立文件拆分判定为"为拆而拆风险 > 收益",**不硬做**,留待 main.py/agent.py 的专项重构立项。plan 当初低估了这两个文件的内部耦合度。
+
+**遗留(非本轮引入)**:`test_insight_eval` 1 个 pre-existing 失败;Python 3.14 对 sqlite datetime 适配器的 DeprecationWarning。
+
