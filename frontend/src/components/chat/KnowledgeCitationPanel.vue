@@ -60,7 +60,7 @@ const openInKnowledge = () => {
       class="fixed inset-0 z-50 flex justify-end bg-black/40"
       @click.self="emit('close')"
     >
-      <aside class="flex h-full w-full max-w-md flex-col border-l border-amber-100/10 bg-[#171411] shadow-2xl">
+      <aside class="flex h-full w-full max-w-md flex-col border-l border-amber-100/10 bg-surface-1 shadow-2xl">
         <div class="flex items-start justify-between gap-3 border-b border-amber-100/10 px-5 py-4">
           <div class="min-w-0">
             <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{{ t('chat.citationPreview') }}</p>

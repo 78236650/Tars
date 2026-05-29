@@ -116,7 +116,7 @@ onUnmounted(() => {
         <p class="mt-1 font-mono text-sm text-amber-200">{{ pending.toolName }}</p>
       </div>
 
-      <div v-if="pending.argumentsSummary" class="rounded-xl border border-amber-100/10 bg-[#0c0b09] p-4">
+      <div v-if="pending.argumentsSummary" class="rounded-xl border border-amber-100/10 bg-surface-0 p-4">
         <p class="mb-2 text-xs uppercase tracking-wide text-stone-500">{{ t('chat.approval.argsLabel') }}</p>
         <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs text-stone-300">{{ pending.argumentsSummary }}</pre>
       </div>

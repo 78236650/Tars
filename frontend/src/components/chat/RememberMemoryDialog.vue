@@ -139,11 +139,11 @@ watch(
             <textarea
               v-model="draft.content"
               rows="2"
-              class="mb-2 w-full resize-y rounded-lg border border-amber-100/10 bg-[#0c0b09] px-3 py-2 text-sm text-stone-100 outline-none focus:border-amber-300/25"
+              class="mb-2 w-full resize-y rounded-lg border border-amber-100/10 bg-surface-0 px-3 py-2 text-sm text-stone-100 outline-none focus:border-amber-300/25"
             />
             <select
               v-model="draft.category"
-              class="w-full rounded-lg border border-amber-100/10 bg-[#0c0b09] px-3 py-2 text-sm text-stone-200 outline-none focus:border-amber-300/25"
+              class="w-full rounded-lg border border-amber-100/10 bg-surface-0 px-3 py-2 text-sm text-stone-200 outline-none focus:border-amber-300/25"
             >
               <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">
                 {{ t(opt.labelKey) }}

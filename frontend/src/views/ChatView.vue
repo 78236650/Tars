@@ -342,7 +342,7 @@ const onInsightClarify = async (payload: {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] bg-[#14110f]/55">
+  <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] bg-surface-1/55">
       <header class="flex shrink-0 items-center gap-2.5 border-b border-amber-100/10 px-4 py-2">
         <div class="flex min-w-0 items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-stone-500">
           <span class="shrink-0">{{ t('chat.conversation') }}</span>
@@ -453,7 +453,7 @@ const onInsightClarify = async (payload: {
             </button>
             <div
               v-if="showCommands"
-              class="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-2xl border border-amber-100/10 bg-[#171411] p-2 shadow-xl"
+              class="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-2xl border border-amber-100/10 bg-surface-1 p-2 shadow-xl"
             >
               <p class="px-3 py-2 text-xs uppercase tracking-[0.16em] text-stone-500">{{ t('chat.commandTitle') }}</p>
               <button

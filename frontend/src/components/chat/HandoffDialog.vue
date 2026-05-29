@@ -112,7 +112,7 @@ onUnmounted(() => {
         <p class="mt-1 text-sm text-stone-200">{{ pending.taskSummary }}</p>
       </div>
 
-      <div v-if="pending.resultPreview" class="rounded-xl border border-sky-100/10 bg-[#0c0b09] p-4">
+      <div v-if="pending.resultPreview" class="rounded-xl border border-sky-100/10 bg-surface-0 p-4">
         <p class="mb-2 text-xs uppercase tracking-wide text-stone-500">{{ t('chat.handoff.previewLabel') }}</p>
         <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs text-stone-300">{{ pending.resultPreview }}</pre>
       </div>
