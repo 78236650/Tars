@@ -1332,67 +1332,22 @@ def init_skills():
     """初始化技能系统（SkillLoader 已在启动时加载）"""
     pass
 
+from tars import lifespan as _lifespan
+
+
 @app.on_event("startup")
 async def startup_event():
-    """启动事件"""
-    await init_scheduler()
-    await cron_runtime.load_from_db()
-    ensure_default_admin()
-    # 遗忘清理
-    stats = memory_manager.cleanup()
-    if stats["decayed"] or stats["deleted"]:
-        print(f"[Startup] 记忆遗忘: importance衰减={stats['decayed']} 删除={stats['deleted']}")
-    # v2.2: 清理过期 Working Context
-    try:
-        db.cleanup_working_contexts()
-    except Exception:
-        pass
-    # migration worker 已禁用（与主线程共享 SQLite 连接导致死锁）
-    # v2.4: 崩溃恢复 — 扫描未完成任务，置为 paused
-    try:
-        conn = db._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT id, title FROM tasks WHERE status IN ('running','pending')")
-        stale = cur.fetchall()
-        if stale:
-            cur.execute("UPDATE tasks SET status = 'paused' WHERE status IN ('running','pending')")
-            conn.commit()
-            print(f"[Startup] 崩溃恢复: {len(stale)} 个未完成任务已置为 paused: {[s[1][:20] for s in stale]}")
-    except Exception as e:
-        print(f"[Startup] 崩溃恢复扫描失败: {e}")
+    """启动事件（逻辑已抽到 lifespan.py）"""
+    await _lifespan.run_startup(
+        db, tool_registry, skill_registry, memory_manager,
+        cron_runtime, init_scheduler, ensure_default_admin,
+    )
 
-    print(f"[Startup] 已注册 {len(tool_registry.list_all())} 个工具: {tool_registry.list_names()}")
-    print(f"[Startup] 已加载 {len(skill_registry.list_all())} 个技能")
-
-    try:
-        from tars.skills.curator import skill_curator
-        from tars.config.skills import skills_config
-        if skill_curator and skills_config.auto_archive_days:
-            archived = skill_curator.check_auto_archive(days=skills_config.auto_archive_days)
-            if archived:
-                print(f"[Startup] Curator 自动归档 {len(archived)} 个闲置技能: {archived}")
-    except Exception as e:
-        print(f"[Startup] Curator 自动归档扫描失败: {e}")
-
-    workers = int(os.getenv("WEB_CONCURRENCY", "1") or "1")
-    uvicorn_workers = int(os.getenv("UVICORN_WORKERS", "0") or "0")
-    sticky_ok = os.getenv("TARS_SSE_STICKY", "").lower() in ("1", "true", "yes")
-    if not sticky_ok and max(workers, uvicorn_workers) > 1:
-        print(
-            "[Startup] ERROR: InsightForge SSE requires uvicorn --workers 1 or Ingress sticky session. "
-            "Set TARS_SSE_STICKY=1 if sticky is configured. See docs/04-运维文档/insightforge-deploy.md"
-        )
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """关闭事件"""
-    await shutdown_scheduler()
-    from tars.meeting.asr.pool import shutdown_asr_pool
-
-    shutdown_asr_pool()
-    # v4.0.0: close shared connection pool
-    from tars.models.connection_pool import close_connection_pool
-    await close_connection_pool()
+    """关闭事件（逻辑已抽到 lifespan.py）"""
+    await _lifespan.run_shutdown(shutdown_scheduler)
 
 if __name__ == "__main__":
     # 初始化技能系统
