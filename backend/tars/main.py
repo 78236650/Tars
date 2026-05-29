@@ -381,6 +381,10 @@ app.include_router(handoffs_router)
 app.include_router(admin_router)
 app.include_router(roles_router)
 
+# v4.3.3: Evolution dashboard
+from tars.api import evolution_metrics
+app.include_router(evolution_metrics.router)
+
 # 条件注册可选模块路由
 if module_registry.is_enabled("skillhub"):
     app.include_router(skillhub_router)
