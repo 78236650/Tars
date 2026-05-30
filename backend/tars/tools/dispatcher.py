@@ -261,7 +261,7 @@ class ToolDispatcher:
         """带工具调用的对话，自动处理多轮工具调用循环。
         tools 参数可选，传入时覆盖默认的全部工具 schema。
         max_rounds 为 None 时不限制轮次；传入正整数时可设上限。"""
-        if not self.provider:
+        if self.provider is None:
             raise RuntimeError("ToolDispatcher 未设置 provider")
 
         tools_schemas = tools if tools is not None else self.registry.get_function_schemas()

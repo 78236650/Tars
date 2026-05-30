@@ -596,6 +596,7 @@ class AgentV2:
                 messages=messages,
                 model_name=self.current_model,
                 stream=True,
+                max_rounds=5,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 tools=self._get_allowed_tool_schemas(),
@@ -966,10 +967,11 @@ class AgentV2:
         return self._active_mode in ("plan", "brainstorm")
 
     def _get_allowed_tool_schemas(self) -> Optional[List[Dict]]:
-        """只读模式返回过滤后的工具 schema，否则返回 None（用全部）"""
-        if not self._is_readonly_mode():
-            return None
-        return [t.to_function_schema() for t in self.tool_registry.list_all() if t.name in self.READONLY_TOOLS]
+        """只读模式返回过滤后的工具 schema，正常模式返回全部注册工具"""
+        all_tools = [t.to_function_schema() for t in self.tool_registry.list_all()]
+        if self._is_readonly_mode():
+            return [s for s in all_tools if s["function"]["name"] in self.READONLY_TOOLS]
+        return all_tools
 
     async def _run_scene_analyzer(self, session_id: str, user_msg: str, assistant_msg: str, tenant_id: str = "default"):
         """v2.2: 异步运行 Scene Analyzer，结果写入 Working Context"""
