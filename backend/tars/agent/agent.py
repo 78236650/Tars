@@ -551,6 +551,7 @@ class AgentV2:
                 "output": result.output,
                 "error": result.error,
                 "duration": duration,
+                "metadata": getattr(result, 'metadata', None),
                 "timestamp": now_iso(),
             })
             await channel.send(session_id, {
