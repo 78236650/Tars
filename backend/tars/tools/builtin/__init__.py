@@ -1,4 +1,5 @@
 from .weather import WeatherTool
+from .wind_stowage import WindStowageTool
 from .file import FileTool, FileListTool
 from .command import CommandTool
 from .memory import MemoryTool

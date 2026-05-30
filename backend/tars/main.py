@@ -35,8 +35,9 @@ from tars.skills.curator import init_skill_curator
 # 新的工具/技能/SkillHub 系统
 from tars.tools import registry as tool_registry
 from tars.tools.builtin import (
-    WeatherTool, FileTool, FileListTool, CommandTool, MemoryTool, CronJobTool,
-    FileWriteTool, ShellTool, ProcessTool, NetworkTool, MeetingRecognizerTool,
+    WeatherTool, WindStowageTool, FileTool, FileListTool, CommandTool,
+    MemoryTool, CronJobTool, FileWriteTool, ShellTool, ProcessTool,
+    NetworkTool, MeetingRecognizerTool,
 )
 from tars.tools.builtin.web_search import WebSearchTool
 from tars.tools.builtin.web_fetch import WebFetchTool
@@ -66,6 +67,8 @@ from tars.api.audit import router as audit_router, init_audit_api
 from tars.api.approvals import router as approvals_router, init_approval_api
 from tars.api.plans import router as plans_router, init_plans_api
 from tars.api.handoffs import router as handoffs_router, init_handoff_api
+from tars.api.orchestration_routes import router as orchestration_router, init_orchestration_api
+from tars.api.vessel_plan_routes import router as vessel_plan_router, init_vessel_plan_api
 from tars.api.admin import router as admin_router, init_admin_api
 from tars.api.roles import router as roles_router, init_roles_api
 from tars.memory.scheduler import MemoryScheduler
@@ -75,7 +78,7 @@ from tars.cron import CronRuntime
 # 初始化应用
 app = FastAPI(
     title="PortMeta Agent",
-    version="4.3.3",
+    version="4.3.4",
     description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 
@@ -129,6 +132,7 @@ project_dir = Path(__file__).parent.parent
 workspace_sandbox = WorkspaceSandbox(workspace_dir=str(project_dir.parent))
 
 tool_registry.register(WeatherTool())
+tool_registry.register(WindStowageTool())
 tool_registry.register(FileTool(allowed_dirs=[str(project_dir.parent)]))
 tool_registry.register(FileListTool())
 tool_registry.register(FileWriteTool(sandbox=workspace_sandbox))
@@ -385,7 +389,7 @@ app.include_router(handoffs_router)
 app.include_router(admin_router)
 app.include_router(roles_router)
 
-# v4.3.3: Evolution dashboard
+# v4.3.4: Evolution dashboard
 from tars.api import evolution_metrics
 app.include_router(evolution_metrics.router)
 
@@ -404,6 +408,9 @@ if module_registry.is_enabled("knowledge"):
     app.include_router(knowledge_router)
 if module_registry.is_enabled("meeting"):
     app.include_router(meeting_router)
+if module_registry.is_enabled("orchestration"):
+    app.include_router(orchestration_router)
+    app.include_router(vessel_plan_router)
 
 init_sessions_api(db)
 init_tasks_api(db, agent)
@@ -432,6 +439,11 @@ if module_registry.is_enabled("meeting"):
     init_meeting_api(db, meeting_tool, vector_store, embedding_provider)
 else:
     print("[Startup] 会议助手模块已禁用 (config/modules.yaml → meeting.enabled)")
+if module_registry.is_enabled("orchestration"):
+    init_orchestration_api(db)
+    init_vessel_plan_api(db)
+else:
+    print("[Startup] 调度编排模块已禁用 (config/modules.yaml → orchestration.enabled)")
 init_memory_api(db, memory_manager)
 set_memory_provider_resolver(lambda: agent.provider)
 init_audit_api(db)
