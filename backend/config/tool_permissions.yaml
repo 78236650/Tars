@@ -26,6 +26,7 @@ roles:
       - bi_list_datasources
       - bi_generate_chart
       - bi_schema_explore
+      - wind_stowage_solve
     denied_tools:
       - shell          # 需要 admin 单独授权
       - process
