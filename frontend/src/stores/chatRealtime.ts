@@ -12,6 +12,7 @@ export interface ChatMessageToolCall {
   output?: string
   error?: string
   duration?: number
+  metadata?: Record<string, unknown>
   timestamp: string
 }
 
@@ -263,6 +264,7 @@ export function createChatMessageState(
             tc.output = data.output
             tc.error = data.error
             tc.duration = data.duration
+            tc.metadata = data.metadata
           })
         } else if (data.type === 'done' || data.type === 'generation_end' || data.type === 'generation_stopped') {
           if (!sessionId) return
