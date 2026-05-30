@@ -591,8 +591,11 @@ class AgentV2:
                     return
         except Exception:
             pass
+        import asyncio as _asyncio
+        from ..utils.env_helpers import get_int_env
+        _stall_timeout = get_int_env("TARS_LLM_STALL_TIMEOUT", 60)
         try:
-            async for chunk in self.dispatcher.chat_with_tools(
+            _stream = self.dispatcher.chat_with_tools(
                 messages=messages,
                 model_name=self.current_model,
                 stream=True,
@@ -611,7 +614,16 @@ class AgentV2:
                         else None
                     ),
                 },
-            ):
+            ).__aiter__()
+            while True:
+                try:
+                    chunk = await _asyncio.wait_for(_stream.__anext__(), timeout=_stall_timeout)
+                except StopAsyncIteration:
+                    break
+                except _asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"LLM 无响应（{_stall_timeout}s 超时）：请检查模型「{self.current_model}」是否可用"
+                    )
                 if self.follow_up_queue.is_cancelled(session_id):
                     break
                 full_response += chunk
