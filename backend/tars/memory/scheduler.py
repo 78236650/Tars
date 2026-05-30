@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
+from ..config.memory import config
+
 if TYPE_CHECKING:
     from .manager import MemoryManager
 
@@ -19,7 +21,7 @@ class MemoryScheduler:
         if self.scheduler is None:
             return
 
-        if not self.compress_task_id:
+        if config.compressor_enabled and not self.compress_task_id:
             async def _compress():
                 await self.compressor.compress_all()
 
@@ -30,7 +32,7 @@ class MemoryScheduler:
                 task_id="memory-daily-compress",
             )
 
-        if not self.promote_task_id:
+        if config.kb_promotion_enabled and not self.promote_task_id:
             async def _promote_kb():
                 from .kb_promotion import run_scheduled_kb_promotion
 

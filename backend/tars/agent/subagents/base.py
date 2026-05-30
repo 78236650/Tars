@@ -14,6 +14,13 @@ class SubAgentType(Enum):
     DATA = "data"
     RESEARCH = "research"
     PLAN = "plan"
+    # v4.4.0 港航
+    BERTH = "berth"
+    YARD = "yard"
+    VESSEL = "vessel"
+    CRANE = "crane"
+    CARGO = "cargo"
+    REPORT = "report"
 
 
 @dataclass
@@ -80,6 +87,57 @@ class SubAgent(ABC):
                 llm_model=None,
                 temperature=0.6,
                 personality_weight=0.5
+            ),
+            SubAgentType.BERTH: SubAgentConfig(
+                type=SubAgentType.BERTH,
+                name="泊位调度",
+                description="靠泊计划与泊位选择",
+                llm_model=None,
+                temperature=0.3,
+                personality_weight=0.3,
+            ),
+            SubAgentType.YARD: SubAgentConfig(
+                type=SubAgentType.YARD,
+                name="堆场调度",
+                description="堆场箱位分配与利用率优化",
+                llm_model=None,
+                temperature=0.3,
+                personality_weight=0.3,
+            ),
+            SubAgentType.VESSEL: SubAgentConfig(
+                type=SubAgentType.VESSEL,
+                name="船务动态",
+                description="船舶/航次 ETA 与参数确认",
+                llm_model=None,
+                temperature=0.3,
+                personality_weight=0.3,
+            ),
+            SubAgentType.CRANE: SubAgentConfig(
+                type=SubAgentType.CRANE,
+                name="岸桥作业",
+                description="岸桥派工与作业序列",
+                llm_model=None,
+                temperature=0.3,
+                personality_weight=0.3,
+                enabled=False,
+            ),
+            SubAgentType.CARGO: SubAgentConfig(
+                type=SubAgentType.CARGO,
+                name="货代单证",
+                description="货主需求与单证齐套",
+                llm_model=None,
+                temperature=0.3,
+                personality_weight=0.3,
+                enabled=False,
+            ),
+            SubAgentType.REPORT: SubAgentConfig(
+                type=SubAgentType.REPORT,
+                name="作业报表",
+                description="航次/日报汇总",
+                llm_model=None,
+                temperature=0.3,
+                personality_weight=0.3,
+                enabled=False,
             ),
         }
         return configs.get(self.type, SubAgentConfig(type=self.type, name="未知", description=""))

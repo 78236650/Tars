@@ -7,6 +7,7 @@ import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
 import ReminderBellButton from '@/components/chat/ReminderBellButton.vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -94,6 +95,7 @@ const navItems = [
   { name: 'nav.insight', icon: 'search', path: '/insight', subtitle: 'nav.insight.subtitle' },
   { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
   { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
+  { name: 'nav.orchestration', icon: 'git-branch', path: '/orchestration' },
   { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
   { name: 'nav.settings', icon: 'settings', path: '/settings' }
 ]
@@ -103,6 +105,7 @@ const moduleRouteMap: Record<string, string> = {
   insight: '/insight',
   knowledge: '/knowledge',
   meeting: '/meeting',
+  orchestration: '/orchestration',
 }
 
 const visibleNavItems = computed(() =>
@@ -123,20 +126,18 @@ const visibleNavItems = computed(() =>
   })
 )
 
-const getIconPath = (iconName: string) => {
-  const icons: Record<string, string> = {
-    'message-circle': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
-    'settings': 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
-    'cpu': 'M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z',
-    'database': 'M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3zm0 5c0 1.657 3.582 3 8 3s8-1.343 8-3m-16 0v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5',
-    'tools': 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
-    'bar-chart': 'M18 20V10M12 20V4M6 20v-6',
-    'search': 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
-    'book': 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
-    'mic': 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z',
-    'shield': 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'
-  }
-  return icons[iconName] || icons['message-circle']
+const iconMap: Record<string, string> = {
+  'message-circle': 'lucide:message-circle',
+  'settings': 'lucide:settings',
+  'cpu': 'lucide:cpu',
+  'database': 'lucide:database',
+  'tools': 'lucide:wrench',
+  'bar-chart': 'lucide:bar-chart-3',
+  'search': 'lucide:search',
+  'shield': 'lucide:shield',
+  'book': 'lucide:book-open',
+  'mic': 'lucide:mic',
+  'git-branch': 'lucide:git-branch',
 }
 
 const isActive = (path: string) => {
@@ -162,9 +163,7 @@ const openReminderNotifications = async () => {
         class="w-full flex items-center gap-2 px-2 py-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
         :title="collapsed ? t('sidebar.expand') : t('sidebar.collapse')"
       >
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
+        <BaseIcon icon="lucide:menu" :size="20" class="shrink-0" />
         <span v-if="!collapsed" class="text-sm font-medium">PortMeta</span>
       </button>
     </div>
@@ -180,9 +179,7 @@ const openReminderNotifications = async () => {
               : 'text-stone-400 hover:bg-white/[0.04] hover:text-stone-100'"
             :title="collapsed ? t(item.name) : undefined"
           >
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIconPath(item.icon)" />
-            </svg>
+            <BaseIcon :icon="iconMap[item.icon]" :size="16" class="shrink-0" />
             <div v-if="!collapsed" class="min-w-0 text-left">
               <span class="text-sm truncate block">{{ t(item.name) }}</span>
               <span
@@ -211,7 +208,7 @@ const openReminderNotifications = async () => {
         class="ml-auto text-stone-500 hover:text-red-400 transition-colors p-0.5 rounded hover:bg-red-500/10 flex-shrink-0"
         :title="t('sidebar.logout')"
       >
-        ⏻
+        <BaseIcon icon="lucide:log-out" :size="14" />
       </button>
     </div>
 
@@ -235,9 +232,7 @@ const openReminderNotifications = async () => {
         :title="t('sidebar.modelConfigLink')"
         :aria-label="t('sidebar.modelConfigLink')"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z" />
-        </svg>
+        <BaseIcon icon="lucide:cpu" :size="16" />
       </button>
     </div>
 
@@ -255,9 +250,7 @@ const openReminderNotifications = async () => {
           ></span>
           <span class="text-xs text-stone-300 truncate">{{ settingsStore.currentModel || t('common.loading') }}</span>
         </div>
-        <svg class="w-3.5 h-3.5 text-stone-500 flex-shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
+        <BaseIcon icon="lucide:chevron-down" :size="14" class="text-stone-500 shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" />
       </button>
 
       <div v-if="showModelPopover" class="absolute bottom-full left-2 right-2 mb-1 bg-surface-2 border border-amber-100/10 rounded-xl shadow-2xl z-50 overflow-hidden max-h-64 flex flex-col">
@@ -275,7 +268,7 @@ const openReminderNotifications = async () => {
             :class="isCurrentOllamaModel(model) ? 'bg-amber-500/15 border-l-4 border-amber-400 text-stone-100' : 'hover:bg-white/[0.04] text-stone-300 border-l-4 border-transparent'"
           >
             <span class="truncate">{{ model }}</span>
-            <span v-if="isCurrentOllamaModel(model)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
+            <BaseIcon v-if="isCurrentOllamaModel(model)" icon="lucide:check" :size="14" class="text-emerald-400 shrink-0 ml-1" />
           </button>
 
           <template v-for="ep in settingsStore.endpoints" :key="ep.id">
@@ -292,7 +285,7 @@ const openReminderNotifications = async () => {
                   :class="isCurrentEndpointModel(ep.id, mod) ? 'bg-amber-500/15 border-l-4 border-emerald-400 text-stone-100' : ep.enabled ? 'hover:bg-white/[0.04] text-stone-300 border-l-4 border-transparent' : 'text-stone-600 cursor-not-allowed border-l-4 border-transparent'"
                 >
                   <span class="truncate">{{ mod }}</span>
-                  <span v-if="isCurrentEndpointModel(ep.id, mod)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
+                  <BaseIcon v-if="isCurrentEndpointModel(ep.id, mod)" icon="lucide:check" :size="14" class="text-emerald-400 shrink-0 ml-1" />
                 </button>
               </template>
               <p v-else class="px-2.5 py-1.5 text-[10px] text-stone-500">{{ t('sidebar.noEndpointModels') }}</p>
@@ -304,7 +297,7 @@ const openReminderNotifications = async () => {
           @click="router.push('/models'); showModelPopover = false"
           class="w-full px-2.5 py-2 text-xs text-left text-stone-300 border-t border-amber-100/10 hover:bg-white/[0.04] flex items-center gap-1.5 transition-colors shrink-0"
         >
-          <span class="text-xs">⚙</span>
+          <BaseIcon icon="lucide:settings" :size="14" />
           <span>{{ t('sidebar.modelConfigLink') }}</span>
         </button>
       </div>

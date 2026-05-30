@@ -18,11 +18,11 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const tabs = computed(() => {
   const base = [
-    { key: 'personality', label: t('memory.tab.personality') },
     { key: 'recent', label: t('memory.tab.recent') },
     { key: 'longterm', label: t('memory.tab.longterm') },
     { key: 'tree', label: t('memory.tab.entity') },
     { key: 'all', label: t('memory.tab.all') },
+    { key: 'personality', label: t('memory.tab.personality') },
   ]
   if (isAdmin.value) {
     base.push({ key: 'admin', label: t('memory.tab.admin') })
@@ -30,7 +30,7 @@ const tabs = computed(() => {
   return base
 })
 
-const activeTab = ref<'personality' | 'recent' | 'longterm' | 'tree' | 'all' | 'admin'>('personality')
+const activeTab = ref<'recent' | 'longterm' | 'tree' | 'all' | 'personality' | 'admin'>('recent')
 const stats = ref<MemoryStats | null>(null)
 
 // v4.0.0: Admin 记忆管理
@@ -257,7 +257,7 @@ onMounted(() => {
                     ? 'bg-amber-500/15 text-amber-200'
                     : 'text-stone-300 hover:bg-white/[0.04]'"
                 >
-                  <span class="truncate font-mono text-xs">{{ u.tenant_id }}</span>
+                  <span class="truncate text-xs">{{ u.username }}</span>
                   <span class="text-xs text-stone-400">{{ t('memory.admin.memoryCount', { count: u.memory_count }) }}</span>
                 </button>
               </div>

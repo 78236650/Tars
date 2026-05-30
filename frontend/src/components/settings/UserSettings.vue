@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { authApi, rolesApi, type RoleTemplate } from '@/api'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import UserEditDrawer from './UserEditDrawer.vue'
@@ -222,9 +223,7 @@ onMounted(() => {
         </table>
         
         <div v-if="users.length === 0" class="text-center py-12 text-slate-500">
-          <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-          </svg>
+          <BaseIcon icon="lucide:users" :size="64" class="mx-auto mb-4" />
           <p>{{ t('userSettings.empty') }}</p>
         </div>
       </div>
@@ -321,15 +320,15 @@ onMounted(() => {
               ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
               : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600'"
           >
-            <span class="text-lg">{{ tmpl.id === 'admin' ? '🔒' : tmpl.id === 'developer' ? '💻' : tmpl.id === 'analyst' ? '📊' : tmpl.id === 'operator' ? '🔧' : tmpl.id === 'standard' ? '👤' : tmpl.id === 'readonly' ? '👁️' : '📝' }}</span>
+            <BaseIcon :icon="tmpl.id === 'admin' ? 'lucide:lock-keyhole' : tmpl.id === 'developer' ? 'lucide:laptop' : tmpl.id === 'analyst' ? 'lucide:bar-chart-3' : tmpl.id === 'operator' ? 'lucide:wrench' : tmpl.id === 'standard' ? 'lucide:user' : tmpl.id === 'readonly' ? 'lucide:eye' : 'lucide:file-pen-line'" :size="20" />
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium">{{ tmpl.name }}</p>
               <p class="text-xs text-slate-400 truncate">{{ tmpl.description }}</p>
             </div>
-            <span
-              v-if="assigningRoleId === tmpl.id"
-              class="text-amber-400 text-sm"
-            >✓</span>
+              <span
+                v-if="assigningRoleId === tmpl.id"
+                class="text-emerald-400"
+              ><BaseIcon icon="lucide:check" :size="14" /></span>
           </button>
         </div>
       </div>
@@ -366,9 +365,7 @@ onMounted(() => {
     >
       <div class="flex items-center gap-3">
           <div class="w-12 h-12 bg-red-900/50 rounded-full flex items-center justify-center">
-            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
+            <BaseIcon icon="lucide:alert-circle" :size="20" class="text-red-400" />
           </div>
           <div>
             <h3 class="text-lg font-semibold text-white">{{ t('userSettings.deleteTitle') }}</h3>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()
@@ -20,9 +21,9 @@ const toastItems = computed(() => toast.toasts.value)
             'toast-item--info': item.type === 'info',
           }"
         >
-          <span v-if="item.type === 'success'" class="toast-icon">✓</span>
-          <span v-else-if="item.type === 'error'" class="toast-icon">✕</span>
-          <span v-else class="toast-icon">ℹ</span>
+          <BaseIcon v-if="item.type === 'success'" icon="lucide:check-circle" :size="20" />
+          <BaseIcon v-else-if="item.type === 'error'" icon="lucide:x-circle" :size="20" />
+          <BaseIcon v-else icon="lucide:info" :size="20" />
           <span class="toast-message">{{ item.message }}</span>
         </div>
       </TransitionGroup>

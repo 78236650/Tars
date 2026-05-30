@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useI18n } from '@/i18n'
 
 const props = defineProps<{
@@ -11,11 +12,11 @@ const completedCount = computed(() => props.steps.filter((s) => s.status === 'co
 
 const statusIcon = (status: string) => {
   switch (status) {
-    case 'completed': return '✅'
-    case 'running': return '🔄'
-    case 'failed': return '❌'
-    case 'skipped': return '⏭️'
-    default: return '⬜'
+    case 'completed': return 'lucide:check-circle'
+    case 'running': return 'lucide:refresh-cw'
+    case 'failed': return 'lucide:x-circle'
+    case 'skipped': return 'lucide:skip-forward'
+    default: return 'lucide:square'
   }
 }
 
@@ -33,7 +34,7 @@ const statusColor = (status: string) => {
 <template>
   <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 mb-3">
     <div class="flex items-center gap-2 mb-3 pb-2 border-b border-slate-700">
-      <span class="text-lg">📋</span>
+      <BaseIcon icon="lucide:clipboard" :size="18" />
       <h4 class="font-semibold text-white">{{ t('planCard.title', { goal: plan.goal }) }}</h4>
     </div>
 
@@ -43,7 +44,7 @@ const statusColor = (status: string) => {
         :key="step.id"
         class="flex items-start gap-2 text-sm"
       >
-        <span :class="statusColor(step.status)">{{ statusIcon(step.status) }}</span>
+        <BaseIcon :icon="statusIcon(step.status)" :size="14" :class="statusColor(step.status)" />
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-slate-300">{{ step.id }}. {{ step.description }}</span>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from '@/i18n'
 
@@ -22,22 +23,11 @@ const subagents = computed(() => {
 })
 
 const agentIcons: Record<string, string> = {
-  code: 'code',
-  writing: 'edit-3',
-  data: 'bar-chart-2',
-  research: 'search',
-  plan: 'list-checks'
-}
-
-const getIconPath = (iconName: string) => {
-  const icons: Record<string, string> = {
-    'code': 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
-    'edit-3': 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
-    'bar-chart-2': 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
-    'search': 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7',
-    'list-checks': 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
-  }
-  return icons[iconName] || icons['search']
+  code: 'lucide:code',
+  writing: 'lucide:edit-3',
+  data: 'lucide:bar-chart-3',
+  research: 'lucide:search',
+  plan: 'lucide:list-checks'
 }
 
 const startEdit = (agentType: string) => {
@@ -78,9 +68,7 @@ const cancelEdit = (agentType: string) => {
           <div class="flex items-start justify-between mb-4">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIconPath(agentIcons[agent.type] || 'search')" />
-                </svg>
+                <BaseIcon :icon="agentIcons[agent.type] || 'lucide:search'" :size="24" class="text-white" />
               </div>
               <div>
                 <h3 class="text-lg font-semibold text-white">{{ agent.name }}</h3>

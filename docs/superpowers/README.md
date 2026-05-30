@@ -12,6 +12,23 @@
 | `draft` | 未交付或进行中 |
 | `superseded` | 被新版本替代，仅作历史参考 |
 
+## v4.4.0（MVP 已交付）
+
+| 文档 | 类型 | 说明 |
+|------|------|------|
+| [plans/2026-05-30-portlogistics-agent-memory-design.md](./plans/2026-05-30-portlogistics-agent-memory-design.md) | plan | 编排记忆层 + 垂直模式 Phase 0–4 |
+| [plans/2026-05-30-port-agent-fleet-design.md](./plans/2026-05-30-port-agent-fleet-design.md) | plan | 港航 Agent 集群 Phase B–E（MVP） |
+| [specs/2026-05-30-smart-port-agent-design.md](./specs/2026-05-30-smart-port-agent-design.md) | spec | 智慧港口长期愿景（非 v4.4.0 范围） |
+
+发布说明：[v4.4.0-release-notes.md](../01-项目概览/v4.4.0-release-notes.md) · 用户指南：[port-operations-user-guide.md](../04-运维文档/port-operations-user-guide.md)
+
+## v4.5.0（计划中）
+
+| 文档 | 类型 | 说明 |
+|------|------|------|
+| [specs/2026-05-30-vessel-plan-or-design.md](./specs/2026-05-30-vessel-plan-or-design.md) | spec | 进出港计划 Agent+OR（已批准） |
+| [plans/2026-05-30-vessel-plan-or-plan.md](./plans/2026-05-30-vessel-plan-or-plan.md) | plan | 实施计划 |
+
 ## v4.3.2（已交付）
 
 | 文档 | 类型 | 说明 |
@@ -51,4 +68,4 @@
 
 ---
 
-*索引版本：2026-05-26*
+*索引版本：2026-05-30*

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MemoryTreeNode } from '@/types'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 defineOptions({ name: 'MemoryTreeNode' })
 
@@ -52,7 +53,7 @@ const onRowClick = () => {
         class="w-4 shrink-0 text-xs text-stone-500"
         @click.stop="emit('toggle', node.id)"
       >
-        {{ expanded() ? '▼' : '▶' }}
+        <BaseIcon :icon="expanded() ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" />
       </span>
       <span v-else class="w-4 shrink-0" />
       <span class="truncate">{{ node.label }}{{ suffix() }}</span>

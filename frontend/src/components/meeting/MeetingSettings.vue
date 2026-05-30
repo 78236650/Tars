@@ -1,6 +1,6 @@
 <template>
   <div class="meeting-settings">
-    <button class="settings-toggle" @click="showPanel = !showPanel">⚙️ {{ t('meeting.settingsToggle') }}</button>
+    <button class="settings-toggle" @click="showPanel = !showPanel"><BaseIcon icon="lucide:settings" :size="16" /> {{ t('meeting.settingsToggle') }}</button>
 
     <div v-if="showPanel" class="settings-panel">
       <!-- 语音识别 -->
@@ -113,6 +113,7 @@ import { getMeetingAsrLanguage, setMeetingAsrLanguage, type MeetingAsrLanguage }
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const showPanel = ref(false)
 const templates = ref<any[]>([])

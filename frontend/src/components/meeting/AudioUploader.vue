@@ -16,7 +16,7 @@
         @change="handleFileSelect"
       />
       <div class="drop-content">
-        <span class="icon">📁</span>
+        <BaseIcon icon="lucide:folder-open" :size="48" class="icon" />
         <p class="title">{{ isUploading ? t('meeting.uploading') : t('meeting.uploadPrompt') }}</p>
         <p class="hint">{{ t('meeting.uploadHint') }}</p>
         <div v-if="isUploading" class="progress-bar">
@@ -33,6 +33,7 @@ import { ref } from 'vue'
 import { meetingApi } from '@/api'
 import { meetingAsrLanguageForApi } from '@/composables/useMeetingAsrLanguage'
 import { useI18n } from '@/i18n'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const emit = defineEmits<{ uploaded: [transcription: any] }>()
 

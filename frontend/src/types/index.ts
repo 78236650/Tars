@@ -595,3 +595,50 @@ export interface TranscriptionListData {
   limit: number
   offset: number
 }
+
+export interface OrchestrationTask {
+  id: string
+  session_id: string
+  goal: string
+  status: string
+  orchestrator: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OrchestrationTaskOutput {
+  agent_type: string
+  subtask: string
+  output: string
+  status: string
+}
+
+export interface OrchestrationTaskDetail {
+  task: OrchestrationTask & { tenant_id?: string }
+  outputs: OrchestrationTaskOutput[]
+  shared: Record<string, unknown>
+}
+
+export interface OrchestrationTaskListResponse {
+  tasks: OrchestrationTask[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface OrchestrationDispatchResult {
+  task_id: string
+  status: string
+  subtasks?: Array<{ agent_type: string; task: string; phase?: string }>
+  outputs: OrchestrationTaskOutput[]
+  shared: Record<string, unknown>
+  conflicts?: string[]
+}
+
+export type {
+  VpBerth,
+  VpHorizonRow,
+  VpHorizonResponse,
+  VpVoyageDetail,
+  VpAdoptResult,
+} from './vessel-plan'

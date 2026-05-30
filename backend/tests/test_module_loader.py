@@ -29,7 +29,7 @@ class TestModuleRegistry:
         names = [m["name"] for m in modules]
         assert "auth" in names
         assert "meeting" in names
-        assert len(modules) == 10  # 6 core + 4 optional
+        assert len(modules) == 12  # 6 core + 6 optional
         for m in modules:
             assert "name" in m
             assert "enabled" in m

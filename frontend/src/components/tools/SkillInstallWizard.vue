@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import TrySkillButton from '@/components/tools/TrySkillButton.vue'
 import { useI18n } from '@/i18n'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 export interface InstallWizardState {
   skillId: string
@@ -55,7 +56,7 @@ const skillSlug = () => {
             class="rounded-xl p-2 text-stone-400 transition hover:bg-white/[0.06] hover:text-stone-200"
             @click="emit('close')"
           >
-            ✕
+            <BaseIcon icon="lucide:x" :size="20" />
           </button>
         </div>
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from pydantic import BaseModel, Field
 
 from ..database import Database
+from ..config.memory import config
 from ..memory.compressor import MemoryCompressor
 from ..memory.core_memory import BLOCK_NAMES
 from ..memory.manager import MemoryManager
@@ -168,11 +169,12 @@ class PromoteToKnowledgeRequest(BaseModel):
 @router.get("/stats")
 def get_memory_stats(x_tenant_id: Optional[str] = Header(default="default")):
     db = _require_db()
-    compressor = _require_compressor()
     tenant_id = x_tenant_id or "default"
     stats = db.get_memory_stats(tenant_id=tenant_id)
-    status = compressor.status()
-    stats["last_compressed_at"] = status.get("last_finished_at")
+    if config.compressor_enabled:
+        compressor = _require_compressor()
+        status = compressor.status()
+        stats["last_compressed_at"] = status.get("last_finished_at")
     return stats
 
 
@@ -280,12 +282,16 @@ def get_all_memories(
 
 @router.get("/compress/status")
 def get_compress_status():
+    if not config.compressor_enabled:
+        return {"enabled": False}
     compressor = _require_compressor()
     return compressor.status()
 
 
 @router.post("/compress")
 async def run_manual_compress(x_tenant_id: Optional[str] = Header(default="default")):
+    if not config.compressor_enabled:
+        raise HTTPException(status_code=403, detail="Memory compressor disabled in vertical mode")
     compressor = _tenant_compressor(x_tenant_id)
     report = await compressor.compress_all()
     _require_compressor()._status = compressor._status
@@ -297,6 +303,8 @@ async def merge_memories(
     payload: MergeRequest,
     x_tenant_id: Optional[str] = Header(default="default"),
 ):
+    if not config.compressor_enabled:
+        raise HTTPException(status_code=403, detail="Memory compressor disabled in vertical mode")
     compressor = _tenant_compressor(x_tenant_id)
     try:
         return await compressor.merge_memories(payload.memory_ids, preview_only=payload.preview_only)
@@ -338,7 +346,12 @@ async def save_memories_from_turn(
         _audit_memory_write("write", memory.id, tenant_id, http_request)
 
     group_id = result.get("promotion_group_id")
-    if group_id and not payload.publish_to_knowledge and result.get("saved"):
+    if (
+        config.kb_promotion_enabled
+        and group_id
+        and not payload.publish_to_knowledge
+        and result.get("saved")
+    ):
         background_tasks.add_task(_background_kb_promotion_check, tenant_id, group_id)
 
     return {
@@ -352,6 +365,8 @@ async def save_memories_from_turn(
 
 async def _background_kb_promotion_check(tenant_id: str, group_id: str) -> None:
     """保存后后台阈值检查（非 cron）。"""
+    if not config.kb_promotion_enabled:
+        return
     try:
         manager = _manager_with_provider(tenant_id)
         from ..memory.kb_promotion import maybe_auto_promote_group
@@ -369,6 +384,8 @@ async def promote_memories_to_knowledge(
     x_tenant_id: Optional[str] = Header(default="default"),
 ):
     """手动将 pending 记忆组合成一篇知识库文档。"""
+    if not config.kb_promotion_enabled:
+        raise HTTPException(status_code=403, detail="KB promotion disabled in vertical mode")
     manager = _manager_with_provider(x_tenant_id)
     from ..memory.kb_promotion import default_promotion_group_id, promote_group_to_kb
 
@@ -406,6 +423,8 @@ def get_memory_tree(
     user_id: str = "",
     principal: Principal = Depends(require_authenticated_user),
 ):
+    if not config.tree_builder_enabled:
+        raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     if view not in ("entity", "provenance"):
         raise HTTPException(status_code=400, detail="unsupported view")
     tenant_id = _resolve_tree_tenant(principal, user_id)
@@ -423,6 +442,8 @@ def search_memory_tree(
     user_id: str = "",
     principal: Principal = Depends(require_authenticated_user),
 ):
+    if not config.tree_builder_enabled:
+        raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     if view not in ("entity", "provenance"):
         raise HTTPException(status_code=400, detail="unsupported view")
     tenant_id = _resolve_tree_tenant(principal, user_id)
@@ -436,6 +457,8 @@ def get_memory_tree_graph(
     max_edges: int = 800,
     principal: Principal = Depends(require_authenticated_user),
 ):
+    if not config.tree_builder_enabled:
+        raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     tenant_id = _resolve_tree_tenant(principal, user_id)
     builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
     return builder.build_graph(max_edges=min(max(max_edges, 1), 2000))
@@ -447,6 +470,8 @@ def get_memory_tree_relations(
     user_id: str = "",
     principal: Principal = Depends(require_authenticated_user),
 ):
+    if not config.tree_builder_enabled:
+        raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     if not entity_id.strip():
         raise HTTPException(status_code=400, detail="entity_id required")
     tenant_id = _resolve_tree_tenant(principal, user_id)

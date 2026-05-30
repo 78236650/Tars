@@ -40,6 +40,12 @@ import type {
   DocumentPassage,
   Transcription,
   TranscriptionListData,
+  OrchestrationTaskDetail,
+  OrchestrationTaskListResponse,
+  OrchestrationDispatchResult,
+  VpHorizonResponse,
+  VpVoyageDetail,
+  VpAdoptResult,
 } from '@/types'
 
 const api = axios.create({
@@ -1097,11 +1103,11 @@ export const auditApi = {
 }
 
 // ========= v4.0.0: Admin Memory API =========
-
 export interface AdminMemoryUser {
   tenant_id: string
   memory_count: number
   shared_count: number
+  username: string
 }
 
 export interface AdminMemoryUsersResponse {
@@ -1188,4 +1194,71 @@ export const rolesApi = {
     const response = await api.get(`/roles/users/${userId}/permissions`)
     return response.data
   }
+}
+
+export const orchestrationApi = {
+  listTasks: async (page = 1, pageSize = 20): Promise<OrchestrationTaskListResponse> => {
+    const response = await api.get<OrchestrationTaskListResponse>('/orchestration/tasks', {
+      params: { page, page_size: pageSize },
+    })
+    return response.data
+  },
+
+  getTask: async (taskId: string): Promise<OrchestrationTaskDetail> => {
+    const response = await api.get<OrchestrationTaskDetail>(`/orchestration/tasks/${taskId}`)
+    return response.data
+  },
+
+  dispatch: async (sessionId: string, goal: string): Promise<OrchestrationDispatchResult> => {
+    const response = await api.post<OrchestrationDispatchResult>('/orchestration/dispatch', {
+      session_id: sessionId,
+      goal,
+    })
+    return response.data
+  },
+}
+
+export const vesselPlanApi = {
+  demoStatus: async () => {
+    const response = await api.get('/vessel-plans/demo/status')
+    return response.data
+  },
+  resetDemo: async () => {
+    const response = await api.post('/vessel-plans/demo/reset')
+    return response.data
+  },
+  getHorizon: async (hours = 48) => {
+    const response = await api.get<VpHorizonResponse>('/vessel-plans/horizon', { params: { hours } })
+    return response.data
+  },
+  optimize: async (horizonHours = 48) => {
+    const response = await api.post<VpHorizonResponse>('/vessel-plans/optimize', {
+      horizon_hours: horizonHours,
+    })
+    return response.data
+  },
+  recompute: async (horizonHours = 48) => {
+    const response = await api.post<VpHorizonResponse>('/vessel-plans/recompute', {
+      horizon_hours: horizonHours,
+    })
+    return response.data
+  },
+  patchAssignment: async (
+    voyageId: string,
+    body: { berth_id?: string; etb?: string; etd?: string; locked?: boolean },
+  ) => {
+    const response = await api.patch<VpVoyageDetail>(`/vessel-plans/assignments/${voyageId}`, body)
+    return response.data
+  },
+  getVoyage: async (voyageId: string) => {
+    const response = await api.get<VpVoyageDetail>(`/vessel-plans/voyages/${voyageId}`)
+    return response.data
+  },
+  adopt: async (voyageIds: string[], sessionId: string) => {
+    const response = await api.post<VpAdoptResult>('/vessel-plans/adopt', {
+      voyage_ids: voyageIds,
+      session_id: sessionId,
+    })
+    return response.data
+  },
 }

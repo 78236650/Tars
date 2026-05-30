@@ -514,6 +514,110 @@ class ConnectionManager:
         except Exception:
             pass
 
+        # v4.4.0 多 Agent 编排记忆
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_tasks (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                session_id TEXT NOT NULL,
+                goal TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                orchestrator TEXT NOT NULL DEFAULT 'master',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_task_outputs (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                agent_type TEXT NOT NULL,
+                subtask TEXT NOT NULL,
+                output TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'done',
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_collaboration_ctx (
+                task_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                updated_by TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (task_id, key)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_task_outputs_task ON agent_task_outputs(task_id)")
+
+        # v4.5.0 船舶进出港计划（拟真）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vp_berths (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
+                length_m REAL NOT NULL,
+                depth_m REAL NOT NULL,
+                crane_count INTEGER NOT NULL DEFAULT 2,
+                yard_zone TEXT NOT NULL DEFAULT 'A',
+                position_x REAL NOT NULL DEFAULT 0,
+                position_y REAL NOT NULL DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vp_vessels (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
+                imo TEXT,
+                length_m REAL NOT NULL,
+                draft_m REAL NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vp_voyages (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                vessel_id TEXT NOT NULL,
+                eta TEXT NOT NULL,
+                etd_est TEXT,
+                cargo_teu INTEGER NOT NULL DEFAULT 0,
+                target_yard_zone TEXT NOT NULL DEFAULT 'A',
+                service_hours REAL NOT NULL DEFAULT 8,
+                status TEXT NOT NULL DEFAULT 'pending'
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vp_assignments (
+                voyage_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                berth_id TEXT,
+                etb TEXT,
+                etd TEXT,
+                wait_min REAL NOT NULL DEFAULT 0,
+                yard_penalty REAL NOT NULL DEFAULT 0,
+                score REAL NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'or',
+                locked INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vp_plan_runs (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                horizon_hours INTEGER NOT NULL DEFAULT 48,
+                objective TEXT NOT NULL,
+                constraints_json TEXT NOT NULL DEFAULT '{}',
+                total_wait_min REAL NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'done',
+                agent_summary TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vp_voyages_eta ON vp_voyages(tenant_id, eta)")
+
         # v3.0 交互统计
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interaction_stats (

@@ -27,7 +27,7 @@
         @change="handleFileSelect"
       />
       <div class="drop-text">
-        <span class="icon">📁</span>
+        <span class="icon"><BaseIcon icon="lucide:folder-open" :size="48" /></span>
         <p>{{ t('knowledge.uploadPrompt') }}</p>
         <p class="hint">{{ t('knowledge.uploadHint') }}</p>
       </div>
@@ -46,6 +46,7 @@
 import { ref, watch } from 'vue'
 import { knowledgeApi } from '@/api'
 import { useI18n } from '@/i18n'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 interface Props {
   collectionId: string

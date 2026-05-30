@@ -12,6 +12,7 @@ import WorkflowStrip from '@/components/insight/WorkflowStrip.vue'
 import { biApi, insightApi } from '@/api'
 import type { InsightMetricAnswer } from '@/api'
 import { getErrorDetail } from '@/utils/errorExtractor'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import ActiveSkillsBar from '@/components/chat/ActiveSkillsBar.vue'
 import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
 import QueueStatus from '@/components/chat/QueueStatus.vue'
@@ -422,10 +423,10 @@ const onInsightClarify = async (payload: {
             :key="att.file_id"
             class="flex items-center gap-2 rounded-xl border border-amber-100/10 bg-white/[0.04] px-3 py-1.5 text-sm"
           >
-            <span v-if="att.type === 'image'">📷</span>
-            <span v-else>📄</span>
+            <BaseIcon v-if="att.type === 'image'" icon="lucide:image" :size="14" />
+            <BaseIcon v-else icon="lucide:file" :size="14" />
             <span class="max-w-[120px] truncate text-stone-300">{{ att.name }}</span>
-            <button @click="removeAttachment(idx)" class="text-stone-500 transition hover:text-red-400">✕</button>
+            <button @click="removeAttachment(idx)" class="text-stone-500 transition hover:text-red-400"><BaseIcon icon="lucide:x" :size="14" /></button>
           </div>
         </div>
 
@@ -436,9 +437,7 @@ const onInsightClarify = async (payload: {
             class="rounded-xl p-3 transition hover:bg-amber-500/10 disabled:opacity-50"
             :title="t('chat.uploadTooltip')"
           >
-            <svg class="h-5 w-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
-            </svg>
+            <BaseIcon icon="lucide:paperclip" :size="20" class="text-stone-400" />
           </button>
 
           <div class="relative">
@@ -447,9 +446,7 @@ const onInsightClarify = async (payload: {
               class="rounded-xl p-3 transition hover:bg-amber-500/10"
               :title="t('chat.commandButton')"
             >
-              <svg class="h-5 w-5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              </svg>
+              <BaseIcon icon="lucide:zap" :size="20" class="text-stone-400" />
             </button>
             <div
               v-if="showCommands"
@@ -488,7 +485,7 @@ const onInsightClarify = async (payload: {
             class="rounded-2xl border border-rose-500/50 bg-rose-500/15 px-5 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/25"
             :title="t('chat.stopTitle')"
           >
-            ⏹ {{ t('chat.stop') }}
+            <BaseIcon icon="lucide:square" :size="16" /> {{ t('chat.stop') }}
           </button>
           <button
             @click="sendMessage"

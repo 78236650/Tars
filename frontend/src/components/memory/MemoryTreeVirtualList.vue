@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { MemoryTreeNode } from '@/types'
 import type { FlatTreeRow } from './memoryTreeFlatten'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const props = defineProps<{
   rows: FlatTreeRow[]
@@ -117,7 +118,7 @@ const onRowClick = (node: MemoryTreeNode) => {
         class="w-4 shrink-0 text-xs text-stone-500"
         @click.stop="emit('toggle', node.id)"
       >
-        {{ expanded(node.id) ? '▼' : '▶' }}
+        <BaseIcon :icon="expanded(node.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" />
       </span>
       <span v-else class="w-4 shrink-0" />
       <span class="truncate">{{ node.label }}{{ suffix(node) }}</span>

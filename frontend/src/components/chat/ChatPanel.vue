@@ -3,6 +3,7 @@ import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
 import { defineAsyncComponent } from 'vue'
 const ChartRenderer = defineAsyncComponent(() => import('@/components/bi/ChartRenderer.vue'))
+const StowageViz = defineAsyncComponent(() => import('@/components/wind/StowageViz.vue'))
 
 import PlanCard from './PlanCard.vue'
 import TaskCard from './TaskCard.vue'
@@ -12,6 +13,7 @@ import type { InsightMetricAnswer } from '@/api'
 import type { ToolCallEvent } from '@/types'
 import { renderChatMarkdown } from '@/utils/chatMarkdown'
 import { useToast } from '@/composables/useToast'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 // v2.6: 扩展 message 类型支持 thinking 步骤
 interface ThinkingStep {
@@ -58,10 +60,10 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const toast = useToast()
 const quickCards = computed(() => [
-  { icon: '📝', label: t('chat.quick.writeCode'), text: t('chat.quick.writeCodePrompt') },
-  { icon: '📊', label: t('chat.quick.dataAnalysis'), text: t('chat.quick.dataAnalysisPrompt') },
-  { icon: '🔍', label: t('chat.quick.research'), text: t('chat.quick.researchPrompt') },
-  { icon: '🐛', label: t('chat.quick.debug'), text: t('chat.quick.debugPrompt') },
+  { icon: 'lucide:file-pen-line', label: t('chat.quick.writeCode'), text: t('chat.quick.writeCodePrompt') },
+  { icon: 'lucide:bar-chart-3', label: t('chat.quick.dataAnalysis'), text: t('chat.quick.dataAnalysisPrompt') },
+  { icon: 'lucide:search', label: t('chat.quick.research'), text: t('chat.quick.researchPrompt') },
+  { icon: 'lucide:bug', label: t('chat.quick.debug'), text: t('chat.quick.debugPrompt') },
 ])
 
 const panelRef = ref<HTMLElement | null>(null)
@@ -108,11 +110,11 @@ const getCmdStyle = (content: string) => {
 }
 
 const getCmdIcon = (content: string) => {
-  if (content.includes('PLAN')) return '🟡'
-  if (content.includes('YOLO')) return '🟢'
-  if (content.includes('BRAINSTORM')) return '💡'
-  if (content.includes('清空')) return '🆕'
-  return '📋'
+  if (content.includes('PLAN')) return 'lucide:circle'
+  if (content.includes('YOLO')) return 'lucide:circle'
+  if (content.includes('BRAINSTORM')) return 'lucide:lightbulb'
+  if (content.includes('清空')) return 'lucide:sparkles'
+  return 'lucide:clipboard'
 }
 
 const toggleToolCard = (id: string) => {
@@ -245,9 +247,7 @@ onMounted(() => {
 
     <div v-else-if="messages.length === 0" class="flex flex-col items-center justify-center h-full px-6">
       <div class="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-2xl flex items-center justify-center mb-4 ring-1 ring-blue-500/20">
-        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-        </svg>
+        <BaseIcon icon="lucide:message-circle" :size="32" class="text-blue-400" />
       </div>
       <h2 class="text-xl font-semibold text-white mb-1">PortMeta Agent</h2>
       <p class="text-xs text-slate-500 mb-2">Miluo Lab 出品</p>
@@ -261,7 +261,7 @@ onMounted(() => {
           @click="$emit('quickStart', card.text)"
           class="flex items-center gap-3 px-4 py-3 bg-slate-800/60 border border-slate-700/60 rounded-xl hover:border-blue-500/50 hover:bg-slate-800 transition-all text-left group"
         >
-          <span class="text-lg group-hover:scale-110 transition-transform">{{ card.icon }}</span>
+          <BaseIcon :icon="card.icon" :size="20" class="group-hover:scale-110 transition-transform" />
           <div>
             <p class="text-sm text-slate-300 group-hover:text-white transition-colors">{{ card.label }}</p>
             <p class="text-xs text-slate-500">{{ card.text }}</p>
@@ -275,7 +275,7 @@ onMounted(() => {
 
         <div v-if="isCommandBanner(msg)" class="flex justify-center py-2">
           <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-medium" :class="getCmdStyle(msg.content)">
-            <span>{{ getCmdIcon(msg.content) }}</span>
+            <BaseIcon :icon="getCmdIcon(msg.content)" :size="14" />
             <span>{{ msg.content }}</span>
           </div>
         </div>
@@ -336,7 +336,10 @@ onMounted(() => {
 
               <!-- BI 图表渲染 -->
               <div v-if="msg.biChart" class="mt-3">
-                <div class="text-xs text-stone-500 mb-2">📊 {{ msg.biChart.title || t('chat.chartFallback') }}</div>
+                <div class="text-xs text-stone-500 mb-2 flex items-center gap-1">
+                  <BaseIcon icon="lucide:bar-chart-3" :size="14" />
+                  <span>{{ msg.biChart.title || t('chat.chartFallback') }}</span>
+                </div>
                 <ChartRenderer
                   :chart-type="msg.biChart.chart_type"
                   :echarts-option="msg.biChart.echarts_option"
@@ -349,24 +352,27 @@ onMounted(() => {
               <div v-if="msg.toolCalls?.length" class="mt-3 space-y-1.5">
                 <div v-for="tc in msg.toolCalls" :key="tc.id || tc.tool" class="bg-stone-800/70 border border-amber-100/10 rounded-lg overflow-hidden">
                   <button @click="toggleToolCard(tc.id || tc.tool)" class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-stone-700/60 transition-colors">
-                    <svg class="w-3 h-3 transition-transform" :class="collapsedTools.has(tc.id || tc.tool) ? '' : 'rotate-90'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                    </svg>
-                    <span class="text-amber-400 font-medium">🔧 {{ tc.tool }}</span>
+                    <BaseIcon icon="lucide:chevron-right" :size="12" class="transition-transform" :class="collapsedTools.has(tc.id || tc.tool) ? '' : 'rotate-90'" />
+                    <BaseIcon icon="lucide:wrench" :size="14" class="text-amber-400" />
+                    <span class="font-medium">{{ tc.tool }}</span>
                     <span v-if="tc.duration" class="text-stone-600 ml-auto">{{ tc.duration }}s</span>
-                    <span v-if="tc.output && !tc.error" class="text-amber-500 ml-1">✓</span>
-                    <span v-if="tc.error" class="text-red-500 ml-1">✕</span>
+                    <BaseIcon v-if="tc.output && !tc.error" icon="lucide:check" :size="14" class="text-amber-500 ml-1" />
+                    <BaseIcon v-if="tc.error" icon="lucide:x" :size="14" class="text-red-500 ml-1" />
                   </button>
                   <div v-if="!collapsedTools.has(tc.id || tc.tool)" class="px-3 pb-2">
                     <div v-if="tc.output" class="text-xs text-stone-400 bg-stone-950/50 rounded p-2 max-h-32 overflow-auto font-mono whitespace-pre-wrap">{{ tc.output }}</div>
                     <div v-if="tc.error" class="text-xs text-red-400 bg-red-950/30 rounded p-2">{{ tc.error }}</div>
-                    <!-- BI 工具结果中的图表 -->
+                     <!-- BI 工具结果中的图表 -->
                     <div v-if="tc.metadata?.chart" class="mt-2">
                       <ChartRenderer
                         :chart-type="tc.metadata.chart.chart_type"
                         :echarts-option="tc.metadata.chart.echarts_option"
                         :title="tc.metadata.chart.title"
                       />
+                    </div>
+                    <!-- 风电配载可视化 -->
+                    <div v-if="tc.metadata?.placements" class="mt-2">
+                      <StowageViz :result="tc.metadata" />
                     </div>
                   </div>
                 </div>
@@ -380,8 +386,9 @@ onMounted(() => {
                   @click="msg.thinking.isActive ? null : toggleThinking(msg.id)"
                 >
                   <div class="thinking-header">
-                    <span>{{ msg.thinking.isActive ? '▼' : isThinkingExpanded(msg.id) ? '▼' : '▶' }}</span>
-                    <span>🔄 {{ msg.thinking.isActive ? t('chat.processing') : t('chat.processingSteps') }}</span>
+                    <BaseIcon :icon="msg.thinking.isActive || isThinkingExpanded(msg.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" />
+                    <BaseIcon icon="lucide:loader-circle" :size="14" class="animate-spin" />
+                    <span>{{ msg.thinking.isActive ? t('chat.processing') : t('chat.processingSteps') }}</span>
                     <span class="step-count">({{ msg.thinking.steps.length }})</span>
                   </div>
 
@@ -408,7 +415,7 @@ onMounted(() => {
                   :title="t('chat.copy')"
                   @click="copyMessage(msg)"
                 >
-                  <span>{{ copiedMessageId === msg.id ? '✓' : '📋' }}</span>
+                  <BaseIcon :icon="copiedMessageId === msg.id ? 'lucide:check' : 'lucide:clipboard'" :size="14" />
                   <span>{{ copiedMessageId === msg.id ? t('chat.copied') : t('chat.copy') }}</span>
                 </button>
                 <button
@@ -418,7 +425,7 @@ onMounted(() => {
                   :title="t('chat.remember')"
                   @click="openRememberDialog(msg, idx)"
                 >
-                  <span>🧠</span>
+                  <BaseIcon icon="lucide:brain" :size="14" />
                   <span>{{ t('chat.remember') }}</span>
                 </button>
               </div>
@@ -460,7 +467,8 @@ onMounted(() => {
           :title="t('chat.stopTitle')"
           @click="emit('stop')"
         >
-          ⏹ {{ t('chat.stop') }}
+          <BaseIcon icon="lucide:square" :size="16" class="text-rose-200" />
+          {{ t('chat.stop') }}
         </button>
       </div>
     </div>

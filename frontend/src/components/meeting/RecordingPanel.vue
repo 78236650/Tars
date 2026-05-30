@@ -2,14 +2,14 @@
   <div class="recording-panel">
     <div v-if="state === 'idle'" class="idle-state">
       <button class="start-btn" @click="startRecording">
-        <span class="btn-icon">🎤</span>
+        <BaseIcon icon="lucide:mic" :size="20" />
         {{ t('meeting.startRecording') }}
       </button>
     </div>
 
     <div v-else-if="state === 'recording'" class="recording-state">
       <div class="recording-header">
-        <span class="recording-indicator">🔴 {{ t('meeting.recordingNow') }}</span>
+        <span class="recording-indicator"><BaseIcon icon="lucide:circle" :size="12" class="text-red-500 fill-red-500" /> {{ t('meeting.recordingNow') }}</span>
         <span class="recording-time">{{ formatTime(seconds) }}</span>
         <button class="stop-btn" @click="stopRecording">{{ t('meeting.stopAndSave') }}</button>
       </div>
@@ -22,7 +22,7 @@
 
     <div v-else-if="state === 'transcribing'" class="recording-state">
       <div class="recording-header">
-        <span class="recording-indicator">⏳ {{ t('meeting.transcribingNow') }}</span>
+        <span class="recording-indicator"><BaseIcon icon="lucide:hourglass" :size="16" /> {{ t('meeting.transcribingNow') }}</span>
         <span class="recording-time">{{ formatTime(seconds) }}</span>
       </div>
       <div class="transcript-area">
@@ -33,7 +33,7 @@
 
     <div v-else-if="state === 'completed'" class="completed-state">
       <div class="completed-header">
-        <span>✅ {{ t('meeting.recordingCompleted') }}</span>
+        <span><BaseIcon icon="lucide:check-circle" :size="16" class="text-emerald-400" /> {{ t('meeting.recordingCompleted') }}</span>
         <span class="duration">{{ t('meeting.durationLabel') }}: {{ formatTime(seconds) }}</span>
       </div>
       <div class="transcript-area">
@@ -52,6 +52,7 @@
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from '@/i18n'
 import { resolveMeetingWebSocketUrl } from '@/utils/websocket'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const emit = defineEmits<{
   done: []

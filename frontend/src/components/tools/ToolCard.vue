@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@/i18n'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 defineProps<{
   tool: {
@@ -45,7 +46,7 @@ const typeClass = (type: string) => {
     @click="$emit('click', tool)"
   >
     <div class="flex items-start justify-between mb-4">
-      <div class="text-4xl">{{ tool.icon || '🔧' }}</div>
+      <div class="text-4xl"><BaseIcon v-if="tool.icon" :icon="tool.icon" :size="36" /><BaseIcon v-else icon="lucide:wrench" :size="36" /></div>
       <div
         class="w-3 h-3 rounded-full"
         :class="tool.status === 'active' ? 'bg-green-500' : 'bg-slate-500'"

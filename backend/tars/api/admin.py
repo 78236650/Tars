@@ -31,13 +31,21 @@ def list_user_memory_stats(principal: Principal = Depends(require_admin)):
     conn = db._get_conn()
     cursor = conn.cursor()
     rows = cursor.execute(
-        "SELECT tenant_id, COUNT(*) as count, "
-        "SUM(CASE WHEN scope='shared' THEN 1 ELSE 0 END) as shared_count "
-        "FROM memories GROUP BY tenant_id"
+        "SELECT m.tenant_id, COUNT(*) as count, "
+        "SUM(CASE WHEN m.scope='shared' THEN 1 ELSE 0 END) as shared_count, "
+        "COALESCE(u.username, m.tenant_id) as username "
+        "FROM memories m "
+        "LEFT JOIN users u ON u.id = m.tenant_id "
+        "GROUP BY m.tenant_id"
     ).fetchall()
     return {
         "users": [
-            {"tenant_id": r[0], "memory_count": r[1], "shared_count": r[2]}
+            {
+                "tenant_id": r[0],
+                "memory_count": r[1],
+                "shared_count": r[2],
+                "username": r[3],
+            }
             for r in rows
         ]
     }

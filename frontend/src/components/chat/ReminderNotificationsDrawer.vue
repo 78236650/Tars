@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import type { ReminderNotification, ReminderSummaryLog } from '@/types'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useI18n } from '@/i18n'
 
 const props = defineProps<{
@@ -100,9 +101,7 @@ const selectNotification = async (notification: ReminderNotification) => {
           </div>
           <button class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white" @click="emit('close')">
             <span class="sr-only">{{ t('reminder.close') }}</span>
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <BaseIcon icon="lucide:x" :size="20" />
           </button>
         </header>
 

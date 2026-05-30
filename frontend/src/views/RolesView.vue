@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { rolesApi, type RoleTemplate } from '@/api'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -85,15 +86,15 @@ const showModules = (tmpl: RoleTemplate): string => {
 
 // 角色图标映射
 const roleIcons: Record<string, string> = {
-  admin: '🔒',
-  developer: '💻',
-  analyst: '📊',
-  operator: '🔧',
-  standard: '👤',
-  readonly: '👁️',
+  admin: 'lucide:lock-keyhole',
+  developer: 'lucide:laptop',
+  analyst: 'lucide:bar-chart-3',
+  operator: 'lucide:wrench',
+  standard: 'lucide:user',
+  readonly: 'lucide:eye',
 }
 
-const getRoleIcon = (id: string) => roleIcons[id] || '📝'
+const getRoleIcon = (id: string) => roleIcons[id] || 'lucide:file-pen-line'
 
 onMounted(loadTemplates)
 </script>
@@ -130,7 +131,7 @@ onMounted(loadTemplates)
           <!-- 头部 -->
           <div class="flex items-start justify-between mb-3">
             <div class="flex items-center gap-2">
-              <span class="text-2xl">{{ getRoleIcon(tmpl.id) }}</span>
+              <BaseIcon :icon="getRoleIcon(tmpl.id)" :size="24" />
               <div>
                 <h3 class="text-sm font-semibold text-white">{{ tmpl.name }}</h3>
                 <span
@@ -185,9 +186,7 @@ onMounted(loadTemplates)
 
       <!-- 空状态 -->
       <div v-else class="text-center py-12 text-slate-400">
-        <svg class="w-16 h-16 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-        </svg>
+        <BaseIcon icon="lucide:shield-check" :size="64" class="mx-auto mb-3" />
         <p>{{ t('roles.empty') }}</p>
       </div>
     </div>

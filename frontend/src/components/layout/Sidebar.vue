@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from '@/i18n'
 import { useChatStore } from '@/stores/chat'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -99,16 +100,17 @@ const isCurrentEndpointModel = (endpointId: string, modelName: string) => {
 }
 
 const navItems = [
-  { name: 'nav.chat', icon: 'message-circle', path: '/' },
-  { name: 'nav.memory', icon: 'database', path: '/memory' },
-  { name: 'nav.models', icon: 'cpu', path: '/models' },
-  { name: 'nav.tools', icon: 'tools', path: '/tools' },
-  { name: 'nav.bi', icon: 'bar-chart', path: '/bi' },
-  { name: 'nav.insight', icon: 'search', path: '/insight' },
-  { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
-  { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
-  { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
-  { name: 'nav.settings', icon: 'settings', path: '/settings' }
+  { name: 'nav.chat', icon: 'lucide:message-circle', path: '/' },
+  { name: 'nav.memory', icon: 'lucide:database', path: '/memory' },
+  { name: 'nav.models', icon: 'lucide:cpu', path: '/models' },
+  { name: 'nav.tools', icon: 'lucide:wrench', path: '/tools' },
+  { name: 'nav.bi', icon: 'lucide:bar-chart-3', path: '/bi' },
+  { name: 'nav.insight', icon: 'lucide:search', path: '/insight' },
+  { name: 'nav.knowledge', icon: 'lucide:book-open', path: '/knowledge' },
+  { name: 'nav.meeting', icon: 'lucide:mic', path: '/meeting' },
+  { name: 'nav.orchestration', icon: 'lucide:git-branch', path: '/orchestration' },
+  { name: 'nav.admin', icon: 'lucide:shield', path: '/admin', adminOnly: true },
+  { name: 'nav.settings', icon: 'lucide:settings', path: '/settings' }
 ]
 
 // v4.0.0: 根据模块启用状态过滤导航项
@@ -117,6 +119,7 @@ const moduleRouteMap: Record<string, string> = {
   insight: '/insight',
   knowledge: '/knowledge',
   meeting: '/meeting',
+  orchestration: '/orchestration',
 }
 
 const visibleNavItems = computed(() =>
@@ -139,20 +142,17 @@ const visibleNavItems = computed(() =>
   })
 )
 
-const getIconPath = (iconName: string) => {
-  const icons: Record<string, string> = {
-    'message-circle': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
-    'settings': 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
-    'cpu': 'M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z',
-    'database': 'M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3-3.582 3-8 3-8-1.343-8-3zm0 5c0 1.657 3.582 3 8 3s8-1.343 8-3m-16 0v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5',
-    'tools': 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
-    'bar-chart': 'M18 20V10M12 20V4M6 20v-6',
-    'search': 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
-    'shield': 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
-    'book': 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
-    'mic': 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z'
-  }
-  return icons[iconName] || icons['message-circle']
+const iconMap: Record<string, string> = {
+  'message-circle': 'lucide:message-circle',
+  'settings': 'lucide:settings',
+  'cpu': 'lucide:cpu',
+  'database': 'lucide:database',
+  'tools': 'lucide:wrench',
+  'bar-chart': 'lucide:bar-chart-3',
+  'search': 'lucide:search',
+  'shield': 'lucide:shield',
+  'book': 'lucide:book-open',
+  'mic': 'lucide:mic'
 }
 
 const isActive = (path: string) => {
@@ -238,9 +238,7 @@ const groupedSessions = computed(() => {
               : 'text-stone-400 hover:bg-white/[0.04] hover:text-stone-100'"
             :title="collapsed ? t(item.name) : undefined"
           >
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIconPath(item.icon)" />
-            </svg>
+            <BaseIcon :icon="item.icon" :size="16" class="shrink-0" />
             <span v-if="!collapsed" class="truncate">{{ t(item.name) }}</span>
           </button>
         </li>
@@ -261,7 +259,7 @@ const groupedSessions = computed(() => {
           class="text-[10px] text-stone-500 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10 flex-shrink-0"
           :title="t('sidebar.logout')"
         >
-          ⏻
+          <BaseIcon icon="lucide:log-out" :size="14" />
         </button>
       </div>
     </div>
@@ -273,15 +271,11 @@ const groupedSessions = computed(() => {
           @click="newChat"
           class="w-full px-3 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
+          <BaseIcon icon="lucide:plus" :size="16" />
           {{ t('chat.newChat') }}
         </button>
         <div class="relative">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-          </svg>
+          <BaseIcon icon="lucide:search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             v-model="searchQuery"
             type="text"
@@ -315,9 +309,7 @@ const groupedSessions = computed(() => {
               @click="deleteSession(session.id, $event)"
               class="opacity-0 group-hover:opacity-100 flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-red-300 hover:bg-white/[0.06] transition-all cursor-pointer"
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              <BaseIcon icon="lucide:trash-2" :size="14" />
             </span>
           </button>
         </template>
@@ -331,28 +323,21 @@ const groupedSessions = computed(() => {
         class="w-full p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 flex items-center justify-center"
         :title="t('chat.newChat')"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
+        <BaseIcon icon="lucide:plus" :size="16" />
       </button>
       <button
         @click="router.push('/settings')"
         class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
         :title="t('nav.settings')"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
+        <BaseIcon icon="lucide:settings" :size="16" />
       </button>
       <button
         @click="router.push('/models')"
         class="w-full p-2 rounded-lg text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 flex items-center justify-center transition-colors"
         :title="t('nav.models')"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7V7z" />
-        </svg>
+        <BaseIcon icon="lucide:cpu" :size="16" />
       </button>
       <button
         @click="toggleLocale"
@@ -369,9 +354,7 @@ const groupedSessions = computed(() => {
         class="w-full flex items-center justify-center p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
         :title="collapsed ? t('sidebar.expand') : t('sidebar.collapse')"
       >
-        <svg class="w-4 h-4 transition-transform" :class="collapsed ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-        </svg>
+        <BaseIcon icon="lucide:chevrons-left" :size="16" :class="collapsed ? 'rotate-180' : ''" class="transition-transform" />
       </button>
     </div>
 
@@ -390,9 +373,7 @@ const groupedSessions = computed(() => {
           ></span>
           <span class="text-xs text-stone-300 truncate">{{ settingsStore.currentModel || t('common.loading') }}</span>
         </div>
-        <svg class="w-4 h-4 text-stone-500 flex-shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
+        <BaseIcon icon="lucide:chevron-down" :size="16" class="text-stone-500 shrink-0 transition-transform" :class="showModelPopover ? 'rotate-180' : ''" />
       </button>
 
       <!-- Popover -->
@@ -411,7 +392,7 @@ const groupedSessions = computed(() => {
             :class="isCurrentOllamaModel(model) ? 'bg-amber-500/15 border-l-4 border-amber-400 text-stone-100' : 'hover:bg-white/[0.04] text-stone-300 border-l-4 border-transparent'"
           >
             <span class="truncate">{{ model }}</span>
-            <span v-if="isCurrentOllamaModel(model)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
+            <BaseIcon v-if="isCurrentOllamaModel(model)" icon="lucide:check" :size="14" class="text-emerald-400 shrink-0 ml-1" />
           </button>
 
           <template v-for="ep in settingsStore.endpoints" :key="ep.id">
@@ -428,7 +409,7 @@ const groupedSessions = computed(() => {
                   :class="isCurrentEndpointModel(ep.id, mod) ? 'bg-amber-500/15 border-l-4 border-emerald-400 text-stone-100' : ep.enabled ? 'hover:bg-white/[0.04] text-stone-300 border-l-4 border-transparent' : 'text-stone-600 cursor-not-allowed border-l-4 border-transparent'"
                 >
                   <span class="truncate">{{ mod }}</span>
-                  <span v-if="isCurrentEndpointModel(ep.id, mod)" class="text-emerald-400 text-xs flex-shrink-0 ml-1">✓</span>
+                  <BaseIcon v-if="isCurrentEndpointModel(ep.id, mod)" icon="lucide:check" :size="14" class="text-emerald-400 shrink-0 ml-1" />
                 </button>
               </template>
               <p v-else class="px-3 py-2 text-xs text-stone-500">{{ t('sidebar.noEndpointModels') }}</p>
@@ -440,7 +421,7 @@ const groupedSessions = computed(() => {
           @click="router.push('/models'); showModelPopover = false"
           class="w-full px-3 py-2.5 text-sm text-left text-stone-300 border-t border-amber-100/10 hover:bg-white/[0.04] flex items-center gap-2 transition-colors shrink-0"
         >
-          <span class="text-base">⚙</span>
+          <BaseIcon icon="lucide:settings" :size="16" />
           <span>{{ t('sidebar.modelConfigLink') }}</span>
         </button>
       </div>
@@ -476,9 +457,9 @@ const groupedSessions = computed(() => {
             'bg-blue-600 text-white': toastItem.type === 'info'
           }"
         >
-          <span v-if="toastItem.type === 'success'" class="text-lg">✓</span>
-          <span v-else-if="toastItem.type === 'error'" class="text-lg">✕</span>
-          <span v-else class="text-lg">ℹ</span>
+          <BaseIcon v-if="toastItem.type === 'success'" icon="lucide:check-circle" :size="20" />
+          <BaseIcon v-else-if="toastItem.type === 'error'" icon="lucide:x-circle" :size="20" />
+          <BaseIcon v-else icon="lucide:info" :size="20" />
           <span class="text-sm">{{ toastItem.message }}</span>
         </div>
       </TransitionGroup>

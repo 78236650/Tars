@@ -1,4 +1,4 @@
-# InsightForge 部署说明（INS-2.1.0 / TARS v4.3.2+）
+# InsightForge 部署说明（INS-2.1.0 / TARS v4.3.4+）
 
 ## SSE 与多 Worker（H1）
 
@@ -26,4 +26,4 @@ feature_flags:
 
 ---
 
-*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*
+*平台文档对齐: TARS v4.3.4 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-30*

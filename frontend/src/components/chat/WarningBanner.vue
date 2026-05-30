@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useWsStore } from '@/stores/wsStore'
 import { useI18n } from '@/i18n'
 
@@ -48,15 +49,13 @@ onUnmounted(() => {
       ? 'bg-rose-500/10 border-rose-400/30 text-rose-100'
       : 'bg-rose-500/10 border-rose-400/30 text-rose-100'"
   >
-    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-    </svg>
+    <BaseIcon icon="lucide:triangle-alert" :size="16" class="w-4 h-4 flex-shrink-0" />
     <span>{{ message }}</span>
     <button
       @click="visible = false"
       class="ml-auto text-current opacity-50 hover:opacity-100 transition-opacity"
     >
-      ✕
+      <BaseIcon icon="lucide:x" :size="16" />
     </button>
   </div>
 </template>

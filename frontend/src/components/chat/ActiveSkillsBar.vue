@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useI18n } from '@/i18n'
 
 export interface ActiveSkill {
@@ -25,7 +26,7 @@ const { t } = useI18n()
       class="inline-flex items-center gap-1.5 rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-xs text-amber-100"
       :title="skill.id"
     >
-      <span>⚡</span>
+      <BaseIcon icon="lucide:zap" :size="14" />
       <span>{{ skill.name }}</span>
     </span>
   </div>

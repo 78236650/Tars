@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { skillsApi } from '@/api'
 import { useI18n } from '@/i18n'
 
@@ -109,7 +110,7 @@ const deleteSkill = async () => {
   >
     <div class="space-y-5">
       <div class="flex items-start gap-3">
-        <span class="text-3xl">{{ tool.icon || '🔧' }}</span>
+        <span class="text-3xl"><BaseIcon v-if="tool.icon" :icon="tool.icon" :size="32" /><BaseIcon v-else icon="lucide:wrench" :size="32" /></span>
         <div class="min-w-0">
           <div class="mt-1 flex flex-wrap items-center gap-2">
             <span class="rounded-full px-2 py-0.5 text-xs" :class="typeClass">{{ typeLabel }}</span>

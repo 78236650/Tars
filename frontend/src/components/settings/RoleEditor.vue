@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { rolesApi, type RoleTemplate } from '@/api'
 import { useI18n } from '@/i18n'
 
@@ -28,7 +29,7 @@ const allTools = [
   'task_planner',
 ]
 
-const allModules = ['bi', 'knowledge', 'meeting', 'skillhub', 'insight']
+const allModules = ['bi', 'knowledge', 'meeting', 'skillhub', 'insight', 'orchestration']
 
 // 表单数据
 const form = ref({
@@ -108,23 +109,47 @@ const handleSave = async () => {
   }
 }
 
+// 工具图标映射
+const toolIcons: Record<string, string> = {
+  weather: 'lucide:sun', web_search: 'lucide:search', web_fetch: 'lucide:inbox',
+  file: 'lucide:file', file_write: 'lucide:pencil', shell: 'lucide:laptop',
+  command: 'lucide:keyboard', python_exec: 'lucide:code', process: 'lucide:plug',
+  network: 'lucide:globe', memory: 'lucide:brain', knowledge_search: 'lucide:books',
+  cronjob: 'lucide:alarm-clock', calculator: 'lucide:hash',
+  bi_query: 'lucide:bar-chart-3', bi_generate_chart: 'lucide:chart-line', meeting_recognizer: 'lucide:mic',
+  archival_insert: 'lucide:save', core_memory_append: 'lucide:plus', core_memory_replace: 'lucide:refresh-cw',
+  task_planner: 'lucide:clipboard',
+}
+
 // 工具中文名映射
 const toolLabels: Record<string, string> = {
-  weather: '🌤 天气', web_search: '🔍 网页搜索', web_fetch: '📥 网页抓取',
-  file: '📄 文件读取', file_write: '✏️ 文件写入', shell: '💻 Shell',
-  command: '⌨️ 命令', python_exec: '🐍 Python', process: '🔌 进程',
-  network: '🌐 网络', memory: '🧠 记忆', knowledge_search: '📚 知识搜索',
-  cronjob: '⏰ 定时任务', calculator: '🔢 计算器',
-  bi_query: '📊 BI查询', bi_generate_chart: '📈 BI图表', meeting_recognizer: '🎙 会议识别',
-  archival_insert: '💾 归档插入', core_memory_append: '➕ 核心记忆追加', core_memory_replace: '🔄 核心记忆替换',
-  task_planner: '📋 任务规划',
+  weather: '天气', web_search: '网页搜索', web_fetch: '网页抓取',
+  file: '文件读取', file_write: '文件写入', shell: 'Shell',
+  command: '命令', python_exec: 'Python', process: '进程',
+  network: '网络', memory: '记忆', knowledge_search: '知识搜索',
+  cronjob: '定时任务', calculator: '计算器',
+  bi_query: 'BI查询', bi_generate_chart: 'BI图表', meeting_recognizer: '会议识别',
+  archival_insert: '归档插入', core_memory_append: '核心记忆追加', core_memory_replace: '核心记忆替换',
+  task_planner: '任务规划',
+}
+
+// 模块图标映射
+const moduleIcons: Record<string, string> = {
+  bi: 'lucide:bar-chart-3',
+  knowledge: 'lucide:books',
+  meeting: 'lucide:mic',
+  skillhub: 'lucide:puzzle',
+  insight: 'lucide:search',
+  orchestration: 'lucide:git-branch',
 }
 
 const moduleLabels: Record<string, string> = {
-  bi: '📊 BI 工作台',
-  knowledge: '📚 知识库',
-  meeting: '🎙 会议助手',
-  skillhub: '🧩 SkillHub',
+  bi: 'BI 工作台',
+  knowledge: '知识库',
+  meeting: '会议助手',
+  skillhub: 'SkillHub',
+  insight: '鉴数 Copilot',
+  orchestration: '作业调度',
 }
 </script>
 
@@ -137,9 +162,7 @@ const moduleLabels: Record<string, string> = {
           {{ isEdit ? t('roles.editTemplate') : t('roles.createTemplate') }}
         </h3>
         <button @click="emit('close')" class="text-slate-400 hover:text-white transition">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
+          <BaseIcon icon="lucide:x" :size="20" />
         </button>
       </div>
 
@@ -204,7 +227,8 @@ const moduleLabels: Record<string, string> = {
                 ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
                 : 'border-slate-700 bg-slate-700/50 text-slate-400 hover:border-slate-600'"
             >
-              <span class="text-[10px]">{{ form.allowed_tools.includes(tool) ? '☑' : '☐' }}</span>
+              <BaseIcon :icon="form.allowed_tools.includes(tool) ? 'lucide:check-square' : 'lucide:square'" :size="14" />
+              <BaseIcon :icon="toolIcons[tool]" :size="14" />
               <span class="truncate">{{ toolLabels[tool] || tool }}</span>
             </button>
           </div>
@@ -223,7 +247,8 @@ const moduleLabels: Record<string, string> = {
                 ? 'bg-amber-500/15 border-amber-500/30 text-amber-200'
                 : 'border-slate-700 bg-slate-700/50 text-slate-400 hover:border-slate-600'"
             >
-              <span class="text-[10px]">{{ form.allowed_modules.includes(mod) ? '☑' : '☐' }}</span>
+              <BaseIcon :icon="form.allowed_modules.includes(mod) ? 'lucide:check-square' : 'lucide:square'" :size="14" />
+              <BaseIcon :icon="moduleIcons[mod]" :size="14" />
               <span>{{ moduleLabels[mod] || mod }}</span>
             </button>
           </div>

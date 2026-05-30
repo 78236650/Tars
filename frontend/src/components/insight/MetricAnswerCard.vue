@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import type { InsightMetricAnswer } from '@/api'
 import { insightApi } from '@/api'
 import { useToast } from '@/composables/useToast'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
 
 const props = defineProps<{
@@ -169,7 +170,7 @@ const onAdopt = async () => {
 
     <div class="mb-3">
       <button type="button" class="text-xs text-stone-400 hover:text-stone-200" @click="sqlOpen = !sqlOpen">
-        {{ sqlOpen ? '▼' : '▶' }} SQL
+        <BaseIcon :icon="sqlOpen ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" /> SQL
       </button>
       <pre v-if="sqlOpen" class="mt-2 p-2 rounded bg-stone-950 text-xs text-stone-300 overflow-x-auto">{{ answer.sql }}</pre>
     </div>
@@ -189,8 +190,8 @@ const onAdopt = async () => {
 
     <div class="flex flex-wrap gap-2 pt-2 border-t border-stone-800">
       <button type="button" class="btn-sm" @click="copySql">{{ t('insight.metric.copySql') }}</button>
-      <button type="button" class="btn-sm" :disabled="loading" @click="onFeedback(1)">👍</button>
-      <button type="button" class="btn-sm" :disabled="loading" @click="onFeedback(-1)">👎</button>
+      <button type="button" class="btn-sm" :disabled="loading" @click="onFeedback(1)"><BaseIcon icon="lucide:thumbs-up" :size="14" /></button>
+      <button type="button" class="btn-sm" :disabled="loading" @click="onFeedback(-1)"><BaseIcon icon="lucide:thumbs-down" :size="14" /></button>
       <button
         v-if="canAdopt"
         type="button"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // v2.6.1: 内嵌任务进度卡片 — 替换 TaskPanel 抽屉
 import { ref } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useWsStore } from '@/stores/wsStore'
 import { useI18n } from '@/i18n'
 
@@ -24,8 +25,8 @@ const props = defineProps<{ task: Task }>()
 const expanded = ref(true)
 
 const statusIcon = (s: string): string => {
-  const m: Record<string, string> = { pending: '○', running: '◐', completed: '✓', failed: '✕', skipped: '→', paused: '⏸', aborted: '⊘' }
-  return m[s] || '?'
+  const m: Record<string, string> = { pending: 'lucide:circle', running: 'lucide:circle-half', completed: 'lucide:check', failed: 'lucide:x', skipped: 'lucide:arrow-right', paused: 'lucide:pause', aborted: 'lucide:circle-slash' }
+  return m[s] || 'lucide:help-circle'
 }
 
 const statusColor = (s: string): string => {
@@ -65,7 +66,7 @@ const sendDecision = (decision: string) => {
         </div>
       </div>
       <span class="text-xs px-2 py-0.5 rounded-full flex-shrink-0 ml-2" :class="statusColor(task.status)">
-        {{ statusIcon(task.status) }} {{ taskStatusLabel(task.status) }}
+        <BaseIcon :icon="statusIcon(task.status)" :size="12" /> {{ taskStatusLabel(task.status) }}
       </span>
     </div>
 
@@ -84,7 +85,7 @@ const sendDecision = (decision: string) => {
       <!-- Steps -->
       <div class="space-y-1">
         <div v-for="step in task.steps" :key="step.id" class="flex items-start gap-2 text-xs py-0.5">
-          <span class="mt-0.5 flex-shrink-0" :class="statusColor(step.status)">{{ statusIcon(step.status) }}</span>
+          <BaseIcon :icon="statusIcon(step.status)" :size="12" :class="statusColor(step.status)" class="mt-0.5 flex-shrink-0" />
           <div class="flex-1 min-w-0">
             <span class="text-slate-300">{{ step.description }}</span>
             <span v-if="step.tool" class="text-slate-600 ml-1">({{ step.tool }})</span>
@@ -96,7 +97,7 @@ const sendDecision = (decision: string) => {
 
       <!-- Artifacts -->
       <div v-if="task.artifacts?.length && task.status === 'completed'" class="mt-3 pt-3 border-t border-slate-700/50">
-        <p class="text-xs text-slate-500 mb-1">📦 {{ t('taskCard.artifacts') }}</p>
+        <p class="text-xs text-slate-500 mb-1"><BaseIcon icon="lucide:package" :size="14" /> {{ t('taskCard.artifacts') }}</p>
         <div v-for="art in task.artifacts" :key="art" class="text-xs text-slate-400 font-mono truncate">{{ art }}</div>
       </div>
 

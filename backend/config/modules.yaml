@@ -36,6 +36,10 @@ modules:
       enabled: true
       description: "SkillHub 技能市场"
       routes: ["/api/skillhub"]
+    orchestration:
+      enabled: true
+      description: "多 Agent 调度任务（编排记忆可视）"
+      routes: ["/api/orchestration"]
 
 # v4.3.2 Superpowers integration
 skill_routing:

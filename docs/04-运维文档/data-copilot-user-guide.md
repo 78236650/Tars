@@ -54,4 +54,4 @@ InsightForge 建档进度使用 SSE。生产环境须 **uvicorn workers=1** 或�
 
 ---
 
-*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*
+*平台文档对齐: TARS v4.3.4 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-30*

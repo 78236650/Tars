@@ -9,6 +9,7 @@ from .subagents.writing import WritingAgent
 from .subagents.data import DataAgent
 from .subagents.research import ResearchAgent
 from .subagents.plan import PlanAgent
+from .subagents.port import BerthAgent, YardAgent, VesselAgent
 
 
 class SubAgentManager:
@@ -27,6 +28,9 @@ class SubAgentManager:
         self.subagents[SubAgentType.DATA] = DataAgent()
         self.subagents[SubAgentType.RESEARCH] = ResearchAgent()
         self.subagents[SubAgentType.PLAN] = PlanAgent()
+        self.subagents[SubAgentType.BERTH] = BerthAgent()
+        self.subagents[SubAgentType.YARD] = YardAgent()
+        self.subagents[SubAgentType.VESSEL] = VesselAgent()
 
     def apply_tenant_overrides(self, tenant_id: str = "default") -> None:
         """Merge evolution subagents.json overrides for a tenant."""
@@ -87,8 +91,22 @@ class SubAgentManager:
             Optional[SubAgentType]: 子代理类型，如果无法确定则返回None
         """
         task_lower = task.lower()
-        
-        code_keywords = ["代码", "编程", "python", "javascript", "typescript", 
+
+        port_keyword_map = {
+            SubAgentType.BERTH: ["靠泊", "泊位", "berth", "靠"],
+            SubAgentType.YARD: ["堆场", "堆存", "箱位", "yard", "卸货", "装箱"],
+            SubAgentType.VESSEL: ["船务", "航次", "eta", "vessel", "船舶", "吃水"],
+        }
+        port_scores: Dict[SubAgentType, float] = {}
+        for agent_type, keywords in port_keyword_map.items():
+            hits = sum(1 for keyword in keywords if keyword in task_lower)
+            if hits > 0:
+                weight = self._delegation_weights.get(agent_type.value, 1.0)
+                port_scores[agent_type] = hits * float(weight)
+        if port_scores:
+            return max(port_scores, key=port_scores.get)
+
+        code_keywords = ["代码", "编程", "python", "javascript", "typescript",
                          "code", "function", "class", "bug", "debug", "error"]
         writing_keywords = ["写", "文章", "文案", "报告", "写作", "邮件", 
                             "letter", "essay", "article", "story"]
@@ -96,7 +114,7 @@ class SubAgentManager:
                          "data", "chart", "graph", "analysis"]
         research_keywords = ["搜索", "研究", "查找", "资料", "调研", 
                             "research", "search", "information"]
-        plan_keywords = ["计划", "规划", "任务", "步骤", "安排", 
+        plan_keywords = ["计划", "规划", "任务", "步骤",
                          "plan", "schedule", "task", "goal"]
 
         keyword_map = {
@@ -194,25 +212,57 @@ class SubAgentManager:
         except ValueError:
             return f"无效的子代理类型: {agent_type}"
     
-    async def run_parallel_tasks(self, tasks: list, context: Dict[str, Any] = None) -> dict:
+    async def run_parallel_tasks(
+        self,
+        tasks: list,
+        context: Dict[str, Any] = None,
+        orch_mem=None,
+        task_id: str = None,
+    ) -> dict:
         """
         并行执行多个任务
         
         Args:
             tasks: 任务列表，每个任务包含 agent_type 和 task
             context: 上下文信息
+            orch_mem: 可选 OrchestrationMemory，传入时落库子任务产出
+            task_id: 编排任务 ID，与 orch_mem 配合使用
         
         Returns:
             dict: 任务执行结果字典
         """
         async def run_task(task_info):
-            agent_type = task_info['agent_type']
-            task = task_info['task']
-            result = await self.invoke_subagent(agent_type, task, context)
+            agent_type = task_info.get("agent_type")
+            subtask = task_info.get("task", "")
+            task_context = context
+            if task_info.get("context"):
+                task_context = {**(context or {}), **task_info["context"]}
+            if orch_mem and task_id:
+                task_context = {**(task_context or {}), "shared": orch_mem.get_shared(task_id)}
+            result = await self.invoke_subagent(agent_type, subtask, task_context)
+            if orch_mem and task_id:
+                orch_mem.record_output(task_id, agent_type=agent_type, subtask=subtask, output=result)
             return (agent_type, result)
         
         results = await asyncio.gather(*[run_task(task) for task in tasks])
         return dict(results)
+
+    async def run_phased_tasks(
+        self,
+        tasks: list,
+        context: Dict[str, Any] = None,
+        orch_mem=None,
+        task_id: str = None,
+    ) -> dict:
+        """先并行 phase=parallel，再串行 phase=serial（如堆场依赖泊位黑板）。"""
+        parallel = [t for t in tasks if t.get("phase", "parallel") != "serial"]
+        serial = [t for t in tasks if t.get("phase") == "serial"]
+        results: Dict[str, str] = {}
+        if parallel:
+            results.update(await self.run_parallel_tasks(parallel, context, orch_mem, task_id))
+        if serial:
+            results.update(await self.run_parallel_tasks(serial, context, orch_mem, task_id))
+        return results
     
     def get_available_models(self) -> list:
         """获取可用的模型列表"""

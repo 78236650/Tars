@@ -3,23 +3,23 @@
 ## 项目简介
 
 TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模型（Ollama）和云端 API（DeepSeek、阿里通义等）。用户通过技能/插件适配垂直场景，平台提供安全隔离、记忆管理、工具调度等基础能力。
+**当前版本: v4.3.4** — v4.3.3 加固 + **UI/交互优化**（详见 [VERSION.md](./VERSION.md)）  
 
-**当前版本: v4.3.2** — Superpowers + **LLM Wiki / RAG 双通路**（详见 [VERSION.md](./VERSION.md)）  
-**上一版本: v4.3.1**（会议 ASR、知识库深度入库、BI、INS-2.1）  
+**上一版本: v4.3.3**（CI、god-class 拆分、MCP、Evolution 仪表盘）
 **稳定基线: v4.1.2**（生产/内网部署参考）  
-**Git 分支**: `v4.3.2`（与产品版本一致，见 [VERSION.md](./VERSION.md)）
+**Git 分支**: `ui/v4.3.4`（与产品版本一致，见 [VERSION.md](./VERSION.md)）
 
 ### 平台版本 vs InsightForge 能力版本（双轨，方案 A）
 
 | TARS 平台 | InsightForge（`GET /api/insight/version`） | 说明 |
 |-----------|---------------------------------------------|------|
-| **v4.3.2**（当前） | **INS-2.1.0** | Superpowers + Wiki/RAG 双通路、`read_wiki` / `write_wiki` |
+| **v4.3.4**（当前） | **INS-2.1.0** | v4.3.3 加固 + UI/交互优化 |
 | v4.3.1 | INS-2.1.0 | 建档性能（batch stats、增量 reuse、SQL 超时） |
 | v4.2.0 | INS-2.0.0 | Data Copilot 与 KnowledgeBridge 联动 |
 | — | INS-1.0.0 | 早期 Profile 流水线（历史 tag `insight-v1.0.0`） |
+- 平台号：`backend/tars/main.py` → OpenAPI **4.3.4**
 
-- 平台号：`backend/tars/main.py` → OpenAPI **4.3.2**
-- 能力号：`backend/tars/insight/version.py` → **INS-2.1.0**（勿与 `4.3.2` 混用同一字符串）
+- 能力号：`backend/tars/insight/version.py` → **INS-2.1.0**（勿与 `4.3.4` 混用同一字符串）
 - Git 能力 tag 建议：`insight-v2.1.0`（与 `insight-v2.0.0` 并列，不替代平台分支名）
 
 ## 核心特性
@@ -65,13 +65,13 @@ TARS 是一个面向内网多用户部署的 AI Agent 平台，支持本地模�
 - 📊 **模块化启动** — modules.yaml 控制可选模块（BI、会议、知识库、SkillHub）按需加载
 - 📈 **技能统计** — Curator 记录调用次数/成功率，支持归档管理
 
-### v4.3.2（Superpowers + Wiki）
+### v4.3.4（UI/交互优化）
 
 - 🎯 **Skill 自动路由** — `triggers` / `skip_when` + embedding
 - 📋 **Plan 审批门控** — WebSocket 审批 + checkpoint + `PlanReviewDialog`
 - ✅ **Verification Gate** — skill `verify` 命令门控
 - 📖 **LLM Wiki** — 与 RAG 并存；`read_wiki` / `write_wiki`；知识库 Wiki Tab
-- 📖 升级：[UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) · Wiki：[guides/wiki-user.md](../guides/wiki-user.md) · Skill：[SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
+- 📖 升级：[UPGRADE_GUIDE_v4.3.4.md](../UPGRADE_GUIDE_v4.3.4.md) · Wiki：[guides/wiki-user.md](../guides/wiki-user.md) · Skill：[SKILL_AUTHORING.md](../SKILL_AUTHORING.md)
 
 ## 技术栈
 
@@ -165,8 +165,8 @@ cd ../frontend && npm run dev
 
 | 角色 | 先看 |
 |------|------|
-| 产品 / 运维 | [VERSION.md](./VERSION.md) → [v4.3.2 发布说明](./v4.3.2-release-notes.md) → [稳定版部署](../../deploy/README.md) → [操作手册](../guides/operations-manual.md) |
-| 从 4.3.1 升级 | [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md) |
+| 产品 / 运维 | [VERSION.md](./VERSION.md) → [v4.3.4 发布说明](./v4.3.4-release-notes.md) → [稳定版部署](../../deploy/README.md) → [操作手册](../guides/operations-manual.md) |
+| 从 4.3.3 升级 | [UPGRADE_GUIDE_v4.3.4.md](../UPGRADE_GUIDE_v4.3.4.md) |
 | 用 Wiki / 知识库 | [guides/wiki-user.md](../guides/wiki-user.md) |
 | 写 Skill | [SKILL_AUTHORING.md](../SKILL_AUTHORING.md) |
 | 查设计稿 | [superpowers/README.md](../superpowers/README.md) |
@@ -177,8 +177,8 @@ cd ../frontend && npm run dev
 |------|------|
 | [VERSION.md](./VERSION.md) | **版本真相源**（平台 / INS / Git 分支） |
 | [changelog.md](./changelog.md) | 全量变更记录 |
-| [v4.3.2-release-notes.md](./v4.3.2-release-notes.md) | 当前版本 |
-| [v4.3.1-release-notes.md](./v4.3.1-release-notes.md) | 上一 patch |
+| [v4.3.4-release-notes.md](./v4.3.4-release-notes.md) | 当前版本 |
+| [v4.3.3-release-notes.md](./v4.3.3-release-notes.md) | 上一 patch |
 | [roadmap.md](../03-实施计划/roadmap.md) | 里程碑（已完成项链到 changelog） |
 
 ### 架构与协议
@@ -191,4 +191,4 @@ cd ../frontend && npm run dev
 
 ---
 
-*文档版本: v4.3.2 · 更新日期: 2026-05-26*
+*文档版本: v4.3.4 · 更新日期: 2026-05-30*

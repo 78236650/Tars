@@ -2,6 +2,52 @@
 
 > 版本真相源：[VERSION.md](./VERSION.md)
 
+## v4.5.0 「进出港计划 + Agent/OR 协同」(2026-05-30 — 功能完成)
+
+> 📄 Spec: [vessel-plan-or-design.md](../superpowers/specs/2026-05-30-vessel-plan-or-design.md) · 计划: [vessel-plan-or-plan.md](../superpowers/plans/2026-05-30-vessel-plan-or-plan.md)
+
+### 进出港计划
+- ✅ 拟真数据 seed（6 泊位 / 12 航次，元洪 Demo 码头）
+- ✅ `BerthScheduler` 贪心 OR + `ShipPlanAgent` 前/后处理
+- ✅ API `/api/vessel-plans/*`（optimize / patch / adopt）
+- ✅ 作业调度 Tab **进出港计划**：泊位甘特图、平面泊位图、单船抽屉、微调/下发
+
+---
+
+## v4.4.0 「港航垂直 + 作业调度」(2026-05-30 — MVP 功能完成)
+
+> 📄 [v4.4.0 发布说明](./v4.4.0-release-notes.md) · [作业调度用户指南](../04-运维文档/port-operations-user-guide.md)
+
+基于 v4.3.4，交付港航物流垂直与多 Agent 编排 **MVP**（设计稿 v4.4.0，OpenAPI 发版时 bump）。
+
+### 编排记忆层（记忆方案 Phase 0–3）
+- ✅ **垂直模式开关** — `MemoryConfig`：compressor / kb_promotion / tree_builder / turn_publisher 默认关
+- ✅ **港航实体 schema** — `domain_schema.py` + 提取/反思 prompt 领域偏向
+- ✅ **编排表** — `agent_tasks` / `agent_task_outputs` / `agent_collaboration_ctx`
+- ✅ **OrchestrationMemory** — 任务、产出、共享黑板 CRUD
+- ✅ **SubAgent 接入** — 子任务产出落库；Handoff → `approval_requests`
+- ✅ **MultiAgentOrchestrator** — 领域记忆注入 + 分阶段执行
+
+### 港航 Agent 集群（Fleet Phase B–E，MVP）
+- ✅ **专家 Agent** — 泊位 `berth`、堆场 `yard`、船务 `vessel`
+- ✅ **规则拆解** — `decompose_goal()` 港航关键词 → subtasks
+- ✅ **串并行编排** — 泊位/船务并行 → 堆场串行；泊位窗口硬冲突告警
+- ✅ **API** — `GET/POST /api/orchestration/*`；`modules.yaml` orchestration 模块
+- ✅ **前端** — `/orchestration` 作业调度页：快捷场景 / 引导填写 / 自由描述
+- ✅ **角色权限** — 内置角色同步 `orchestration` 模块；RoleEditor 可勾选
+- ✅ **测试** — `test_port_agents` / `test_port_orchestration_e2e` / 路由与记忆单测
+
+### 明确留 v4.5 / 后续
+- 📋 LLM 自动拆解 goal、聊天页触发调度、TOS/EDI 对接
+- 📋 岸桥 / 货代 / 报表 Agent
+
+### 设计文档
+- [portlogistics-agent-memory-design.md](../superpowers/plans/2026-05-30-portlogistics-agent-memory-design.md)
+- [port-agent-fleet-design.md](../superpowers/plans/2026-05-30-port-agent-fleet-design.md)
+- [smart-port-agent-design.md](../superpowers/specs/2026-05-30-smart-port-agent-design.md)
+
+---
+
 ## v4.3.2 Patch (2026-05-25 — 含 Wiki 2026-05-26 文档对齐)
 
 > 📄 [v4.3.2 发布说明](./v4.3.2-release-notes.md) · [升级指南](../UPGRADE_GUIDE_v4.3.2.md) · [Wiki 使用](../guides/wiki-user.md)
@@ -523,4 +569,4 @@ v4.1.1 后续：Curator 运维、Admin 平台工具、技能生态扩展。
 
 ---
 
-*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](VERSION.md) · 更新: 2026-05-26*
+*平台文档对齐: TARS v4.3.4 · 见 [VERSION.md](VERSION.md) · 更新: 2026-05-30*

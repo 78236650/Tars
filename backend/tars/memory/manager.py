@@ -189,15 +189,18 @@ class MemoryManager:
         promotion_trigger = "none"
 
         if publish_to_knowledge and saved_ids:
-            doc_id = await promote_group_to_kb(
-                self,
-                group_id,
-                user_context=user_context,
-                memory_ids=saved_ids,
-            )
-            if doc_id:
-                knowledge_doc_ids.append(doc_id)
-                promotion_trigger = "manual"
+            from ..config.memory import config
+
+            if config.kb_promotion_enabled:
+                doc_id = await promote_group_to_kb(
+                    self,
+                    group_id,
+                    user_context=user_context,
+                    memory_ids=saved_ids,
+                )
+                if doc_id:
+                    knowledge_doc_ids.append(doc_id)
+                    promotion_trigger = "manual"
         elif saved_ids:
             promotion_trigger = "pending"
 

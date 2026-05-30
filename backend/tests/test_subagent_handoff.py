@@ -16,6 +16,29 @@ class FakeChannel:
 
 
 @pytest.mark.asyncio
+async def test_handoff_persists_to_approval_requests():
+    db = Database(":memory:")
+    mgr = HandoffManager(db=db)
+    handoff = mgr.create_pending(
+        parent_session_id="sess-1",
+        subagent_type="code",
+        task_summary="write hello world",
+        full_result="print('hello')",
+    )
+    row = db.fetch_one(
+        "SELECT status, tool_name FROM approval_requests WHERE id=?",
+        (handoff.id,),
+    )
+    assert row is not None
+    assert row["status"] == "pending"
+    assert row["tool_name"] == "subagent_handoff"
+
+    mgr.accept(handoff.id)
+    row = db.fetch_one("SELECT status FROM approval_requests WHERE id=?", (handoff.id,))
+    assert row["status"] == "accepted"
+
+
+@pytest.mark.asyncio
 async def test_handoff_manager_creates_pending_review_event():
     mgr = HandoffManager()
     handoff = mgr.create_pending(

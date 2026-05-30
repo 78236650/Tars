@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 
 from .core_memory import CoreMemoryManager, BLOCK_NAMES
 from .archival import ArchivalManager
+from .domain_schema import PORT_ENTITY_TYPE_HINT, PORT_RELATION_TYPE_HINT
 
 
 REFLECTION_PROMPT = """你是记忆管理助手。基于本轮对话，判断需要做的记忆操作。
@@ -22,12 +23,16 @@ Assistant: {assistant_msg}
 输出严格的 JSON 数组，每个元素是一个操作。不要任何额外文字。
 
 操作类型：
-- {{"op": "upsert_entity", "name": "名称", "type": "person|project|tech|concept|org", "aliases": ["别名"], "attributes": {{"key":"value"}}, "confidence": 0.8}}
-- {{"op": "upsert_relation", "from_name": "A", "from_type": "person", "to_name": "B", "to_type": "project", "predicate": "works_on|uses|colleague_of|part_of", "confidence": 0.7}}
+- {{"op": "upsert_entity", "name": "名称", "type": "person|project|tech|concept|org|terminal|berth|crane|vessel|voyage|yard|cargo_owner|container", "aliases": ["别名"], "attributes": {{"key":"value"}}, "confidence": 0.8}}
+- {{"op": "upsert_relation", "from_name": "A", "from_type": "person", "to_name": "B", "to_type": "project", "predicate": "works_on|uses|colleague_of|part_of|berth_of|crane_serves|voyage_of|berths_at|yard_of|cargo_of", "confidence": 0.7}}
 - {{"op": "log_episode", "content": "事件描述（1-2句中文）", "event_time": "ISO8601或空", "entity_refs": [{{"name":"X","type":"person"}}], "importance": 0.7}}
 - {{"op": "update_core", "block": "persona|user_profile|project_context|working_principles", "action": "append|replace", "old": "旧文本", "new": "新文本"}}
 - {{"op": "forget", "block": "...", "line_contains": "关键词"}}
 - {{"op": "noop"}}
+
+实体与关系分类：
+- """ + PORT_ENTITY_TYPE_HINT + """
+- """ + PORT_RELATION_TYPE_HINT + """
 
 分流规则（严格遵循）：
 - 人/项目/技术/概念首次出现 → upsert_entity

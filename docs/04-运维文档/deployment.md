@@ -1,6 +1,6 @@
 # TARS 部署指南
 
-> **v4.3.2 稳定版**：快速路径 [deploy/README.md](../../deploy/README.md) · [操作手册](../guides/operations-manual.md) · [验收清单](./v4.3.2-stable-release-checklist.md)
+> **v4.3.4 稳定版**：快速路径 [deploy/README.md](../../deploy/README.md) · [操作手册](../guides/operations-manual.md) · [验收清单](./v4.3.4-stable-release-checklist.md)
 
 ## 环境要求
 
@@ -243,7 +243,7 @@ tar -xzf tars-backup-20260517.tar.gz
 
 ---
 
-## v4.3.2 稳定版新装
+## v4.3.4 稳定版新装
 
 ```bash
 git clone <repo-url> /opt/tars && cd /opt/tars
@@ -258,7 +258,7 @@ python3 -m uvicorn tars.main:app --host 0.0.0.0 --port 8000 --workers 1
 
 **持久化**：`backend/data/`（SQLite、`wiki/`、vectorstore）。**配置**：`modules.yaml` 中 `skill_routing` / `plan_gate` / `verification`；`tool_permissions.yaml` 含 `read_wiki` / `write_wiki`。
 
-## 从 v4.3.1 升级至 v4.3.2
+## 从 v4.3.3 升级至 v4.3.4
 
 见 [UPGRADE_GUIDE_v4.3.2.md](../UPGRADE_GUIDE_v4.3.2.md)。
 
@@ -319,4 +319,4 @@ python backend/scripts/migrate_v410.py
 
 ---
 
-*平台文档对齐: TARS v4.3.2 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-26*
+*平台文档对齐: TARS v4.3.4 · 见 [VERSION.md](../01-项目概览/VERSION.md) · 更新: 2026-05-30*

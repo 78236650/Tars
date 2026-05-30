@@ -3,6 +3,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from .domain_schema import PORT_ENTITY_TYPE_HINT
+
 
 EXTRACTION_PROMPT = """从以下对话中提取值得长期记住的信息。只提取明确表达的事实，不要推测。
 
@@ -24,6 +26,8 @@ TURN_EXTRACTION_PROMPT = """你是技术知识整理助手。请从下面这轮�
 - 可复用的经验、最佳实践、踩坑记录
 
 也保留 User 明确表达的偏好、决策、项目背景（如有）。
+
+""" + PORT_ENTITY_TYPE_HINT + """
 
 输出 JSON 数组，每条包含：
 - content: 一条独立、可检索的要点（20-200 字，中文为主）

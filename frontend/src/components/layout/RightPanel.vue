@@ -7,6 +7,7 @@ import { useWsStore } from '@/stores/wsStore'
 import { useReminderNotificationsStore } from '@/stores/reminderNotifications'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -115,9 +116,7 @@ const clearConversation = () => {
         class="flex items-center gap-2 px-2 py-1.5 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors"
         :title="t('sidebar.collapse')"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
+        <BaseIcon icon="lucide:chevron-right" :size="16" />
         <span class="text-xs">{{ t('rightPanel.collapse') }}</span>
       </button>
       <button
@@ -126,9 +125,7 @@ const clearConversation = () => {
         class="w-full p-2 text-stone-400 hover:bg-white/[0.04] hover:text-stone-100 rounded-lg transition-colors flex justify-center"
         :title="t('sidebar.expand')"
       >
-        <svg class="w-4 h-4 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
+        <BaseIcon icon="lucide:chevron-left" :size="16" />
       </button>
     </div>
 
@@ -139,15 +136,11 @@ const clearConversation = () => {
             @click="newChat"
             class="w-full px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
           >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
+            <BaseIcon icon="lucide:plus" :size="14" />
             {{ t('chat.newChat') }}
           </button>
           <div class="relative">
-            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
+            <BaseIcon icon="lucide:search" :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               v-model="searchQuery"
               type="text"
@@ -181,9 +174,7 @@ const clearConversation = () => {
                 @click="deleteSession(session.id, $event)"
                 class="opacity-0 group-hover:opacity-100 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-stone-400 hover:text-red-300 hover:bg-white/[0.06] transition-all cursor-pointer"
               >
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <BaseIcon icon="lucide:x" :size="12" />
               </span>
             </button>
           </template>
@@ -197,28 +188,28 @@ const clearConversation = () => {
             @click="copyConversation"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
-            <span>📋</span>
+            <BaseIcon icon="lucide:clipboard-copy" :size="14" />
             <span>{{ t('rightPanel.copy') }}</span>
           </button>
           <button
             @click="exportConversation"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
-            <span>📤</span>
+            <BaseIcon icon="lucide:upload" :size="14" />
             <span>{{ t('rightPanel.export') }}</span>
           </button>
           <button
             @click="router.push('/memory')"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
-            <span>🧠</span>
+            <BaseIcon icon="lucide:brain" :size="14" />
             <span>{{ t('rightPanel.memory') }}</span>
           </button>
           <button
             @click="clearConversation"
             class="px-2 py-1.5 rounded-lg border border-amber-100/10 bg-white/[0.03] text-xs text-stone-300 hover:bg-white/[0.06] hover:border-amber-300/20 transition-colors flex items-center justify-center gap-1"
           >
-            <span>🗑️</span>
+            <BaseIcon icon="lucide:trash-2" :size="14" />
             <span>{{ t('rightPanel.clear') }}</span>
           </button>
         </div>
@@ -255,9 +246,7 @@ const clearConversation = () => {
           class="flex-none shrink-0 p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 flex items-center justify-center"
           :title="t('chat.newChat')"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
+          <BaseIcon icon="lucide:plus" :size="16" />
         </button>
         <span
           class="mt-3 inline-block text-[10px] text-stone-500 [writing-mode:vertical-rl] [text-orientation:upright]"

@@ -10,6 +10,8 @@ from .turn_knowledge_publisher import publish_synthesized_note
 if TYPE_CHECKING:
     from .manager import MemoryManager
 
+from ..config.memory import config
+
 # 升格阈值（性能 vs 知识密度平衡）
 MIN_ITEMS_FOR_AUTO_PROMOTE = 3
 MIN_CHARS_FOR_AUTO_PROMOTE = 800
@@ -172,6 +174,8 @@ async def promote_group_to_kb(
         provider=manager.provider,
     )
     title_hint = markdown.splitlines()[0].lstrip("# ").strip() if markdown else f"对话精华-{group_id[-10:]}"
+    if not config.turn_publisher_enabled:
+        return None
     doc_id = publish_synthesized_note(
         db=db,
         vector_store=manager.vector_store,
@@ -194,6 +198,8 @@ async def promote_group_to_kb(
 
 async def maybe_auto_promote_group(manager: "MemoryManager", group_id: str) -> Optional[str]:
     """阈值触发：组内要点足够多时自动升格（后台 / 保存后调用）。"""
+    if not config.kb_promotion_enabled:
+        return None
     stats = manager.db.get_kb_promotion_group_stats(manager.tenant_id, group_id)
     if not group_ready(stats):
         return None
@@ -202,6 +208,8 @@ async def maybe_auto_promote_group(manager: "MemoryManager", group_id: str) -> O
 
 async def run_scheduled_kb_promotion(base_manager: "MemoryManager") -> Dict[str, Any]:
     """Cron 扫描所有租户 pending 组并升格。"""
+    if not config.kb_promotion_enabled:
+        return {"promoted": 0, "skipped": 0, "doc_ids": []}
     db = base_manager.db
     promoted = 0
     skipped = 0

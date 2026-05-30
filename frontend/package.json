@@ -10,6 +10,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@iconify/vue": "^5.0.1",
     "axios": "^1.6.8",
     "echarts": "^6.0.0",
     "highlight.js": "^11.11.1",

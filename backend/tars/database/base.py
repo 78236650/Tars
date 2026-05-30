@@ -288,3 +288,20 @@ class Database:
     def get_evolution_apply_log(self, *args, **kwargs):
         return self.memories.get_evolution_apply_log(*args, **kwargs)
 
+    def execute(self, sql: str, params: tuple = ()) -> None:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        conn.commit()
+
+    def fetch_all(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def fetch_one(self, sql: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
+        rows = self.fetch_all(sql, params)
+        return rows[0] if rows else None
+

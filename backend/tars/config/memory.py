@@ -27,5 +27,11 @@ class MemoryConfig:
         self.skill_top_k = get_int_env("TARS_SKILL_TOP_K", 3)
         self.skill_min_score = get_float_env("TARS_SKILL_MIN_SCORE", 0.3)
 
+        # v4.4.0 垂直模式：周边降级开关（默认关，需要时设 env=true 打开）
+        self.compressor_enabled = get_bool_env("TARS_MEMORY_COMPRESSOR", False)
+        self.kb_promotion_enabled = get_bool_env("TARS_KB_PROMOTION", False)
+        self.tree_builder_enabled = get_bool_env("TARS_MEMORY_TREE_BUILDER", False)
+        self.turn_publisher_enabled = get_bool_env("TARS_TURN_PUBLISHER", False)
+
 
 config = MemoryConfig()

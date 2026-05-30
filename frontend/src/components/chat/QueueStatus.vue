@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import { useWsStore } from '@/stores/wsStore'
 import { useI18n } from '@/i18n'
 
@@ -54,10 +55,7 @@ onUnmounted(() => {
     v-if="isQueued"
     class="flex items-center gap-2 px-4 py-2 mx-4 mb-2 rounded-lg bg-amber-500/10 border border-amber-300/20 text-amber-100 text-sm"
   >
-    <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3" />
-      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-    </svg>
+    <BaseIcon icon="lucide:loader-circle" :size="20" class="animate-spin" />
     <span>{{
       queueMessage ||
       (pendingCount > 0

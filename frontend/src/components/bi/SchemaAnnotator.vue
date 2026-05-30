@@ -2,7 +2,7 @@
   <div class="schema-annotator">
     <div class="annotator-header">
       <h3>{{ datasource?.name ? t('schemaAnnotator.title', { name: datasource.name }) : t('schemaAnnotator.titleFallback') }}</h3>
-      <button class="btn-icon" @click="$emit('close')">✕</button>
+      <button class="btn-icon" @click="$emit('close')"><BaseIcon icon="lucide:x" :size="16" /></button>
     </div>
 
     <div v-if="!tables.length" class="empty">{{ t('schemaAnnotator.empty') }}</div>
@@ -10,9 +10,9 @@
     <div v-else class="tables-list">
       <div v-for="tableName in tables" :key="tableName" class="table-section">
         <div class="table-header" @click="toggleTable(tableName)">
-          <span class="toggle-icon">{{ expandedTables[tableName] ? '▼' : '▶' }}</span>
+          <span class="toggle-icon"><BaseIcon :icon="expandedTables[tableName] ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" /></span>
           <span class="table-name">{{ tableName }}</span>
-          <span v-if="getTableAnnotation(tableName)?.description" class="has-annotation">✓</span>
+          <span v-if="getTableAnnotation(tableName)?.description" class="has-annotation"><BaseIcon icon="lucide:check" :size="12" class="text-emerald-400" /></span>
         </div>
 
         <div v-show="expandedTables[tableName]" class="table-content">
@@ -68,6 +68,7 @@ import { biApi } from '@/api'
 import type { DataSource } from '@/types'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 interface Props {
   datasource: DataSource | null

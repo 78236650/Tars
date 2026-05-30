@@ -174,6 +174,17 @@ const router = createRouter({
         desktopSubtitleKey: 'desktop.knowledge.subtitle',
       }
     },
+    {
+      path: '/orchestration',
+      name: 'orchestration',
+      component: () => import('@/views/OrchestrationView.vue'),
+      meta: {
+        requiresAuth: true,
+        module: 'orchestration',
+        desktopTitleKey: 'desktop.orchestration.title',
+        desktopSubtitleKey: 'desktop.orchestration.subtitle',
+      }
+    },
   ]
 })
 

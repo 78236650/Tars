@@ -50,11 +50,11 @@
 
     <!-- Legend -->
     <div class="flex flex-wrap gap-3 mt-3">
-      <div v-for="(color, ci) in colorMap.slice(1)" :key="ci"
+      <div v-for="(color, cn) in colorEntries" :key="cn"
            class="flex items-center gap-1.5 text-xs">
         <span class="w-3 h-3 rounded-sm" :style="{ backgroundColor: color }"></span>
-        <span class="text-stone-300">{{ legendLabels[ci] }}</span>
-        <span class="text-stone-500">×{{ countByComponent[ci + 1] || 0 }}</span>
+        <span class="text-stone-300">{{ legendLabels[(cn as number) - 1] }}</span>
+        <span class="text-stone-500">×{{ countByComponent[cn as number] || 0 }}</span>
       </div>
     </div>
 
@@ -95,13 +95,14 @@ const bypassCount = computed(() =>
 const labels = ['叶1', '叶2', '叶3', '塔1', '塔2', '机舱']
 const legendLabels = ['叶片1', '叶片2', '叶片3', '塔筒1', '塔筒2', '机舱']
 const colorMap: Record<number, string> = {
-  1: '#22c55e',  // 叶片1 绿
-  2: '#16a34a',  // 叶片2 深绿
-  3: '#15803d',  // 叶片3 墨绿
-  4: '#f59e0b',  // 塔筒1 琥珀
-  5: '#d97706',  // 塔筒2 橙
-  6: '#ef4444',  // 机舱 红
+  1: '#22c55e',
+  2: '#16a34a',
+  3: '#15803d',
+  4: '#f59e0b',
+  5: '#d97706',
+  6: '#ef4444',
 }
+const colorEntries = Object.entries(colorMap)
 
 const strokeColor = (cn: number) => colorMap[cn] || '#666'
 const countByComponent = computed(() => {

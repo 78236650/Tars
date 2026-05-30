@@ -21,14 +21,14 @@
               :disabled="testingId === ds.id"
               @click="testConnection(ds.id)"
             >
-              {{ testingId === ds.id ? '…' : '🔌' }}
+              {{ testingId === ds.id ? '…' : '' }}<BaseIcon v-if="testingId !== ds.id" icon="lucide:plug" :size="14" />
             </button>
             <button
               class="btn-icon"
               :title="t('bi.editConnection')"
               @click="openEditModal(ds)"
             >
-              ⚙️
+              <BaseIcon icon="lucide:settings" :size="14" />
             </button>
             <button
               class="btn-icon"
@@ -36,7 +36,7 @@
               :disabled="refreshingId === ds.id"
               @click="refreshSchema(ds.id)"
             >
-              {{ refreshingId === ds.id ? '…' : '🔄' }}
+              {{ refreshingId === ds.id ? '…' : '' }}<BaseIcon v-if="refreshingId !== ds.id" icon="lucide:refresh-cw" :size="14" />
             </button>
             <button
               class="btn-insight"
@@ -49,8 +49,8 @@
             <button class="btn-insight btn-insight-outline" :title="t('insight.title')" @click="openInsightWorkbench(ds.id)">
               {{ t('insight.viewWorkbench') }}
             </button>
-            <button class="btn-icon" :title="t('bi.editAnnotations')" @click="editAnnotations(ds)">📝</button>
-            <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteDataSource(ds.id)">🗑️</button>
+            <button class="btn-icon" :title="t('bi.editAnnotations')" @click="editAnnotations(ds)"><BaseIcon icon="lucide:pencil" :size="14" /></button>
+            <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteDataSource(ds.id)"><BaseIcon icon="lucide:trash-2" :size="14" /></button>
           </div>
         </div>
         <div class="card-body">
@@ -158,6 +158,7 @@ import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import SchemaAnnotator from './SchemaAnnotator.vue'
 import ConnectionFields from './ConnectionFields.vue'
 import { emptyConnectionForm, type ConnectionFormState } from './connectionForm'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const emit = defineEmits<{
   created: [id: string]

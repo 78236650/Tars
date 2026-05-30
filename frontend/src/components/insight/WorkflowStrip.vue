@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import { insightApi, type InsightWorkflowState } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 const props = defineProps<{
   datasourceId: string
@@ -154,15 +155,7 @@ watch(
         :title="collapsed ? t('insight.workflow.expand') : t('insight.workflow.collapse')"
         @click="collapsed = !collapsed"
       >
-        <svg
-          class="strip-toggle-icon"
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          aria-hidden="true"
-        >
-          <path fill="currentColor" d="M4 6l4 4 4-4" />
-        </svg>
+        <BaseIcon class="strip-toggle-icon" icon="lucide:chevron-down" :size="16" />
       </button>
 
       <div v-if="!collapsed" class="strip-main">

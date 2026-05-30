@@ -1,7 +1,7 @@
 <template>
   <div class="transcription-detail">
     <div v-if="!transcription" class="empty-state">
-      <span class="icon">🎙️</span>
+      <BaseIcon icon="lucide:mic" :size="48" class="icon" />
       <p>{{ t('meeting.selectToView') }}</p>
     </div>
 
@@ -37,7 +37,7 @@
 
       <!-- 原音频播放 -->
       <div v-if="transcription.has_audio || audioUrl || audioLoading" class="section audio-section">
-        <h3 class="section-title">🔊 {{ t('meeting.originalAudio') }}</h3>
+        <h3 class="section-title"><BaseIcon icon="lucide:volume-2" :size="16" /> {{ t('meeting.originalAudio') }}</h3>
         <p v-if="audioLoading" class="audio-hint">{{ t('meeting.audioLoading') }}</p>
         <audio
           v-else-if="audioUrl"
@@ -55,7 +55,7 @@
         <div class="summary-card">
           <div class="summary-card-header">
             <div>
-              <h3 class="section-title">📋 {{ t('meeting.summaryTitle') }}</h3>
+              <h3 class="section-title"><BaseIcon icon="lucide:clipboard" :size="16" /> {{ t('meeting.summaryTitle') }}</h3>
               <p class="summary-source-hint">{{ t('meeting.summarySource') }}</p>
             </div>
             <div class="summary-header-actions">
@@ -64,9 +64,9 @@
                 class="edit-btn"
                 @click="startEdit"
               >
-                ✏️ {{ t('meeting.editSummary') }}
+                <BaseIcon icon="lucide:pencil" :size="14" /> {{ t('meeting.editSummary') }}
               </button>
-              <span v-if="transcription.approved_at" class="approved-badge">✅ {{ t('meeting.approved') }}</span>
+              <span v-if="transcription.approved_at" class="approved-badge"><BaseIcon icon="lucide:check-circle" :size="16" class="text-emerald-400" /> {{ t('meeting.approved') }}</span>
             </div>
           </div>
 
@@ -101,7 +101,7 @@
         v-if="showStandaloneKeyPoints || editing"
         class="section key-points-section"
       >
-        <h3 class="section-title">🎯 {{ t('meeting.keyPointsTitle') }}</h3>
+        <h3 class="section-title"><BaseIcon icon="lucide:target" :size="16" /> {{ t('meeting.keyPointsTitle') }}</h3>
         <textarea v-if="editing" v-model="editKeyPoints" class="edit-textarea" rows="4" :placeholder="t('meeting.keyPointsPlaceholder')"></textarea>
         <ul v-else class="key-points">
           <li v-for="(point, i) in transcription.key_points" :key="i">{{ point }}</li>
@@ -117,17 +117,18 @@
       <!-- 确认入库按钮 / 成功状态 -->
       <div v-if="transcription.summary && !editing" class="approve-section">
         <div v-if="transcription.approved_at || approveSuccess" class="approve-done">
-          ✅ {{ t('meeting.approveDone') }}
+          <BaseIcon icon="lucide:check-circle" :size="16" class="text-emerald-400" /> {{ t('meeting.approveDone') }}
         </div>
         <button v-else class="action-btn approve" @click="approveToKnowledge" :disabled="approving">
-          {{ approving ? t('meeting.approving') : `📥 ${t('meeting.approveToKnowledge')}` }}
+          <template v-if="approving">{{ t('meeting.approving') }}</template>
+          <template v-else><BaseIcon icon="lucide:download" :size="14" /> {{ t('meeting.approveToKnowledge') }}</template>
         </button>
       </div>
 
       <!-- 转写文本 -->
       <div v-if="transcription.transcript" class="section transcript-section">
         <button type="button" class="transcript-toggle" @click="showTranscript = !showTranscript">
-          <span>📝 {{ t('meeting.transcriptTitle') }}</span>
+          <span><BaseIcon icon="lucide:file-text" :size="14" /> {{ t('meeting.transcriptTitle') }}</span>
           <span class="transcript-toggle-hint">{{ showTranscript ? t('meeting.hideTranscript') : t('meeting.showTranscript') }}</span>
         </button>
         <div v-show="showTranscript" class="transcript-text">{{ transcription.transcript }}</div>
@@ -153,6 +154,7 @@ import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
 import { renderMarkdown } from '@/utils/markdown'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import {
   extractSummarySections,
   normalizeMeetingSummary,

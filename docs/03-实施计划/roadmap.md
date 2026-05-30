@@ -257,6 +257,25 @@ gantt
 - ✅ 聊天顶栏精简、Ctrl/⌘+Enter 发送、回复复制
 - ✅ 记住要点：`extract-from-turn` / `save-from-turn` + RememberMemoryDialog
 
+### v4.4.0 "Port Operations & Agent Orchestration" (✅ MVP 完成 — 分支 `ui/v4.3.4`)
+**发布日期:** 2026-05-30（功能完成；OpenAPI tag 待发 `v4.4.0`）
+
+**目标:** 港航垂直记忆 + 多 Agent 作业调度 MVP（A0 调度 + A1 泊位 + A3 堆场 + A4 船务）
+
+- ✅ Phase 0–3：垂直模式开关、港航实体 schema、编排记忆 3 表、OrchestrationMemory、MultiAgentOrchestrator
+- ✅ Phase B–E：港航 SubAgent、规则拆解、串并行执行、泊位冲突告警
+- ✅ API：`GET/POST /api/orchestration/*`；模块 `orchestration` in `modules.yaml`
+- ✅ 前端：`/orchestration` 作业调度（快捷场景 / 引导填写 / 自由描述）
+- ✅ 角色：`orchestration` 模块权限同步至内置角色
+- 📋 v4.5：岸桥/货代/报表 Agent、LLM 拆解、TOS/EDI、聊天触发
+
+**文档：**
+- [v4.4.0 发布说明](../01-项目概览/v4.4.0-release-notes.md)
+- [作业调度用户指南](../04-运维文档/port-operations-user-guide.md)
+- [记忆+编排设计](../superpowers/plans/2026-05-30-portlogistics-agent-memory-design.md)
+- [Agent 集群设计](../superpowers/plans/2026-05-30-port-agent-fleet-design.md)
+- [智慧港口愿景](../superpowers/specs/2026-05-30-smart-port-agent-design.md)
+
 ### v4.3.2 Platform Patch (✅ 完成 — 分支 `v4.3.2`)
 **发布日期:** 2026-05-25（Wiki 文档对齐 2026-05-26）
 
@@ -356,6 +375,6 @@ gantt
 
 ---
 
-*文档版本: v1.15（对齐 TARS v4.3.2）*
+*文档版本: v1.17（对齐 TARS v4.4.0 MVP + v4.3.4 stable）*
 *创建日期: 2026-05-05*
 *更新日期: 2026-05-26*

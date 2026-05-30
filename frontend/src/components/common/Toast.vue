@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 
 interface ToastMessage {
   id: number
@@ -40,9 +41,9 @@ defineExpose({ show, success, error, info })
             'bg-blue-600 text-white': toast.type === 'info'
           }"
         >
-          <span v-if="toast.type === 'success'" class="text-lg">✓</span>
-          <span v-else-if="toast.type === 'error'" class="text-lg">✕</span>
-          <span v-else class="text-lg">ℹ</span>
+          <BaseIcon v-if="toast.type === 'success'" icon="lucide:check-circle" :size="20" />
+          <BaseIcon v-else-if="toast.type === 'error'" icon="lucide:x-circle" :size="20" />
+          <BaseIcon v-else icon="lucide:info" :size="20" />
           <span class="text-sm">{{ toast.message }}</span>
         </div>
       </TransitionGroup>

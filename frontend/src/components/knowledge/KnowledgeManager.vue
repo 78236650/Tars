@@ -15,9 +15,9 @@
             <span v-if="coll.description" class="coll-desc">{{ coll.description }}</span>
           </div>
           <div class="coll-actions">
-            <button class="btn-icon" :title="t('knowledge.reindex')" @click="reindexCollection(coll.id)">♻️</button>
-            <button class="btn-icon" :title="t('knowledge.searchTest')" @click="openSearch(coll)">🔍</button>
-            <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteCollection(coll.id)">🗑️</button>
+            <button class="btn-icon" :title="t('knowledge.reindex')" @click="reindexCollection(coll.id)"><BaseIcon icon="lucide:refresh-cw" :size="14" /></button>
+            <button class="btn-icon" :title="t('knowledge.searchTest')" @click="openSearch(coll)"><BaseIcon icon="lucide:search" :size="14" /></button>
+            <button class="btn-icon btn-danger" :title="t('common.delete')" @click="deleteCollection(coll.id)"><BaseIcon icon="lucide:trash-2" :size="14" /></button>
           </div>
         </div>
         <div class="card-body">
@@ -35,7 +35,7 @@
               @click="openDocumentDetail(coll.id, doc)"
             >
               <div class="doc-main">
-                <span class="doc-name">📄 {{ doc.file_name }}</span>
+                <span class="doc-name"><BaseIcon icon="lucide:file" :size="14" /> {{ doc.file_name }}</span>
                 <span v-if="doc.one_liner" class="doc-oneliner">{{ doc.one_liner }}</span>
                 <div class="doc-tags">
                   <span v-if="doc.doc_type" class="doc-type-tag">{{ t(`knowledge.docType.${doc.doc_type || 'generic'}`) }}</span>
@@ -43,7 +43,7 @@
                 </div>
               </div>
               <span class="doc-meta">{{ t('knowledge.documentMeta', { count: doc.chunk_count, status: doc.status }) }}</span>
-              <button class="btn-icon-small" @click.stop="deleteDocument(coll.id, doc.id)">✕</button>
+              <button class="btn-icon-small" @click.stop="deleteDocument(coll.id, doc.id)"><BaseIcon icon="lucide:x" :size="14" /></button>
             </div>
           </div>
         </div>
@@ -109,7 +109,7 @@
         <div v-if="browseResults.length > 0" class="search-group">
           <h4>{{ t('knowledge.searchGroupDocs') }}</h4>
           <div v-for="(r, idx) in browseResults" :key="'b'+idx" class="result-item browse">
-            <div class="result-source">📄 {{ r.source.file_name }} · {{ r.chunk_type || r.metadata?.chunk_type || 'summary' }}</div>
+            <div class="result-source"><BaseIcon icon="lucide:file" :size="14" /> {{ r.source.file_name }} · {{ r.chunk_type || r.metadata?.chunk_type || 'summary' }}</div>
             <div v-if="r.citation?.one_liner" class="result-oneliner">{{ r.citation.one_liner }}</div>
             <div class="result-text">{{ r.text }}</div>
             <div class="result-score">{{ t('knowledge.similarity', { score: (r.score * 100).toFixed(1) }) }}</div>
@@ -150,6 +150,7 @@ import type { KnowledgeCollection, KnowledgeDocument, KnowledgeSearchResult } fr
 import { useI18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import { getErrorDetail } from '@/utils/errorExtractor'
+import BaseIcon from '@/components/common/BaseIcon.vue'
 import AppSurfaceDialog from '@/components/common/AppSurfaceDialog.vue'
 import AppSurfaceDrawer from '@/components/common/AppSurfaceDrawer.vue'
 import DocumentUploader from './DocumentUploader.vue'

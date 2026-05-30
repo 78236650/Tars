@@ -1,4 +1,5 @@
 <script setup lang="ts">import { ref, computed } from 'vue';
+import BaseIcon from '@/components/common/BaseIcon.vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from '@/i18n';
 const settingsStore = useSettingsStore();
@@ -50,9 +51,7 @@ loadParams();
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-xl font-semibold text-white">{{ t('personalitySettings.title') }}</h2>
         <div v-if="showSuccess" class="flex items-center gap-2 px-4 py-2 bg-green-900/50 text-green-400 rounded-lg">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-          </svg>
+          <BaseIcon icon="lucide:check" :size="16" />
           <span class="text-sm">{{ t('personalitySettings.saved') }}</span>
         </div>
       </div>
@@ -112,9 +111,7 @@ loadParams();
               @click="behaviorRules.splice(index, 1)"
               class="p-2 text-red-400 hover:bg-red-900/50 rounded-lg transition-colors"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
+              <BaseIcon icon="lucide:x" :size="16" />
             </button>
           </div>
           <button
