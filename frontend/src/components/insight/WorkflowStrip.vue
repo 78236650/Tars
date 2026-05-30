@@ -63,10 +63,9 @@ const hintText = computed(() => {
 async function refreshWorkflow() {
   if (!props.datasourceId) return
   try {
-    workflow.value = (await insightApi.getWorkflow(
-      props.datasourceId,
-      props.sessionId
-    )) as InsightWorkflowState
+    workflow.value = (await insightApi.getWorkflow(props.datasourceId, {
+      sessionId: props.sessionId,
+    })) as InsightWorkflowState
   } catch {
     workflow.value = null
   }

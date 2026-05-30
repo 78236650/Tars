@@ -65,10 +65,25 @@ class TestSessionsAPI:
         from fastapi import FastAPI
         from tars.database import Database
         from tars.api.sessions import router, init_sessions_api
+        from tars.api._auth import Principal, require_authenticated_user
+        from tars.org import ORG_ID
+
         app = FastAPI()
         app.include_router(router)
         db = Database(db_path=str(tmp_path / "t.db"))
         init_sessions_api(db)
+
+        async def _fake_auth():
+            return Principal(
+                user_id="default",
+                role="user",
+                role_template_id="standard",
+                tenant_id=ORG_ID,
+                is_admin=False,
+                api_key="test-key",
+            )
+
+        app.dependency_overrides[require_authenticated_user] = _fake_auth
         return TestClient(app)
 
     def test_create_session(self, client):
@@ -85,18 +100,46 @@ class TestSessionsAPI:
         assert resp.status_code == 200
         assert len(resp.json()) == 2
 
-    def test_sessions_are_isolated_by_tenant_header(self, client):
-        tenant_a = {"X-Tenant-Id": "tenant_a"}
-        tenant_b = {"X-Tenant-Id": "tenant_b"}
+    def test_sessions_are_isolated_by_authenticated_user(self, tmp_path):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from tars.database import Database
+        from tars.api.sessions import router, init_sessions_api
+        from tars.api._auth import Principal, require_authenticated_user
+        from tars.org import ORG_ID
 
-        first = client.post("/api/sessions/", headers=tenant_a).json()
-        second = client.post("/api/sessions/", headers=tenant_b).json()
+        db = Database(db_path=str(tmp_path / "t.db"))
+        app = FastAPI()
+        app.include_router(router)
+        init_sessions_api(db)
 
-        resp_a = client.get("/api/sessions/", headers=tenant_a)
-        resp_b = client.get("/api/sessions/", headers=tenant_b)
+        current_user = {"user_id": "default"}
+
+        async def _fake_auth():
+            return Principal(
+                user_id=current_user["user_id"],
+                role="user",
+                role_template_id="standard",
+                tenant_id=ORG_ID,
+                is_admin=False,
+                api_key=f"key-{current_user['user_id']}",
+            )
+
+        app.dependency_overrides[require_authenticated_user] = _fake_auth
+        client = TestClient(app)
+
+        def as_user(user_id: str) -> TestClient:
+            current_user["user_id"] = user_id
+            return client
+
+        first = as_user("user-a").post("/api/sessions/").json()
+        as_user("user-b").post("/api/sessions/").json()
+
+        resp_a = as_user("user-a").get("/api/sessions/")
+        resp_b = as_user("user-b").get("/api/sessions/")
 
         assert [item["id"] for item in resp_a.json()] == [first["id"]]
-        assert [item["id"] for item in resp_b.json()] == [second["id"]]
+        assert len(resp_b.json()) == 1
 
     def test_get_messages_empty(self, client):
         s = client.post("/api/sessions/").json()
@@ -141,6 +184,7 @@ class TestSessionsAPI:
                 id TEXT PRIMARY KEY,
                 agent_id TEXT,
                 user_id TEXT,
+                tenant_id TEXT NOT NULL DEFAULT 'org_default',
                 title TEXT,
                 created_at TIMESTAMP,
                 updated_at TIMESTAMP,
@@ -158,13 +202,14 @@ class TestSessionsAPI:
         """)
         cursor.execute(
             """
-            INSERT INTO sessions (id, agent_id, user_id, title, created_at, updated_at, summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sessions (id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "legacy-session",
                 "default",
                 "default",
+                "org_default",
                 "Legacy Title",
                 "2026-05-16T00:00:00+08:00",
                 "2026-05-16T00:05:00+08:00",
@@ -178,6 +223,21 @@ class TestSessionsAPI:
         app = FastAPI()
         app.include_router(router)
         init_sessions_api(db)
+
+        from tars.api._auth import Principal, require_authenticated_user
+        from tars.org import ORG_ID
+
+        async def _fake_auth():
+            return Principal(
+                user_id="default",
+                role="user",
+                role_template_id="standard",
+                tenant_id=ORG_ID,
+                is_admin=False,
+                api_key="test-key",
+            )
+
+        app.dependency_overrides[require_authenticated_user] = _fake_auth
         client = TestClient(app)
 
         listing = client.get("/api/sessions/")

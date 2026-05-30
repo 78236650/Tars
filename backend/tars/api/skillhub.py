@@ -1,11 +1,12 @@
 """TARS API - SkillHub 商店路由"""
 import json
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..security.audit import safe_audit, client_ip_from_request
+from ._auth import Principal, require_authenticated_user
 
 router = APIRouter(prefix="/api/skillhub", tags=["SkillHub 商店"])
 
@@ -207,18 +208,16 @@ async def get_skill_detail(skill_id: str):
 async def install_skill(
     request: InstallRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
-    x_api_key: Optional[str] = Header(default=None),
+    principal: Principal = Depends(require_authenticated_user),
 ):
-    """安装技能（默认安装到当前 tenant，global 需 admin）"""
+    """安装技能（默认安装到当前用户，global 需 admin）"""
     if not _installer:
         raise HTTPException(status_code=503, detail="SkillHub 未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    scope_key = principal.user_id
     scope = request.scope
     if scope == "global":
-        role = _resolve_user_role(x_api_key, tenant_id)
-        if role != "admin":
+        if not principal.is_admin:
             raise HTTPException(status_code=403, detail="仅管理员可安装全局技能")
 
     result = await _installer.install(
@@ -226,15 +225,15 @@ async def install_skill(
         confirm_permissions=request.confirm_permissions,
         skip_dependency_check=request.skip_dependency_check,
         scope=scope,
-        tenant_id=tenant_id,
+        tenant_id=scope_key,
     )
     if result.get("success"):
         safe_audit(
             lambda lg: lg.log_skill_event(
                 action="skill_install",
                 skill_id=request.skill_id,
-                tenant_id=tenant_id,
-                user_id=tenant_id,
+                tenant_id=scope_key,
+                user_id=principal.user_id,
                 client_ip=client_ip_from_request(http_request),
             )
         )
@@ -248,21 +247,21 @@ async def install_skill(
 async def uninstall_skill(
     request: UninstallRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """卸载技能"""
     if not _installer:
         raise HTTPException(status_code=503, detail="SkillHub 未初始化")
 
-    result = _installer.uninstall(request.skill_id, tenant_id=x_tenant_id or "default")
+    scope_key = principal.user_id
+    result = _installer.uninstall(request.skill_id, tenant_id=scope_key)
     if result.get("success"):
-        tenant_id = x_tenant_id or "default"
         safe_audit(
             lambda lg: lg.log_skill_event(
                 action="skill_uninstall",
                 skill_id=request.skill_id,
-                tenant_id=tenant_id,
-                user_id=tenant_id,
+                tenant_id=scope_key,
+                user_id=principal.user_id,
                 client_ip=client_ip_from_request(http_request),
             )
         )
@@ -271,14 +270,14 @@ async def uninstall_skill(
 
 
 @router.get("/installed")
-async def list_installed(x_tenant_id: Optional[str] = Header(default="default")):
-    """列出已安装的 SkillHub 技能（当前 tenant 可见）"""
+async def list_installed(principal: Principal = Depends(require_authenticated_user)):
+    """列出已安装的 SkillHub 技能（当前用户可见）"""
     if not _installer:
         return {"skills": [], "count": 0}
 
-    tenant_id = x_tenant_id or "default"
-    installed = _installer.list_installed(tenant_id)
-    return {"success": True, "skills": installed, "count": len(installed), "tenant_id": tenant_id}
+    scope_key = principal.user_id
+    installed = _installer.list_installed(scope_key)
+    return {"success": True, "skills": installed, "count": len(installed), "user_id": scope_key}
 
 
 def _resolve_user_role(api_key: Optional[str], tenant_id: str) -> str:

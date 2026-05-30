@@ -1,9 +1,10 @@
 """混合搜索 — 语义 + FTS 关键词 + Ebbinghaus 衰减 + 命中强化"""
-from typing import List
+from typing import List, Optional
 
 from .deduplicator import cosine_similarity
 from .embeddings import EmbeddingProvider, deserialize_vector
 from .decay import decay_score, hours_since
+from ..vectorstore.scope import memory_visibility_filter
 
 
 def _semantic_skip_reason(exc: BaseException) -> str:
@@ -100,13 +101,24 @@ class HybridSearch:
 
         return results
 
+    def _resolve_viewer_user_id(self, user_id: Optional[str] = None) -> Optional[str]:
+        if user_id is not None:
+            return user_id
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return None
+
     def _chroma_semantic_score(self, query: str, scored: dict):
         """使用 Chroma 向量数据库进行语义搜索"""
+        viewer_id = self._resolve_viewer_user_id()
         chroma_results = self.vector_store.query(
             query_text=query,
             top_k=20,  # 召回更多，后续排序取 top
             tenant_id=self.tenant_id,
             collection_name="memories",
+            filter_dict=memory_visibility_filter(viewer_id),
         )
 
         for item in chroma_results:

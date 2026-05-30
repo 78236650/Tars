@@ -1,9 +1,10 @@
 """TARS API - 技能管理路由"""
-from fastapi import APIRouter, HTTPException, UploadFile, File, Header
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..skills import skill_registry, SkillType
+from ._auth import Principal, require_authenticated_user
 
 router = APIRouter(prefix="/api/skills", tags=["技能管理"])
 
@@ -27,14 +28,14 @@ class CreatePromptSkillRequest(BaseModel):
 
 
 @router.get("/")
-async def list_skills(x_tenant_id: Optional[str] = Header(default="default")):
-    """列出当前 tenant 可见的已安装技能"""
-    tenant_id = x_tenant_id or "default"
-    skills = skill_registry.list_for_tenant(tenant_id)
+async def list_skills(principal: Principal = Depends(require_authenticated_user)):
+    """列出当前用户可见的已安装技能（per-user skill scope key）。"""
+    scope_key = principal.user_id
+    skills = skill_registry.list_for_tenant(scope_key)
     return {
         "skills": [s.to_dict() for s in skills],
         "total": len(skills),
-        "tenant_id": tenant_id,
+        "user_id": scope_key,
     }
 
 
@@ -97,10 +98,12 @@ async def activate_skill(skill_id: str):
 
 
 @router.get("/{skill_id}")
-async def get_skill(skill_id: str, x_tenant_id: Optional[str] = Header(default="default")):
+async def get_skill(
+    skill_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     """获取技能详情"""
-    tenant_id = x_tenant_id or "default"
-    skill = skill_registry.get(skill_id, tenant_id)
+    skill = skill_registry.get(skill_id, principal.user_id)
     if not skill:
         raise HTTPException(status_code=404, detail=f"技能 '{skill_id}' 不存在")
     return {"success": True, "skill": skill.to_dict()}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..database import Database
@@ -14,6 +14,8 @@ from ..memory.core_memory import BLOCK_NAMES
 from ..memory.manager import MemoryManager
 from ..memory.tree_builder import EntityTreeBuilder
 from ..security.audit import safe_audit, client_ip_from_request
+from ..context import get_current_user_id, set_request_context
+from ..org import ORG_ID
 from ._auth import Principal, require_authenticated_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -48,8 +50,12 @@ def _resolve_provider(manager: MemoryManager):
     return None
 
 
-def _manager_with_provider(tenant_id: Optional[str]) -> MemoryManager:
-    manager = _tenant_manager(tenant_id)
+def _org_manager() -> MemoryManager:
+    return _require_manager().for_tenant(ORG_ID)
+
+
+def _manager_with_provider() -> MemoryManager:
+    manager = _org_manager()
     provider = _resolve_provider(manager)
     if provider and not manager.provider:
         manager.set_provider(provider)
@@ -68,37 +74,46 @@ def _require_manager() -> MemoryManager:
     return _memory_manager
 
 
-def _tenant_manager(tenant_id: Optional[str]) -> MemoryManager:
-    return _require_manager().for_tenant((tenant_id or "default").strip() or "default")
-
-
 def _require_compressor() -> MemoryCompressor:
     if _compressor is None:
         raise HTTPException(status_code=500, detail="Memory compressor not initialized")
     return _compressor
 
 
-def _tenant_compressor(tenant_id: Optional[str]) -> MemoryCompressor:
+def _org_compressor() -> MemoryCompressor:
     base = _require_compressor()
-    scoped_tenant = (tenant_id or "default").strip() or "default"
-    return MemoryCompressor(base.db, provider=base.provider, tenant_id=scoped_tenant)
+    return MemoryCompressor(base.db, provider=base.provider, tenant_id=ORG_ID)
 
 
 def _audit_memory_write(
     action: str,
     memory_id: str,
-    tenant_id: str,
+    principal: Principal,
     http_request: Optional[Request] = None,
 ):
     safe_audit(
         lambda lg: lg.log_memory_access(
             memory_id=memory_id,
             action=action,
-            tenant_id=tenant_id,
-            user_id=tenant_id,
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
             client_ip=client_ip_from_request(http_request),
         )
     )
+
+
+def _viewer_user_id() -> str:
+    """Authenticated user for per-user private memory visibility."""
+    return get_current_user_id()
+
+
+def _apply_admin_view_user(principal: Principal, user_id: str) -> None:
+    """Admin may pass user_id to view another user's tree/core; sets context for repo."""
+    target = (user_id or "").strip() or principal.user_id
+    if target != principal.user_id and not principal.is_admin:
+        raise HTTPException(status_code=403, detail="无权查看其他用户记忆")
+    if target != get_current_user_id():
+        set_request_context(target, ORG_ID)
 
 
 def _memory_to_dict(memory) -> Dict[str, Any]:
@@ -167,10 +182,9 @@ class PromoteToKnowledgeRequest(BaseModel):
 
 
 @router.get("/stats")
-def get_memory_stats(x_tenant_id: Optional[str] = Header(default="default")):
+def get_memory_stats(principal: Principal = Depends(require_authenticated_user)):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    stats = db.get_memory_stats(tenant_id=tenant_id)
+    stats = db.get_memory_stats(tenant_id=ORG_ID)
     if config.compressor_enabled:
         compressor = _require_compressor()
         status = compressor.status()
@@ -179,9 +193,9 @@ def get_memory_stats(x_tenant_id: Optional[str] = Header(default="default")):
 
 
 @router.get("/core")
-def get_core_memory(x_tenant_id: Optional[str] = Header(default="default")):
-    manager = _tenant_manager(x_tenant_id)
-    return {"blocks": manager.core.get_all(), "tenant_id": manager.tenant_id}
+def get_core_memory(principal: Principal = Depends(require_authenticated_user)):
+    manager = _org_manager()
+    return {"blocks": manager.core.get_all(), "tenant_id": ORG_ID, "user_id": principal.user_id}
 
 
 @router.put("/core/{block}")
@@ -189,9 +203,9 @@ def update_core_memory(
     block: str,
     payload: UpdateCoreBlockRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
-    manager = _tenant_manager(x_tenant_id)
+    manager = _org_manager()
     if block not in BLOCK_NAMES:
         raise HTTPException(status_code=400, detail="invalid core memory block")
     manager.core.set(block, payload.content)
@@ -206,7 +220,8 @@ def update_core_memory(
         "success": True,
         "block": block,
         "content": payload.content,
-        "tenant_id": manager.tenant_id,
+        "tenant_id": ORG_ID,
+        "user_id": principal.user_id,
     }
 
 
@@ -215,11 +230,12 @@ def get_recent_memories(
     page: int = 1,
     q: str = "",
     cat: str = "",
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    items, total = db.list_recent_memories(page=page, query=q, category=cat, tenant_id=tenant_id)
+    items, total = db.list_recent_memories(
+        page=page, query=q, category=cat, tenant_id=ORG_ID, user_id=_viewer_user_id()
+    )
     return {
         "items": [_memory_to_dict(item) for item in items],
         "page": page,
@@ -232,11 +248,12 @@ def get_recent_memories(
 def get_longterm_memories(
     page: int = 1,
     group_by: str = "entity",
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    memories, total = db.list_longterm_memories(tenant_id=tenant_id, page=page, page_size=20)
+    memories, total = db.list_longterm_memories(
+        tenant_id=ORG_ID, page=page, page_size=20, user_id=_viewer_user_id()
+    )
 
     groups: Dict[str, List[Dict[str, Any]]] = {}
     for memory in memories:
@@ -261,16 +278,16 @@ def get_all_memories(
     q: str = "",
     cat: str = "",
     memory_type: str = "",
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
     items, total = db.list_all_memories(
         page=page,
         query=q,
         category=cat,
         memory_type=memory_type,
-        tenant_id=tenant_id,
+        tenant_id=ORG_ID,
+        user_id=_viewer_user_id(),
     )
     return {
         "items": [_memory_to_dict(item) for item in items],
@@ -289,10 +306,10 @@ def get_compress_status():
 
 
 @router.post("/compress")
-async def run_manual_compress(x_tenant_id: Optional[str] = Header(default="default")):
+async def run_manual_compress(principal: Principal = Depends(require_authenticated_user)):
     if not config.compressor_enabled:
         raise HTTPException(status_code=403, detail="Memory compressor disabled in vertical mode")
-    compressor = _tenant_compressor(x_tenant_id)
+    compressor = _org_compressor()
     report = await compressor.compress_all()
     _require_compressor()._status = compressor._status
     return report
@@ -301,11 +318,11 @@ async def run_manual_compress(x_tenant_id: Optional[str] = Header(default="defau
 @router.post("/merge")
 async def merge_memories(
     payload: MergeRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     if not config.compressor_enabled:
         raise HTTPException(status_code=403, detail="Memory compressor disabled in vertical mode")
-    compressor = _tenant_compressor(x_tenant_id)
+    compressor = _org_compressor()
     try:
         return await compressor.merge_memories(payload.memory_ids, preview_only=payload.preview_only)
     except ValueError as exc:
@@ -315,9 +332,9 @@ async def merge_memories(
 @router.post("/extract-from-turn")
 async def extract_memories_from_turn(
     payload: ExtractTurnRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
-    manager = _manager_with_provider(x_tenant_id)
+    manager = _manager_with_provider()
     items = await manager.extract_turn_memories(payload.user_content, payload.assistant_content)
     return {"items": items}
 
@@ -327,10 +344,9 @@ async def save_memories_from_turn(
     payload: SaveTurnMemoriesRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
-    manager = _manager_with_provider(x_tenant_id)
-    tenant_id = x_tenant_id or "default"
+    manager = _manager_with_provider()
     allowed = {"fact", "preference", "decision", "domain_knowledge"}
     for item in payload.items:
         if item.category not in allowed:
@@ -343,7 +359,7 @@ async def save_memories_from_turn(
         promotion_group_id=payload.promotion_group_id,
     )
     for memory in result["saved"]:
-        _audit_memory_write("write", memory.id, tenant_id, http_request)
+        _audit_memory_write("write", memory.id, principal, http_request)
 
     group_id = result.get("promotion_group_id")
     if (
@@ -352,7 +368,7 @@ async def save_memories_from_turn(
         and not payload.publish_to_knowledge
         and result.get("saved")
     ):
-        background_tasks.add_task(_background_kb_promotion_check, tenant_id, group_id)
+        background_tasks.add_task(_background_kb_promotion_check, group_id)
 
     return {
         "saved": [_memory_to_dict(memory) for memory in result["saved"]],
@@ -363,12 +379,12 @@ async def save_memories_from_turn(
     }
 
 
-async def _background_kb_promotion_check(tenant_id: str, group_id: str) -> None:
+async def _background_kb_promotion_check(group_id: str) -> None:
     """保存后后台阈值检查（非 cron）。"""
     if not config.kb_promotion_enabled:
         return
     try:
-        manager = _manager_with_provider(tenant_id)
+        manager = _manager_with_provider()
         from ..memory.kb_promotion import maybe_auto_promote_group
 
         doc_id = await maybe_auto_promote_group(manager, group_id)
@@ -381,12 +397,12 @@ async def _background_kb_promotion_check(tenant_id: str, group_id: str) -> None:
 @router.post("/promote-to-knowledge")
 async def promote_memories_to_knowledge(
     payload: PromoteToKnowledgeRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """手动将 pending 记忆组合成一篇知识库文档。"""
     if not config.kb_promotion_enabled:
         raise HTTPException(status_code=403, detail="KB promotion disabled in vertical mode")
-    manager = _manager_with_provider(x_tenant_id)
+    manager = _manager_with_provider()
     from ..memory.kb_promotion import default_promotion_group_id, promote_group_to_kb
 
     group_id = payload.promotion_group_id or default_promotion_group_id(manager.tenant_id)
@@ -405,13 +421,6 @@ async def promote_memories_to_knowledge(
     }
 
 
-def _resolve_tree_tenant(principal: Principal, user_id: str) -> str:
-    """Admin can view any tenant via user_id param; non-admin always uses own tenant."""
-    if user_id and user_id.strip():
-        if not principal.is_admin:
-            raise HTTPException(status_code=403, detail="无权查看其他租户记忆树")
-        return user_id.strip()
-    return principal.tenant_id
 
 
 @router.get("/tree")
@@ -427,8 +436,8 @@ def get_memory_tree(
         raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     if view not in ("entity", "provenance"):
         raise HTTPException(status_code=400, detail="unsupported view")
-    tenant_id = _resolve_tree_tenant(principal, user_id)
-    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id, max_per_bucket=max_per_bucket)
+    _apply_admin_view_user(principal, user_id)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=ORG_ID, max_per_bucket=max_per_bucket)
     if view == "provenance":
         return builder.build_provenance()
     return builder.build(include_core=include_core, include_orphan=include_orphan)
@@ -446,8 +455,8 @@ def search_memory_tree(
         raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     if view not in ("entity", "provenance"):
         raise HTTPException(status_code=400, detail="unsupported view")
-    tenant_id = _resolve_tree_tenant(principal, user_id)
-    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
+    _apply_admin_view_user(principal, user_id)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=ORG_ID)
     return builder.search(q, limit=min(max(limit, 1), 50), view=view)
 
 
@@ -459,8 +468,8 @@ def get_memory_tree_graph(
 ):
     if not config.tree_builder_enabled:
         raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
-    tenant_id = _resolve_tree_tenant(principal, user_id)
-    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
+    _apply_admin_view_user(principal, user_id)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=ORG_ID)
     return builder.build_graph(max_edges=min(max(max_edges, 1), 2000))
 
 
@@ -474,8 +483,8 @@ def get_memory_tree_relations(
         raise HTTPException(status_code=403, detail="Memory tree builder disabled in vertical mode")
     if not entity_id.strip():
         raise HTTPException(status_code=400, detail="entity_id required")
-    tenant_id = _resolve_tree_tenant(principal, user_id)
-    builder = EntityTreeBuilder(_require_db(), tenant_id=tenant_id)
+    _apply_admin_view_user(principal, user_id)
+    builder = EntityTreeBuilder(_require_db(), tenant_id=ORG_ID)
     return builder.get_relations(entity_id.strip())
 
 
@@ -484,16 +493,16 @@ async def export_memories(
     user_id: str = "",
     principal: Principal = Depends(require_authenticated_user),
 ):
-    """Export memories for a tenant/user as JSON (admin or own tenant)."""
+    """Export org memories as JSON (admin may pass user_id for future filtering)."""
     db = _require_db()
-    requested = (user_id or principal.tenant_id or "default").strip()
-    if not principal.is_admin and requested != principal.tenant_id:
-        raise HTTPException(status_code=403, detail="无权导出其他租户记忆")
-    tenant_id = requested
+    requested = (user_id or principal.user_id).strip()
+    if not principal.is_admin and requested != principal.user_id:
+        raise HTTPException(status_code=403, detail="无权导出其他用户记忆")
 
-    items, total = db.list_all_memories(page=1, page_size=5000, tenant_id=tenant_id)
+    items, total = db.list_all_memories(page=1, page_size=5000, tenant_id=ORG_ID)
     return {
-        "tenant_id": tenant_id,
+        "org_id": ORG_ID,
+        "user_id": requested,
         "total": total,
         "memories": [
             {
@@ -510,9 +519,12 @@ async def export_memories(
 
 
 @router.get("/{memory_id}")
-def get_memory_detail(memory_id: str, x_tenant_id: Optional[str] = Header(default="default")):
+def get_memory_detail(
+    memory_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     db = _require_db()
-    memory = db.get_memory(memory_id, tenant_id=x_tenant_id or "default")
+    memory = db.get_memory(memory_id, tenant_id=ORG_ID, user_id=_viewer_user_id())
     if memory is None:
         raise HTTPException(status_code=404, detail="memory not found")
     return _memory_to_dict(memory)
@@ -523,15 +535,16 @@ def update_memory(
     memory_id: str,
     payload: UpdateMemoryRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    ok = db.update_memory(memory_id, payload.content, tenant_id=tenant_id)
+    if db.get_memory(memory_id, tenant_id=ORG_ID, user_id=_viewer_user_id()) is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    ok = db.update_memory(memory_id, payload.content, tenant_id=ORG_ID)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
-    _audit_memory_write("write", memory_id, tenant_id, http_request)
-    memory = db.get_memory(memory_id, tenant_id=tenant_id)
+    _audit_memory_write("write", memory_id, principal, http_request)
+    memory = db.get_memory(memory_id, tenant_id=ORG_ID, user_id=_viewer_user_id())
     return _memory_to_dict(memory)
 
 
@@ -539,21 +552,28 @@ def update_memory(
 def delete_memory(
     memory_id: str,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    ok = db.delete_memory(memory_id, tenant_id=tenant_id)
+    if db.get_memory(memory_id, tenant_id=ORG_ID, user_id=_viewer_user_id()) is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    ok = db.delete_memory(memory_id, tenant_id=ORG_ID)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
-    _audit_memory_write("delete", memory_id, tenant_id, http_request)
+    _audit_memory_write("delete", memory_id, principal, http_request)
     return {"success": True}
 
 
 @router.post("/{memory_id}/pin")
-def pin_memory(memory_id: str, payload: PinRequest, x_tenant_id: Optional[str] = Header(default="default")):
+def pin_memory(
+    memory_id: str,
+    payload: PinRequest,
+    principal: Principal = Depends(require_authenticated_user),
+):
     db = _require_db()
-    ok = db.set_memory_pin(memory_id, payload.pinned, tenant_id=x_tenant_id or "default")
+    if db.get_memory(memory_id, tenant_id=ORG_ID, user_id=_viewer_user_id()) is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+    ok = db.set_memory_pin(memory_id, payload.pinned, tenant_id=ORG_ID)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
     return {"success": True, "pinned": payload.pinned}
@@ -563,14 +583,15 @@ def pin_memory(memory_id: str, payload: PinRequest, x_tenant_id: Optional[str] =
 def promote_memory(
     memory_id: str,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    memory = db.promote_memory(memory_id, tenant_id=tenant_id)
+    memory = db.promote_memory(
+        memory_id, tenant_id=ORG_ID, user_id=_viewer_user_id()
+    )
     if memory is None:
         raise HTTPException(status_code=404, detail="memory not found")
-    _audit_memory_write("promote", memory_id, tenant_id, http_request)
+    _audit_memory_write("promote", memory_id, principal, http_request)
     return _memory_to_dict(memory)
 
 
@@ -583,16 +604,14 @@ def update_memory_scope(
     memory_id: str,
     payload: ScopeUpdateRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
     principal: Principal = Depends(require_authenticated_user),
 ):
     """Update memory scope (admin only)."""
     if not principal.is_admin:
         raise HTTPException(status_code=403, detail="仅管理员可修改记忆 scope")
     db = _require_db()
-    tenant_id = x_tenant_id or "default"
-    ok = db.set_memory_scope(memory_id, payload.scope, tenant_id=tenant_id)
+    ok = db.set_memory_scope(memory_id, payload.scope, tenant_id=ORG_ID)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
-    _audit_memory_write("scope", memory_id, tenant_id, http_request)
+    _audit_memory_write("scope", memory_id, principal, http_request)
     return {"success": True, "memory_id": memory_id, "scope": payload.scope}

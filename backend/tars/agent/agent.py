@@ -169,7 +169,10 @@ class AgentV2:
         request_context: Optional[Dict[str, Any]] = None,
     ):
         """处理用户消息 - 使用 ToolDispatcher，支持文件附件和斜杠命令"""
-        tenant_id = tenant_context.tenant_id if tenant_context else "default"
+        from ..org import ORG_ID
+
+        tenant_id = ORG_ID
+        user_id = (request_context or {}).get("user_id", "default")
         turn_tool_results: List[Dict[str, Any]] = []
         turn_subagent: Optional[str] = None
         scoped_memory_manager = tenant_context.memory_manager if tenant_context else self.memory_manager
@@ -189,7 +192,13 @@ class AgentV2:
                 })
                 return
         except Exception:
-            pass  # 安全模块不可用时静默放行
+            await channel.send(session_id, {
+                "type": "warning",
+                "session_id": session_id,
+                "message": "安全检测暂不可用，输入已拒绝。",
+                "timestamp": now_iso(),
+            })
+            return
 
         # 0. 拦截斜杠命令
         cmd_result = self.command_parser.execute(user_content)
@@ -205,7 +214,7 @@ class AgentV2:
 
             # 处理 action
             if cmd_result.action == "new_session":
-                new_session = self.db.create_session(tenant_id=tenant_id)
+                new_session = self.db.create_session(tenant_id=tenant_id, user_id=user_id)
                 new_sid = new_session.id
                 session_id = new_sid
                 await channel.send(session_id, {
@@ -359,9 +368,9 @@ class AgentV2:
         })
 
         # 1. 获取或创建会话
-        session = self.db.get_session(session_id, tenant_id=tenant_id)
+        session = self.db.get_session(session_id, tenant_id=tenant_id, user_id=user_id)
         if not session:
-            session = self.db.create_session(tenant_id=tenant_id)
+            session = self.db.create_session(tenant_id=tenant_id, user_id=user_id)
             session_id = session.id
 
         # 2. 保存用户消息

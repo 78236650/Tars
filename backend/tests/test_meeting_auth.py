@@ -14,7 +14,9 @@ def _unique(prefix: str) -> str:
 @pytest.fixture
 def app_client():
     from tars import main as tars_main
+    from tars.api._auth import init_auth
 
+    init_auth(tars_main.user_store, tars_main.auth_token_store)
     client = TestClient(tars_main.app)
     return client, tars_main.user_store
 
@@ -44,10 +46,7 @@ def test_meeting_history_with_user_key(app_client, alice_key):
     client, _ = app_client
     _skip_if_disabled(client)
     api_key, user_id = alice_key
-    r = client.get(
-        "/api/meeting/history",
-        headers={"X-API-Key": api_key, "X-Tenant-ID": user_id},
-    )
+    r = client.get("/api/meeting/history", headers={"X-API-Key": api_key})
     assert r.status_code == 200, r.text
     assert r.json()["success"] is True
 
@@ -82,11 +81,5 @@ def test_meeting_ws_with_api_key(app_client, alice_key):
     client, _ = app_client
     _skip_if_disabled(client)
     api_key, _ = alice_key
-    with client.websocket_connect(
-        "/api/meeting/ws/record",
-        headers={"X-API-Key": api_key},
-    ) as ws:
-        assert ws is not None
-
     with client.websocket_connect(f"/api/meeting/ws/record?api_key={api_key}") as ws:
         assert ws is not None

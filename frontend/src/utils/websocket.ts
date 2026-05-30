@@ -1,35 +1,41 @@
+import { ACCESS_TOKEN_STORAGE_KEY } from '@/stores/auth'
+
 /**
  * WebSocket 入口：开发环境走 Vite 同源 `/ws` 代理，避免写死 localhost
  *（用局域网 IP 打开前端时，ws://localhost:8000 会连到错误主机）。
  * 生产 / vite preview 未配置代理时，设置 VITE_WS_URL（如 ws://127.0.0.1:8000/ws）。
  */
-export function resolveWebSocketUrl(): string {
-  // v4.0.2: 拼接 tenant_id 实现多租户 WebSocket 隔离
-  let tenantId = 'default'
-  const userJson = localStorage.getItem('auth_user')
-  if (userJson) {
-    try {
-      const user = JSON.parse(userJson)
-      if (user?.id) tenantId = user.id
-    } catch {}
+function buildAuthQuery(): string {
+  const accessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+  if (accessToken) {
+    return `?token=${encodeURIComponent(accessToken)}`
   }
-
   const apiKey = localStorage.getItem('apiKey') || ''
-  const query = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''
+  return apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''
+}
+
+export function resolveWebSocketUrl(): string {
+  const query = buildAuthQuery()
 
   const fromEnv = import.meta.env.VITE_WS_URL as string | undefined
   if (fromEnv?.trim()) {
-    return `${fromEnv.trim()}/${tenantId}${query}`
+    const base = fromEnv.trim().replace(/\/+$/, '')
+    return `${base}${query}`
   }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${window.location.host}/ws/${tenantId}${query}`
+  return `${proto}//${window.location.host}/ws${query}`
 }
 
-/** 会议助手实时录音 WebSocket（浏览器无法带 Header，使用 api_key query）。 */
+/** 会议助手实时录音 WebSocket（浏览器无法带 Header，使用 token 或 api_key query）。 */
 export function resolveMeetingWebSocketUrl(options?: { language?: string }): string {
   const params = new URLSearchParams()
-  const apiKey = localStorage.getItem('apiKey') || ''
-  if (apiKey) params.set('api_key', apiKey)
+  const accessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+  if (accessToken) {
+    params.set('token', accessToken)
+  } else {
+    const apiKey = localStorage.getItem('apiKey') || ''
+    if (apiKey) params.set('api_key', apiKey)
+  }
   const lang = options?.language ?? localStorage.getItem('meeting_asr_language') ?? ''
   if (lang && lang !== 'auto') params.set('language', lang)
   const query = params.toString() ? `?${params.toString()}` : ''

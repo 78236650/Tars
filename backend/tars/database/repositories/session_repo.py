@@ -11,6 +11,7 @@ from tars.database.models import (
     ReminderNotification, Transcription, AuditLog, ApprovalRequest,
 )
 from tars.database.connection import ConnectionManager
+from tars.org import ORG_ID
 
 
 class SessionRepo:
@@ -19,6 +20,16 @@ class SessionRepo:
     def __init__(self, cm: ConnectionManager):
         self._cm = cm
 
+    @staticmethod
+    def _resolve_user_id(user_id: Optional[str] = None) -> str:
+        if user_id is not None:
+            return user_id
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return "default"
+
     def _get_conn(self):
         return self._cm.get_conn()
 
@@ -26,7 +37,7 @@ class SessionRepo:
         self,
         user_id: str = "default",
         title: str = "New Session",
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
     ) -> Session:
         session_id = str(uuid.uuid4())
         now = get_local_now()
@@ -51,7 +62,13 @@ class SessionRepo:
             updated_at=now,
         )
 
-    def get_session(self, session_id: str, tenant_id: str = "default") -> Optional[Session]:
+    def get_session(
+        self,
+        session_id: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> Optional[Session]:
+        resolved_user_id = self._resolve_user_id(user_id)
         conn = self._get_conn()
         cursor = conn.cursor()
         cols = {r[1] for r in cursor.execute("PRAGMA table_info(sessions)").fetchall()}
@@ -60,18 +77,18 @@ class SessionRepo:
                 """
                 SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary, metadata_json
                 FROM sessions
-                WHERE id = ? AND tenant_id = ?
+                WHERE id = ? AND tenant_id = ? AND user_id = ?
                 """,
-                (session_id, tenant_id),
+                (session_id, tenant_id, resolved_user_id),
             )
         else:
             cursor.execute(
                 """
                 SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary
                 FROM sessions
-                WHERE id = ? AND tenant_id = ?
+                WHERE id = ? AND tenant_id = ? AND user_id = ?
                 """,
-                (session_id, tenant_id),
+                (session_id, tenant_id, resolved_user_id),
             )
         row = cursor.fetchone()
 
@@ -95,24 +112,40 @@ class SessionRepo:
             )
         return None
 
-    def get_session_metadata(self, session_id: str, tenant_id: str = "default") -> dict:
-        session = self.get_session(session_id, tenant_id)
+    def get_session_metadata(
+        self,
+        session_id: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> dict:
+        session = self.get_session(session_id, tenant_id, user_id=user_id)
         if not session:
             return {}
         return dict(session.metadata_json or {})
 
     def set_session_metadata(
-        self, session_id: str, tenant_id: str, metadata: dict
+        self,
+        session_id: str,
+        tenant_id: str,
+        metadata: dict,
+        user_id: Optional[str] = None,
     ) -> None:
+        resolved_user_id = self._resolve_user_id(user_id)
         conn = self._get_conn()
         cursor = conn.cursor()
         now = get_local_now()
         cursor.execute(
             """
             UPDATE sessions SET metadata_json = ?, updated_at = ?
-            WHERE id = ? AND tenant_id = ?
+            WHERE id = ? AND tenant_id = ? AND user_id = ?
             """,
-            (json.dumps(metadata or {}, ensure_ascii=False), now, session_id, tenant_id),
+            (
+                json.dumps(metadata or {}, ensure_ascii=False),
+                now,
+                session_id,
+                tenant_id,
+                resolved_user_id,
+            ),
         )
         conn.commit()
 
@@ -157,10 +190,11 @@ class SessionRepo:
 
     def list_sessions(
         self,
-        user_id: str = "default",
-        tenant_id: str = "default",
+        user_id: Optional[str] = None,
+        tenant_id: str = ORG_ID,
         limit: int = 50,
     ) -> List[Session]:
+        resolved_user_id = self._resolve_user_id(user_id)
         """按 updated_at 倒序返回会话列表"""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -172,7 +206,7 @@ class SessionRepo:
             ORDER BY updated_at DESC
             LIMIT ?
             """,
-            (user_id, tenant_id, limit),
+            (resolved_user_id, tenant_id, limit),
         )
         sessions = []
         for row in cursor.fetchall():
@@ -188,29 +222,54 @@ class SessionRepo:
             ))
         return sessions
 
-    def delete_session(self, session_id: str, tenant_id: str = "default") -> bool:
+    def delete_session(
+        self,
+        session_id: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """删除会话及关联消息"""
+        resolved_user_id = self._resolve_user_id(user_id)
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM sessions WHERE id = ? AND tenant_id = ?", (session_id, tenant_id))
+        cursor.execute(
+            "SELECT id FROM sessions WHERE id = ? AND tenant_id = ? AND user_id = ?",
+            (session_id, tenant_id, resolved_user_id),
+        )
         if not cursor.fetchone():
             return False
         cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-        cursor.execute("DELETE FROM sessions WHERE id = ? AND tenant_id = ?", (session_id, tenant_id))
+        cursor.execute(
+            "DELETE FROM sessions WHERE id = ? AND tenant_id = ? AND user_id = ?",
+            (session_id, tenant_id, resolved_user_id),
+        )
         conn.commit()
         return True
 
-    def update_session_title(self, session_id: str, title: str, tenant_id: str = "default") -> bool:
+    def update_session_title(
+        self,
+        session_id: str,
+        title: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """更新会话标题"""
+        resolved_user_id = self._resolve_user_id(user_id)
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM sessions WHERE id = ? AND tenant_id = ?", (session_id, tenant_id))
+        cursor.execute(
+            "SELECT id FROM sessions WHERE id = ? AND tenant_id = ? AND user_id = ?",
+            (session_id, tenant_id, resolved_user_id),
+        )
         if not cursor.fetchone():
             return False
         now = get_local_now()
         cursor.execute(
-            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
-            (title, now, session_id, tenant_id),
+            """
+            UPDATE sessions SET title = ?, updated_at = ?
+            WHERE id = ? AND tenant_id = ? AND user_id = ?
+            """,
+            (title, now, session_id, tenant_id, resolved_user_id),
         )
         conn.commit()
         return True

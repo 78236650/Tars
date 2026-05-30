@@ -9,11 +9,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def _build_store(tmp_path, monkeypatch, db_name="auth.db"):
     from tars.database import Database, UserStore
+    from tars.database.auth_token_store import AuthTokenStore
     import tars.main as main
 
     test_db = Database(db_path=str(tmp_path / db_name))
     test_store = UserStore(test_db)
+    test_tokens = AuthTokenStore(test_db)
     monkeypatch.setattr(main, "user_store", test_store)
+    monkeypatch.setattr(main, "auth_token_store", test_tokens)
+    monkeypatch.setenv("TARS_JWT_SECRET", "test-jwt-secret-for-login-api-tests")
     return main, test_db, test_store
 
 

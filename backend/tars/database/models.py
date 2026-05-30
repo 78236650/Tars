@@ -56,6 +56,7 @@ class Memory:
     event_time: Optional[datetime] = None
     entity_refs: Optional[List[str]] = None
     scope: str = "private"
+    user_id: Optional[str] = None
     promotion_group_id: Optional[str] = None
     kb_doc_id: Optional[str] = None
     kb_promotion_status: Optional[str] = None  # pending | published | skipped

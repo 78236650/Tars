@@ -16,6 +16,10 @@ from tars.api.knowledge import init_knowledge_api, router as knowledge_router
 from tars.database import Database
 from tars.knowledge.indexer import KnowledgeIndexer
 from tars.knowledge.models import DocProfile, ParsedDocument
+from tars.org import ORG_ID
+from tars.knowledge.schema import ensure_knowledge_schema
+
+from tests.conftest import setup_knowledge_auth
 
 
 class _FakeEmbedding:
@@ -26,26 +30,28 @@ class _FakeEmbedding:
 @pytest.fixture
 def knowledge_client(tmp_path):
     db = Database(str(tmp_path / "kb.db"))
+    ensure_knowledge_schema(db)
     conn = db._get_conn()
     cur = conn.cursor()
     coll_id = "coll-1"
     cur.execute(
         "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?)",
-        (coll_id, "default", "test", "", "2026-05-24", "2026-05-24"),
+        (coll_id, ORG_ID, "test", "", "2026-05-24", "2026-05-24"),
     )
     conn.commit()
 
     app = FastAPI()
     app.include_router(knowledge_router)
     init_knowledge_api(db, vector_store=None, embedding_provider=_FakeEmbedding())
+    auth_headers, _user = setup_knowledge_auth(db)
 
     with TestClient(app) as client:
-        yield client, db, coll_id, tmp_path
+        yield client, db, coll_id, tmp_path, auth_headers
 
 
 def test_get_profile_not_found_returns_minimal(knowledge_client):
-    client, db, coll_id, _ = knowledge_client
+    client, db, coll_id, _, _headers = knowledge_client
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -62,7 +68,7 @@ def test_get_profile_not_found_returns_minimal(knowledge_client):
 
 
 def test_profile_crud_via_store(knowledge_client):
-    client, db, coll_id, _ = knowledge_client
+    client, db, coll_id, _, _headers = knowledge_client
     from tars.knowledge.profile_store import get_profile, save_profile
 
     conn = db._get_conn()
@@ -82,7 +88,7 @@ def test_profile_crud_via_store(knowledge_client):
         summary="摘要内容",
         key_points=["要点A"],
     )
-    save_profile(db, profile, tenant_id="default", collection_id=coll_id)
+    save_profile(db, profile, tenant_id=ORG_ID, collection_id=coll_id)
 
     resp = client.get(f"/api/knowledge/collections/{coll_id}/documents/d1/profile")
     assert resp.status_code == 200
@@ -95,7 +101,7 @@ def test_profile_crud_via_store(knowledge_client):
 
 @pytest.mark.asyncio
 async def test_async_ingest_reaches_ready(knowledge_client):
-    client, db, coll_id, tmp_path = knowledge_client
+    client, db, coll_id, tmp_path, _headers = knowledge_client
     from tars.api import knowledge as knowledge_api
 
     uploads = tmp_path / "uploads"
@@ -131,7 +137,7 @@ async def test_async_ingest_reaches_ready(knowledge_client):
             doc_id=doc_id,
             file_path=file_path,
             collection_id=coll_id,
-            tenant_id="default",
+            tenant_id=ORG_ID,
             doc_type="policy",
         )
 
@@ -148,7 +154,7 @@ async def test_async_ingest_reaches_ready(knowledge_client):
 
 
 def test_document_status_endpoint(knowledge_client):
-    client, db, coll_id, _ = knowledge_client
+    client, db, coll_id, _, _headers = knowledge_client
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute(

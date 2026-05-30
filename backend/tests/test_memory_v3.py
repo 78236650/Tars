@@ -123,14 +123,15 @@ class TestCoreMemoryTools:
     async def test_append_tool(self, tmp_path):
         from tars.database import Database
         from tars.memory.core_memory import CoreMemoryManager, CoreMemoryAppendTool
+        from tars.org import ORG_ID
         db = Database(db_path=str(tmp_path / "t.db"))
-        cm = CoreMemoryManager(db, tenant_id="tenant-a")
+        cm = CoreMemoryManager(db, tenant_id=ORG_ID)
         cm.set("user_profile", "")
         tool = CoreMemoryAppendTool(db)
         result = await tool.execute(
             block="user_profile",
             content="用户使用 Mac M1",
-            tenant_id="tenant-a",
+            tenant_id=ORG_ID,
         )
         assert result.success is True
         assert "Mac M1" in cm.get("user_profile")
@@ -139,6 +140,7 @@ class TestCoreMemoryTools:
     async def test_replace_tool(self, tmp_path):
         from tars.database import Database
         from tars.memory.core_memory import CoreMemoryManager, CoreMemoryReplaceTool
+        from tars.org import ORG_ID
         db = Database(db_path=str(tmp_path / "t.db"))
         cm = CoreMemoryManager(db)
         cm.set("user_profile", "用户使用 Python")
@@ -147,7 +149,7 @@ class TestCoreMemoryTools:
             block="user_profile",
             old="Python",
             new="Go",
-            tenant_id="default",
+            tenant_id=ORG_ID,
         )
         assert result.success is True
         assert "Go" in cm.get("user_profile")

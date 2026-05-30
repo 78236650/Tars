@@ -1,14 +1,29 @@
-# TARS AI Agent v4.3.4（稳定版）
+# TARS AI Agent v5.0.0
 
-面向内网多用户的 **AI Agent 平台**：多租户、技能生态、知识库 + **Wiki**、记忆图谱、BI / 鉴数（InsightForge）、会议助手、Admin 与审计。
+面向港航企业内网的 **AI Agent 平台**：**单组织多用户协作**（组织共享池 + 个人会话私有）、JWT、Postgres、技能生态、知识库 + **Wiki**、记忆图谱、BI / 鉴数（InsightForge）、会议助手、港航作业调度、Admin 与审计。
 
 | 项 | 值 |
 |----|-----|
-| **当前稳定版** | **v4.3.4** |
-| **Git 分支 / Tag** | `v4.3.4`（建议打 tag `v4.3.4-stable`） |
-| **OpenAPI** | `4.3.4`（`/docs`） |
+| **当前稳定版** | **v5.0.0** |
+| **Git Tag** | `v5.0.0`（建议） |
+| **OpenAPI** | `5.0.0`（`/docs`） |
 | **InsightForge** | `INS-2.1.0`（`GET /api/insight/version`） |
 | **版本真相源** | [docs/01-项目概览/VERSION.md](docs/01-项目概览/VERSION.md) |
+| **发布说明** | [v5.0.0-release-notes.md](docs/01-项目概览/v5.0.0-release-notes.md) |
+| **升级指南** | [UPGRADE_GUIDE_v5.0.0.md](docs/UPGRADE_GUIDE_v5.0.0.md)（从 v4.x） |
+
+---
+
+## v5.0.0 核心变更
+
+- **多用户协作** — 全员共享 `org_default` 组织池（shared 记忆、知识库、实体图谱）；会话与 private 数据按用户隔离
+- **JWT 登录** — 浏览器 Bearer + WebSocket token；API Key 保留脚本/集成
+- **PostgreSQL** — 生产 `DATABASE_URL`；Docker Compose 自带 Postgres；开发仍可用 SQLite
+- **并发** — 单 worker（`--workers 1`）；多 worker 推迟 v5.1+
+
+---
+
+## v4.3.4 能力基线（仍包含）
 
 ---
 

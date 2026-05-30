@@ -1,10 +1,48 @@
 import pytest
 import tempfile
 import os
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from tars.models.base import LLMProvider
 from tars.database.base import Database
+
+
+def setup_main_api_auth(db, *, role=None):
+    """Wire UserStore + init_auth for main.app TestClient calls."""
+    from tars.api._auth import init_auth
+    from tars.database import UserStore
+    from tars.gateway.permission import UserRole
+    import tars.main as main
+
+    store = UserStore(db)
+    suffix = uuid.uuid4().hex[:8]
+    user_role = role or UserRole.USER
+    user = store.create_user(
+        username=f"api_{suffix}",
+        email=f"api_{suffix}@test.local",
+        role=user_role,
+    )
+    main.user_store = store
+    init_auth(store)
+    return {"X-API-Key": user.api_key}, user
+
+
+def setup_knowledge_auth(db):
+    """Wire auth store and return (headers, user) for mutating knowledge routes."""
+    from tars.api._auth import init_auth
+    from tars.database import UserStore
+    from tars.gateway.permission import UserRole
+
+    store = UserStore(db)
+    suffix = uuid.uuid4().hex[:8]
+    user = store.create_user(
+        username=f"kb_{suffix}",
+        email=f"kb_{suffix}@test.local",
+        role=UserRole.USER,
+    )
+    init_auth(store)
+    return {"X-API-Key": user.api_key}, user
 
 
 class MockLLMProvider(LLMProvider):

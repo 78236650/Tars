@@ -2,6 +2,40 @@
 
 > 版本真相源：[VERSION.md](./VERSION.md)
 
+## v5.0.0 「多用户协作 + 并发底座」(2026-05-30)
+
+> 📄 [v5.0.0 发布说明](./v5.0.0-release-notes.md) · [升级指南](../UPGRADE_GUIDE_v5.0.0.md) · 设计：[multiuser-design.md](../superpowers/plans/2026-05-30-tars-v5.0.0-multiuser-design.md)
+
+**架构级 major**：单组织多用户（非 SaaS 多租户）+ Postgres 主库 + JWT。
+
+### Phase 1 — 身份与上下文
+- ✅ **`ORG_ID`**（`org_default`）— 废弃 `user_id == tenant_id` 数据岛
+- ✅ **JWT** — `jwt_auth.py`、`auth_tokens`（jti 吊销）；登录返回 `access_token`
+- ✅ **Principal** — `api/_auth.py` Bearer / API Key；取消 `X-Tenant-Id` impersonate
+- ✅ **contextvars** — `UserContextMiddleware` 全请求传播 `user_id`
+- ✅ **前端** — Bearer + WebSocket `?token=`（保留 `api_key` 集成）
+
+### Phase 2 — 组织池
+- ✅ **记忆** — `memories.user_id`；`scope=shared` 全员可见 / `private` 按用户
+- ✅ **Chroma** — `memories_org_default` + metadata 过滤
+- ✅ **知识库** — org 级 `document_collections`；移除 API `x_tenant_id` 双轨
+- ✅ **会话 / core_memory** — 按 `user_id` 隔离
+- ✅ **迁移脚本** — `migrate_memories_v5_org.py`、`migrate_knowledge_v5_org.py`、`migrate_chroma_memories_v5_org.py`
+
+### Phase 3 — Postgres
+- ✅ **驱动层** — `database/driver.py`；`DATABASE_URL` 选 sqlite | postgres
+- ✅ **PG Schema** — `connection_pg.py`（无 FTS5 虚表）
+- ✅ **记忆检索** — PG `to_tsvector` / `ILIKE` 兜底
+- ✅ **迁移** — `migrate_sqlite_to_pg.py`
+- ✅ **部署** — compose `postgres:16`；**workers=1**（方案 A）
+
+### 明确留 v5.1+
+- 📋 声明式 workflow（G3）、港航 Agent 真工具（V1）
+- 📋 多 uvicorn worker + Redis/PG 跨进程状态（T3.5）
+- 📋 SSO / 组织级用量看板
+
+---
+
 ## v4.5.0 「进出港计划 + Agent/OR 协同」(2026-05-30 — 功能完成)
 
 > 📄 Spec: [vessel-plan-or-design.md](../superpowers/specs/2026-05-30-vessel-plan-or-design.md) · 计划: [vessel-plan-or-plan.md](../superpowers/plans/2026-05-30-vessel-plan-or-plan.md)

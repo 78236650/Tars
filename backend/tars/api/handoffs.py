@@ -4,6 +4,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from ._auth import Principal, require_authenticated_user
+from .scope import org_scope
 
 router = APIRouter(prefix="/api/handoffs", tags=["handoffs"])
 
@@ -39,7 +40,7 @@ async def accept_handoff(
         "accept",
         outbound=_outbound,
         connection_manager=_connection_manager,
-        tenant_id=principal.tenant_id,
+        tenant_id=org_scope(principal),
     )
     if not ok:
         raise HTTPException(status_code=409, detail="Handoff 无法接受")
@@ -60,7 +61,7 @@ async def reject_handoff(
         "reject",
         outbound=_outbound,
         connection_manager=_connection_manager,
-        tenant_id=principal.tenant_id,
+        tenant_id=org_scope(principal),
     )
     if not ok:
         raise HTTPException(status_code=409, detail="Handoff 无法拒绝")

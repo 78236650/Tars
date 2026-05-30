@@ -12,7 +12,14 @@ from tars.database.models import (
     ReminderNotification, Transcription, AuditLog, ApprovalRequest,
 )
 from tars.database.connection import ConnectionManager
-from tars.database.sql_dialect import fulltext_match_clause
+from tars.database.sql_dialect import fulltext_match_clause, placeholder
+from tars.org import ORG_ID
+
+_MEMORY_SELECT = """
+    id, tenant_id, content, category, importance, created_at, updated_at,
+    last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope,
+    promotion_group_id, kb_doc_id, kb_promotion_status, user_id
+"""
 
 
 class MemoryRepo:
@@ -21,8 +28,39 @@ class MemoryRepo:
     def __init__(self, cm: ConnectionManager):
         self._cm = cm
 
+    @staticmethod
+    def _resolve_viewer_user_id(user_id: Optional[str] = None) -> Optional[str]:
+        if user_id is not None:
+            return user_id
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return None
+
+    @staticmethod
+    def _resolve_writer_user_id(user_id: Optional[str], scope: str) -> Optional[str]:
+        if scope == "shared":
+            return None
+        if user_id is not None:
+            return user_id
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return None
+
+    def _visibility_clause(self, user_id: Optional[str] = None) -> Tuple[str, List[Any]]:
+        viewer = self._resolve_viewer_user_id(user_id)
+        if viewer is None:
+            return "tenant_id = ? AND (scope = 'shared' OR user_id IS NULL)", [ORG_ID]
+        return "tenant_id = ? AND (scope = 'shared' OR user_id = ?)", [ORG_ID, viewer]
+
     def _get_conn(self):
         return self._cm.get_conn()
+
+    def _fts_enabled(self) -> bool:
+        return self._cm.dialect == "sqlite"
 
     def add_memory(
         self,
@@ -36,8 +74,9 @@ class MemoryRepo:
         memory_type: str = "episodic",
         event_time: Optional[str] = None,
         entity_refs: Optional[List[str]] = None,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         scope: str = "private",
+        user_id: Optional[str] = None,
     ) -> Memory:
         memory_id = str(uuid.uuid4())
         now = get_local_now()
@@ -46,6 +85,8 @@ class MemoryRepo:
         compressed_from_json = (
             json.dumps(compressed_from, ensure_ascii=False) if compressed_from is not None else None
         )
+        resolved_tenant_id = tenant_id or ORG_ID
+        resolved_user_id = self._resolve_writer_user_id(user_id, scope)
 
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -53,15 +94,16 @@ class MemoryRepo:
             """
             INSERT INTO memories
             (
-                id, tenant_id, content, category, importance, created_at, updated_at,
+                id, tenant_id, user_id, content, category, importance, created_at, updated_at,
                 last_accessed, embedding, access_count, source, event_time, entity_refs,
                 pinned, compressed_from, memory_type, scope
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 memory_id,
-                tenant_id,
+                resolved_tenant_id,
+                resolved_user_id,
                 content,
                 category,
                 importance,
@@ -80,10 +122,11 @@ class MemoryRepo:
             ),
         )
 
-        cursor.execute(
-            "INSERT INTO memories_fts(rowid, content, category) VALUES (last_insert_rowid(), ?, ?)",
-            (content, category)
-        )
+        if self._fts_enabled():
+            cursor.execute(
+                "INSERT INTO memories_fts(rowid, content, category) VALUES (last_insert_rowid(), ?, ?)",
+                (content, category),
+            )
 
         conn.commit()
 
@@ -91,7 +134,8 @@ class MemoryRepo:
             id=memory_id,
             content=content,
             category=category,
-            tenant_id=tenant_id,
+            tenant_id=resolved_tenant_id,
+            user_id=resolved_user_id,
             importance=importance,
             created_at=now,
             updated_at=now,
@@ -128,23 +172,33 @@ class MemoryRepo:
             promotion_group_id=row[15] if len(row) > 15 else None,
             kb_doc_id=row[16] if len(row) > 16 else None,
             kb_promotion_status=row[17] if len(row) > 17 else None,
+            user_id=row[18] if len(row) > 18 else None,
         )
 
-    def get_memory(self, memory_id: str, tenant_id: str = "default") -> Optional[Memory]:
+    def get_memory(
+        self,
+        memory_id: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> Optional[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
-            SELECT
-                id, tenant_id, content, category, importance, created_at, updated_at,
-                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope,
-                promotion_group_id, kb_doc_id, kb_promotion_status
+            f"""
+            SELECT {_MEMORY_SELECT}
             FROM memories
             WHERE id = ? AND tenant_id = ?
             """,
-            (memory_id, tenant_id),
+            (memory_id, tenant_id or ORG_ID),
         )
-        return self._memory_from_row(cursor.fetchone())
+        memory = self._memory_from_row(cursor.fetchone())
+        if memory is None:
+            return None
+        if memory.scope == "private":
+            viewer = self._resolve_viewer_user_id(user_id)
+            if memory.user_id != viewer:
+                return None
+        return memory
 
     @staticmethod
     def _has_cjk(text: str) -> bool:
@@ -158,70 +212,142 @@ class MemoryRepo:
                 return True
         return False
 
-    def search_memories(self, query: str, limit: int = 5, tenant_id: str = "default") -> List[Memory]:
+    def _like_op(self) -> str:
+        return "ILIKE" if self._cm.dialect == "postgres" else "LIKE"
+
+    def _table_exists(self, cursor, table: str) -> bool:
+        if self._cm.dialect == "sqlite":
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            )
+            return cursor.fetchone() is not None
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = ?
+            )
+            """,
+            (table,),
+        )
+        row = cursor.fetchone()
+        return bool(row and row[0])
+
+    def _rows_to_memories(self, rows) -> List[Memory]:
+        memories: List[Memory] = []
+        for row in rows:
+            memories.append(
+                Memory(
+                    id=row[0],
+                    tenant_id=row[1],
+                    content=row[2],
+                    category=row[3],
+                    importance=row[4],
+                    created_at=datetime.fromisoformat(row[5]),
+                    updated_at=datetime.fromisoformat(row[6]),
+                    last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
+                )
+            )
+        return memories
+
+    def _search_memories_like(
+        self,
+        cursor,
+        visibility: str,
+        vis_params: List[Any],
+        query: str,
+        limit: int,
+    ) -> List[Memory]:
+        ph = placeholder(self._cm.dialect)
+        like_op = self._like_op()
+        cursor.execute(
+            f"""
+            SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
+            FROM memories
+            WHERE {visibility} AND content {like_op} {ph}
+            ORDER BY importance DESC, updated_at DESC
+            LIMIT {ph}
+            """,
+            (*vis_params, f"%{query}%", limit),
+        )
+        return self._rows_to_memories(cursor.fetchall())
+
+    def search_memories(
+        self,
+        query: str,
+        limit: int = 5,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
+        visibility, vis_params = self._visibility_clause(user_id)
+        ph = placeholder(self._cm.dialect)
 
         # 转义 FTS5 特殊字符
         safe_query = query.replace('"', ' ').replace('*', ' ').replace('^', ' ')
         safe_query = safe_query.replace(':', ' ').replace('(', ' ').replace(')', ' ').replace('-', ' ').strip()
         has_cjk = self._has_cjk(query)
 
-        memories = []
-        # 1. 尝试 FTS5 搜索
-        if safe_query:
+        memories: List[Memory] = []
+        dialect = self._cm.dialect
+
+        # 1. SQLite FTS5（Postgres 无 memories_fts 虚表，跳过 JOIN 路径）
+        if safe_query and dialect == "sqlite" and self._table_exists(cursor, "memories_fts"):
             try:
-                fts_clause = fulltext_match_clause(self._cm.dialect, "memories_fts")
-                cursor.execute(f"""
-                    SELECT m.id, m.tenant_id, m.content, m.category, m.importance, m.created_at, m.updated_at, m.last_accessed
+                fts_clause = fulltext_match_clause(dialect, "fts", ph)
+                cursor.execute(
+                    f"""
+                    SELECT m.id, m.tenant_id, m.content, m.category, m.importance,
+                           m.created_at, m.updated_at, m.last_accessed
                     FROM memories m
                     JOIN memories_fts fts ON m.rowid = fts.rowid
-                    WHERE {fts_clause} AND (m.tenant_id = ? OR m.scope = 'shared')
+                    WHERE {fts_clause} AND {visibility}
                     ORDER BY rank
-                    LIMIT ?
-                """, (safe_query, tenant_id, limit))
-                for row in cursor.fetchall():
-                    memories.append(Memory(
-                        id=row[0], tenant_id=row[1], content=row[2], category=row[3],
-                        importance=row[4], created_at=datetime.fromisoformat(row[5]),
-                        updated_at=datetime.fromisoformat(row[6]),
-                        last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
-                    ))
+                    LIMIT {ph}
+                    """,
+                    (safe_query, *vis_params, limit),
+                )
+                memories = self._rows_to_memories(cursor.fetchall())
             except sqlite3.OperationalError:
                 pass
 
-        # 2. FTS5 无结果 + 含 CJK → LIKE fallback
-        if not memories and has_cjk:
+        # 2. Postgres 全文（content 列 to_tsvector，无 FTS 虚表）
+        if not memories and safe_query and dialect == "postgres":
             try:
-                cursor.execute("""
-                    SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
-                    FROM memories WHERE (tenant_id = ? OR scope = 'shared') AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
-                """, (tenant_id, f"%{query}%", limit))
-                for row in cursor.fetchall():
-                    memories.append(Memory(
-                        id=row[0], tenant_id=row[1], content=row[2], category=row[3],
-                        importance=row[4], created_at=datetime.fromisoformat(row[5]),
-                        updated_at=datetime.fromisoformat(row[6]),
-                        last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
-                    ))
-            except sqlite3.OperationalError:
+                fts_clause = fulltext_match_clause(dialect, "m.content", ph)
+                cursor.execute(
+                    f"""
+                    SELECT m.id, m.tenant_id, m.content, m.category, m.importance,
+                           m.created_at, m.updated_at, m.last_accessed
+                    FROM memories m
+                    WHERE {fts_clause} AND {visibility}
+                    ORDER BY m.importance DESC, m.updated_at DESC
+                    LIMIT {ph}
+                    """,
+                    (safe_query, *vis_params, limit),
+                )
+                memories = self._rows_to_memories(cursor.fetchall())
+            except Exception:
                 pass
 
-        # 3. 空结果兜底：通用 LIKE
+        # 3. CJK 或 PG 兜底：ILIKE / LIKE
+        if not memories and (has_cjk or dialect == "postgres"):
+            try:
+                memories = self._search_memories_like(
+                    cursor, visibility, vis_params, query, limit
+                )
+            except Exception:
+                pass
+
+        # 4. 空结果兜底：通用 LIKE / ILIKE
         if not memories:
             try:
-                cursor.execute("""
-                    SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
-                    FROM memories WHERE (tenant_id = ? OR scope = 'shared') AND content LIKE ? ORDER BY importance DESC, updated_at DESC LIMIT ?
-                """, (tenant_id, f"%{query}%", limit))
-                for row in cursor.fetchall():
-                    memories.append(Memory(
-                        id=row[0], tenant_id=row[1], content=row[2], category=row[3],
-                        importance=row[4], created_at=datetime.fromisoformat(row[5]),
-                        updated_at=datetime.fromisoformat(row[6]),
-                        last_accessed=datetime.fromisoformat(row[7]) if row[7] else None,
-                    ))
-            except sqlite3.OperationalError:
+                memories = self._search_memories_like(
+                    cursor, visibility, vis_params, query, limit
+                )
+            except Exception:
                 pass
 
         for mem in memories:
@@ -229,16 +355,23 @@ class MemoryRepo:
 
         return memories
 
-    def get_memories_by_category(self, category: str, limit: int = 10, tenant_id: str = "default") -> List[Memory]:
+    def get_memories_by_category(
+        self,
+        category: str,
+        limit: int = 10,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("""
+        visibility, vis_params = self._visibility_clause(user_id)
+        cursor.execute(f"""
             SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
             FROM memories
-            WHERE (tenant_id = ? OR scope = 'shared') AND category = ?
+            WHERE {visibility} AND category = ?
             ORDER BY importance DESC, updated_at DESC
             LIMIT ?
-        """, (tenant_id, category, limit))
+        """, (*vis_params, category, limit))
 
         memories = []
         for row in cursor.fetchall():
@@ -255,16 +388,22 @@ class MemoryRepo:
 
         return memories
 
-    def get_recent_memories(self, limit: int = 20, tenant_id: str = "default") -> List[Memory]:
+    def get_recent_memories(
+        self,
+        limit: int = 20,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> List[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("""
+        visibility, vis_params = self._visibility_clause(user_id)
+        cursor.execute(f"""
             SELECT id, tenant_id, content, category, importance, created_at, updated_at, last_accessed
             FROM memories
-            WHERE tenant_id = ?
+            WHERE {visibility}
             ORDER BY updated_at DESC
             LIMIT ?
-        """, (tenant_id, limit))
+        """, (*vis_params, limit))
 
         memories = []
         for row in cursor.fetchall():
@@ -292,7 +431,7 @@ class MemoryRepo:
         memory_type: Optional[str] = None,
         event_time: Optional[str] = None,
         entity_refs: Optional[List[str]] = None,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
     ):
         now = get_local_now()
 
@@ -331,16 +470,20 @@ class MemoryRepo:
             values,
         )
 
-        cursor.execute("""
-            UPDATE memories_fts
-            SET content = ?, category = COALESCE(?, category)
-            WHERE rowid = (SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?)
-        """, (content, category, memory_id, tenant_id))
+        if self._fts_enabled():
+            cursor.execute(
+                """
+                UPDATE memories_fts
+                SET content = ?, category = COALESCE(?, category)
+                WHERE rowid = (SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?)
+                """,
+                (content, category, memory_id, tenant_id),
+            )
 
         conn.commit()
         return cursor.rowcount > 0
 
-    def reinforce_memory(self, memory_id: str, importance_delta: float = 0.02, tenant_id: str = "default"):
+    def reinforce_memory(self, memory_id: str, importance_delta: float = 0.02, tenant_id: str = ORG_ID):
         """命中召回：access_count+1, last_accessed=now, importance 微增"""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -357,7 +500,7 @@ class MemoryRepo:
         )
         conn.commit()
 
-    def get_all_memories_with_metadata(self, tenant_id: str = "default"):
+    def get_all_memories_with_metadata(self, tenant_id: str = ORG_ID):
         """返回 (Memory, embedding_blob, last_accessed_iso, importance, source) 列表"""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -378,7 +521,7 @@ class MemoryRepo:
             results.append((mem, row[7], last_accessed_str, row[4] or 0.5, row[9] or "conversation"))
         return results
 
-    def set_memory_pin(self, memory_id: str, pinned: bool, tenant_id: str = "default") -> bool:
+    def set_memory_pin(self, memory_id: str, pinned: bool, tenant_id: str = ORG_ID) -> bool:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -388,7 +531,14 @@ class MemoryRepo:
         conn.commit()
         return cursor.rowcount > 0
 
-    def promote_memory(self, memory_id: str, tenant_id: str = "default") -> Optional[Memory]:
+    def promote_memory(
+        self,
+        memory_id: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> Optional[Memory]:
+        if self.get_memory(memory_id, tenant_id=tenant_id, user_id=user_id) is None:
+            return None
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -402,13 +552,13 @@ class MemoryRepo:
             (get_local_now(), memory_id, tenant_id),
         )
         conn.commit()
-        return self.get_memory(memory_id, tenant_id=tenant_id)
+        return self.get_memory(memory_id, tenant_id=tenant_id, user_id=user_id)
 
     def set_memory_promotion_meta(
         self,
         memory_id: str,
         *,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         promotion_group_id: Optional[str] = None,
         kb_promotion_status: Optional[str] = None,
         kb_doc_id: Optional[str] = None,
@@ -551,18 +701,19 @@ class MemoryRepo:
         )
         return [(row[0], row[1]) for row in cursor.fetchall() if row[0] and row[1]]
 
-    def delete_memory(self, memory_id: str, tenant_id: str = "default"):
+    def delete_memory(self, memory_id: str, tenant_id: str = ORG_ID):
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?", (memory_id, tenant_id))
-        row = cursor.fetchone()
-        if row:
-            cursor.execute("DELETE FROM memories_fts WHERE rowid = ?", (row[0],))
+        if self._fts_enabled():
+            cursor.execute("SELECT rowid FROM memories WHERE id = ? AND tenant_id = ?", (memory_id, tenant_id))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("DELETE FROM memories_fts WHERE rowid = ?", (row[0],))
         cursor.execute("DELETE FROM memories WHERE id = ? AND tenant_id = ?", (memory_id, tenant_id))
         conn.commit()
         return cursor.rowcount > 0
 
-    def get_memory_stats(self, tenant_id: str = "default") -> Dict[str, Any]:
+    def get_memory_stats(self, tenant_id: str = ORG_ID) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
         time_expr = "julianday(replace(substr(created_at, 1, 19), 'T', ' '))"
@@ -604,17 +755,19 @@ class MemoryRepo:
         page_size: int = 20,
         query: str = "",
         category: str = "",
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
     ) -> Tuple[List[Memory], int]:
         conn = self._get_conn()
         cursor = conn.cursor()
         time_expr = "julianday(replace(substr(created_at, 1, 19), 'T', ' '))"
+        visibility, vis_params = self._visibility_clause(user_id)
         clauses = [
-            "tenant_id = ?",
+            visibility,
             "memory_type = 'episodic'",
             f"{time_expr} >= julianday('now', '-7 day')",
         ]
-        params: List[Any] = [tenant_id]
+        params: List[Any] = list(vis_params)
         if category:
             clauses.append("category = ?")
             params.append(category)
@@ -640,11 +793,18 @@ class MemoryRepo:
         items = [self._memory_from_row(row) for row in cursor.fetchall()]
         return items, total
 
-    def list_longterm_memories(self, tenant_id: str = "default", page: int = 1, page_size: int = 20) -> Tuple[List[Memory], int]:
+    def list_longterm_memories(
+        self,
+        tenant_id: str = ORG_ID,
+        page: int = 1,
+        page_size: int = 20,
+        user_id: Optional[str] = None,
+    ) -> Tuple[List[Memory], int]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        where = "tenant_id = ? AND (importance >= 0.6 OR pinned = 1 OR memory_type = 'longterm')"
-        cursor.execute(f"SELECT COUNT(*) FROM memories WHERE {where}", (tenant_id,))
+        visibility, vis_params = self._visibility_clause(user_id)
+        where = f"{visibility} AND (importance >= 0.6 OR pinned = 1 OR memory_type = 'longterm')"
+        cursor.execute(f"SELECT COUNT(*) FROM memories WHERE {where}", vis_params)
         total = cursor.fetchone()[0]
         offset = max(page - 1, 0) * page_size
         cursor.execute(
@@ -657,7 +817,7 @@ class MemoryRepo:
             ORDER BY pinned DESC, importance DESC, updated_at DESC
             LIMIT ? OFFSET ?
             """,
-            (tenant_id, page_size, offset),
+            [*vis_params, page_size, offset],
         )
         return [self._memory_from_row(row) for row in cursor.fetchall()], total
 
@@ -668,12 +828,14 @@ class MemoryRepo:
         query: str = "",
         category: str = "",
         memory_type: str = "",
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
     ) -> Tuple[List[Memory], int]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        clauses = ["tenant_id = ?"]
-        params: List[Any] = [tenant_id]
+        visibility, vis_params = self._visibility_clause(user_id)
+        clauses = [visibility]
+        params: List[Any] = list(vis_params)
         if category:
             clauses.append("category = ?")
             params.append(category)
@@ -702,7 +864,7 @@ class MemoryRepo:
         items = [self._memory_from_row(row) for row in cursor.fetchall()]
         return items, total
 
-    def list_memories_for_tree(self, tenant_id: str = "default", limit: int = 5000) -> List[Memory]:
+    def list_memories_for_tree(self, tenant_id: str = ORG_ID, limit: int = 5000) -> List[Memory]:
         """Load tenant memories for entity tree assembly (bounded)."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -747,20 +909,30 @@ class MemoryRepo:
               AND COALESCE(last_accessed, created_at) < ?
         """, (min_importance, cutoff.isoformat()))
         deleted = cursor.rowcount
-        if deleted > 0:
+        if deleted > 0 and self._fts_enabled():
             # 重建 FTS 索引
             cursor.execute("DELETE FROM memories_fts")
             cursor.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
         conn.commit()
         return deleted
 
-    def forget_core_line(self, block: str, line_contains: str, tenant_id: str = "default") -> bool:
+    def forget_core_line(
+        self,
+        block: str,
+        line_contains: str,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """从 core memory 区块中删除匹配的行"""
+        resolved_user_id = self._resolve_viewer_user_id(user_id) or "default"
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT content FROM core_memory_blocks WHERE name = ? AND tenant_id = ?",
-            (block, tenant_id),
+            """
+            SELECT content FROM core_memory_blocks
+            WHERE name = ? AND tenant_id = ? AND user_id = ?
+            """,
+            (block, tenant_id, resolved_user_id),
         )
         row = cursor.fetchone()
         if not row:
@@ -773,8 +945,11 @@ class MemoryRepo:
         new_content = "\n".join(new_lines)
         now = get_local_now().isoformat()
         cursor.execute(
-            "UPDATE core_memory_blocks SET content = ?, updated_at = ? WHERE name = ? AND tenant_id = ?",
-            (new_content, now, block, tenant_id),
+            """
+            UPDATE core_memory_blocks SET content = ?, updated_at = ?
+            WHERE name = ? AND tenant_id = ? AND user_id = ?
+            """,
+            (new_content, now, block, tenant_id, resolved_user_id),
         )
         conn.commit()
         return True
@@ -822,7 +997,7 @@ class MemoryRepo:
 
     # ============ Meeting Voice Recognition ============
 
-    def set_memory_scope(self, memory_id: str, scope: str, tenant_id: str = "default") -> bool:
+    def set_memory_scope(self, memory_id: str, scope: str, tenant_id: str = ORG_ID) -> bool:
         """Set scope for a memory (private/shared). Admin only."""
         if scope not in ("private", "shared"):
             return False
@@ -840,10 +1015,8 @@ class MemoryRepo:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
-            SELECT
-                id, tenant_id, content, category, importance, created_at, updated_at,
-                last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope
+            f"""
+            SELECT {_MEMORY_SELECT}
             FROM memories WHERE id = ?
             """,
             (memory_id,),
@@ -851,7 +1024,7 @@ class MemoryRepo:
         row = cursor.fetchone()
         return self._memory_from_row(row)
 
-    def get_memory_scope(self, memory_id: str, tenant_id: str = "default") -> str:
+    def get_memory_scope(self, memory_id: str, tenant_id: str = ORG_ID) -> str:
         """Return the scope of a memory."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -866,7 +1039,7 @@ class MemoryRepo:
 
     def record_provider_usage(
         self,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         provider: str = "",
         model: str = "",
         tokens_in: int = 0,
@@ -944,7 +1117,7 @@ class MemoryRepo:
         )
         conn.commit()
 
-    def list_evolution_events(self, tenant_id: str = "default", limit: int = 100) -> list:
+    def list_evolution_events(self, tenant_id: str = ORG_ID, limit: int = 100) -> list:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -968,7 +1141,7 @@ class MemoryRepo:
             for r in cursor.fetchall()
         ]
 
-    def count_evolution_events(self, tenant_id: str = "default", days: int = 7) -> int:
+    def count_evolution_events(self, tenant_id: str = ORG_ID, days: int = 7) -> int:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -1049,7 +1222,7 @@ class MemoryRepo:
 
     def count_insight_downvote_burst_metrics(
         self,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         *,
         days: int = 7,
         min_count: int = 3,

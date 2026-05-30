@@ -12,6 +12,13 @@
 | `draft` | 未交付或进行中 |
 | `superseded` | 被新版本替代，仅作历史参考 |
 
+## v5.0.0（已交付）
+
+| 文档 | 类型 | 说明 |
+|------|------|------|
+| [plans/2026-05-30-tars-v5.0.0-multiuser-design.md](./plans/2026-05-30-tars-v5.0.0-multiuser-design.md) | plan | 多用户协作 + Postgres 设计 SSOT |
+| [../01-项目概览/v5.0.0-release-notes.md](../01-项目概览/v5.0.0-release-notes.md) | release | 发布说明 |
+
 ## v4.4.0（MVP 已交付）
 
 | 文档 | 类型 | 说明 |

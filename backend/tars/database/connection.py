@@ -6,42 +6,44 @@ import json
 import sqlite3
 from typing import Optional
 
+from tars.database.driver import (
+    DbConnection,
+    create_connection_factory,
+    detect_dialect,
+    parse_database_url,
+)
+
 
 class ConnectionManager:
-    """管理 SQLite 连接与建表，被 Database 门面持有。"""
+    """管理 SQLite/Postgres 连接与建表，被 Database 门面持有。"""
 
     def __init__(self, db_path: Optional[str] = None):
-        if not db_path:
-            data_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"
-            )
-            os.makedirs(data_dir, exist_ok=True)
-            db_path = os.path.join(data_dir, "tars.db")
-
-        self.db_path = db_path
-        self._conn: Optional[sqlite3.Connection] = None
-        self.dialect: str = "sqlite"
+        self.database_url = parse_database_url(db_path)
+        self.db_path = self.database_url
+        self.dialect = detect_dialect(self.database_url)
+        self._factory = create_connection_factory(self.database_url)
+        self._conn: Optional[DbConnection] = None
         self.init_schema()
 
-    def get_conn(self) -> sqlite3.Connection:
-        """获取数据库连接，保持连接打开用于内存数据库"""
+    def get_conn(self) -> DbConnection:
+        """获取数据库连接，保持连接打开用于内存数据库与连接池。"""
         if self._conn is None:
-            busy_ms = int(os.environ.get("TARS_SQLITE_BUSY_MS", "15000"))
-            self._conn = sqlite3.connect(
-                self.db_path, check_same_thread=False, timeout=busy_ms / 1000.0
-            )
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-            self._conn.execute(f"PRAGMA busy_timeout={busy_ms}")
+            self._conn = self._factory.get_conn()
         return self._conn
 
     def close(self):
         if self._conn:
-            self._conn.close()
+            self._factory.release(self._conn)
             self._conn = None
 
     def init_schema(self):
         """初始化数据库表（从 base.py _init_db 迁出）"""
+        if self.dialect == "postgres":
+            from tars.database.connection_pg import init_schema_postgres
+
+            init_schema_postgres(self.get_conn())
+            return
+
         conn = self.get_conn()
         cursor = conn.cursor()
 
@@ -106,6 +108,13 @@ class ConnectionManager:
             conn.commit()
         except sqlite3.OperationalError:
             pass  # 列已存在
+
+        # v5.0: per-user private memories within single org
+        try:
+            cursor.execute("ALTER TABLE memories ADD COLUMN user_id TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
         # v4.0.0: 记忆 access_count 字段（访问计数）
         try:
@@ -172,6 +181,49 @@ class ConnectionManager:
                 updated_at TEXT NOT NULL
             )
         """)
+
+        # v3/v5: Letta-style core memory blocks (per-user within org)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS core_memory_blocks (
+                name TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT 'org_default',
+                user_id TEXT NOT NULL DEFAULT 'default',
+                content TEXT NOT NULL DEFAULT '',
+                updated_at TEXT,
+                UNIQUE(tenant_id, user_id, name)
+            )
+        """)
+        for col_def in [
+            ("tenant_id", "TEXT NOT NULL DEFAULT 'org_default'"),
+            ("user_id", "TEXT NOT NULL DEFAULT 'default'"),
+        ]:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE core_memory_blocks ADD COLUMN {col_def[0]} {col_def[1]}"
+                )
+            except sqlite3.OperationalError:
+                pass
+
+        from tars.database.models import get_local_now
+
+        _default_blocks = {
+            "persona": (
+                "TARS：理性、简洁、注重证据的工程助手。回答以代码/事实为主，避免空话。"
+            ),
+            "user_profile": "（暂未学习到用户信息）",
+            "project_context": "（暂未记录项目上下文）",
+            "working_principles": "（暂未累积协作准则）",
+        }
+        _blocks_now = get_local_now().isoformat()
+        for _block_name, _block_content in _default_blocks.items():
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO core_memory_blocks
+                (name, tenant_id, user_id, content, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (_block_name, "org_default", "default", _block_content, _blocks_now),
+            )
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS global_state (
@@ -680,5 +732,24 @@ class ConnectionManager:
             cursor.execute("ALTER TABLE evolution_apply_log ADD COLUMN batch_id TEXT")
         except Exception:
             pass
+
+        # v5.0: JWT access token registry (jti revocation)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auth_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                revoked INTEGER DEFAULT 0,
+                created_at TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_auth_tokens_user
+            ON auth_tokens(user_id, expires_at DESC)
+        """)
+
+        from tars.knowledge.schema import ensure_knowledge_schema_on_conn
+
+        ensure_knowledge_schema_on_conn(conn)
 
         conn.commit()

@@ -4,8 +4,7 @@ Verifies:
 - 401 when X-API-Key is missing
 - 401 when X-User-Role: admin is sent without a real admin api key
 - 200 with a valid user api key
-- Non-admin cannot impersonate another tenant via X-Tenant-Id
-- Admin can impersonate via X-Tenant-Id
+- Non-admin cannot access another user's datasource scope
 """
 import uuid
 
@@ -22,7 +21,9 @@ def _unique(prefix: str) -> str:
 @pytest.fixture
 def app_client():
     from tars import main as tars_main
+    from tars.api._auth import init_auth
 
+    init_auth(tars_main.user_store, tars_main.auth_token_store)
     client = TestClient(tars_main.app)
     return client, tars_main.user_store
 
@@ -110,28 +111,13 @@ def test_insight_llm_settings_requires_auth(app_client):
     assert r.status_code == 401, r.text
 
 
-def test_insight_brief_user_cannot_impersonate_tenant(app_client, alice_key):
-    """Non-admin sending X-Tenant-Id pointing at someone else's datasource
-    must NOT be able to read it. The header is silently ignored."""
+def test_insight_brief_user_cannot_access_other_scope_datasource(app_client, alice_key):
+    """Non-admin cannot read a datasource id that belongs to another user's scope."""
     client, _ = app_client
     _skip_if_disabled(client)
     api_key, _ = alice_key
     r = client.get(
         "/api/insight/datasources/some-other-tenant-ds-id/brief",
-        headers={"X-API-Key": api_key, "X-Tenant-Id": "some-other-tenant"},
+        headers={"X-API-Key": api_key},
     )
-    # Either 404 (not in alice's tenant) or 403 (rejected) — but never 200.
     assert r.status_code in (403, 404), r.text
-
-
-def test_insight_admin_can_impersonate(app_client, admin_key):
-    """Admin requests with X-Tenant-Id should at least pass auth gate
-    (final result depends on whether such a tenant has datasources)."""
-    client, _ = app_client
-    _skip_if_disabled(client)
-    api_key, _ = admin_key
-    r = client.get(
-        "/api/insight/version",
-        headers={"X-API-Key": api_key, "X-Tenant-Id": "anyone"},
-    )
-    assert r.status_code == 200, r.text

@@ -65,7 +65,9 @@ def test_tenant_context_cache_reuses_context():
     assert ctx1.memory_manager.tenant_id == "tenant_a"
 
 
-def test_invoke_api_uses_tenant_context():
+def test_invoke_api_uses_org_scope_context():
+    from tars.org import ORG_ID
+
     app = FastAPI()
     app.include_router(router)
 
@@ -76,7 +78,7 @@ def test_invoke_api_uses_tenant_context():
     client = TestClient(app)
     response = client.post(
         "/api/invoke",
-        headers={"X-Tenant-Id": "tenant_a"},
+        headers={"X-Tenant-Id": "tenant_a"},  # ignored under v5.0 single org
         json={"message": "ping", "session_id": "sess-1", "stream": False},
     )
 
@@ -84,7 +86,7 @@ def test_invoke_api_uses_tenant_context():
     data = response.json()
     assert data["response"] == "pong"
     assert data["session_id"] == "sess-1"
-    assert agent.calls[0]["tenant_id"] == "tenant_a"
+    assert agent.calls[0]["tenant_id"] == ORG_ID
 
 
 def test_invoke_api_streams_sse_events():
@@ -160,4 +162,6 @@ def test_invoke_api_accepts_valid_bearer_api_key(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["response"] == "pong"
-    assert agent.calls[0]["tenant_id"] == user.id
+    from tars.org import ORG_ID
+
+    assert agent.calls[0]["tenant_id"] == ORG_ID

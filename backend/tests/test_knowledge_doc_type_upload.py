@@ -16,6 +16,9 @@ from tars.api.knowledge import (
     router as knowledge_router,
 )
 from tars.database import Database
+from tars.org import ORG_ID
+
+from tests.conftest import setup_knowledge_auth
 
 
 class _FakeEmbedding:
@@ -30,8 +33,9 @@ def kb_client(tmp_path):
     app = FastAPI()
     app.include_router(knowledge_router)
     init_knowledge_api(db, vector_store=None, embedding_provider=_FakeEmbedding())
+    auth_headers, _user = setup_knowledge_auth(db)
     with TestClient(app) as client:
-        yield client, db
+        yield client, db, auth_headers
     clear_wiki_upload_routing()
 
 
@@ -43,10 +47,11 @@ def test_resolve_upload_doc_type_priority():
 
 
 def test_create_collection_with_default_doc_type(kb_client):
-    client, _db = kb_client
+    client, _db, headers = kb_client
     resp = client.post(
         "/api/knowledge/collections",
         json={"name": "制度库", "description": "test", "default_doc_type": "policy"},
+        headers=headers,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -54,16 +59,18 @@ def test_create_collection_with_default_doc_type(kb_client):
 
 
 def test_upload_inherits_collection_default_doc_type(kb_client, tmp_path):
-    client, db = kb_client
+    client, db, headers = kb_client
     coll = client.post(
         "/api/knowledge/collections",
         json={"name": "c", "default_doc_type": "policy"},
+        headers=headers,
     ).json()["collection"]["id"]
 
     content = b"test content for policy doc"
     resp = client.post(
         f"/api/knowledge/collections/{coll}/documents",
         files={"file": ("note.txt", io.BytesIO(content), "text/plain")},
+        headers=headers,
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -76,16 +83,18 @@ def test_upload_inherits_collection_default_doc_type(kb_client, tmp_path):
 
 
 def test_upload_doc_type_override(kb_client):
-    client, db = kb_client
+    client, db, headers = kb_client
     coll = client.post(
         "/api/knowledge/collections",
         json={"name": "c2", "default_doc_type": "policy"},
+        headers=headers,
     ).json()["collection"]["id"]
 
     resp = client.post(
         f"/api/knowledge/collections/{coll}/documents",
         files={"file": ("data.xlsx", io.BytesIO(b"dummy"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         data={"doc_type": "metrics"},
+        headers=headers,
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -95,8 +104,10 @@ def test_upload_doc_type_override(kb_client):
 
 @pytest.mark.asyncio
 async def test_auto_infer_doc_type_from_filename(kb_client, tmp_path):
-    client, db = kb_client
-    coll = client.post("/api/knowledge/collections", json={"name": "auto"}).json()["collection"]["id"]
+    client, db, headers = kb_client
+    coll = client.post(
+        "/api/knowledge/collections", json={"name": "auto"}, headers=headers
+    ).json()["collection"]["id"]
 
     uploads = tmp_path / "uploads"
     uploads.mkdir()
@@ -123,7 +134,7 @@ async def test_auto_infer_doc_type_from_filename(kb_client, tmp_path):
             doc_id=doc_id,
             file_path=str(file_path),
             collection_id=coll,
-            tenant_id="default",
+            tenant_id=ORG_ID,
             doc_type=None,
         )
 

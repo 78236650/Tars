@@ -372,12 +372,19 @@ class Reflector:
         mid = str(uuid.uuid4())
         et = event_time or now.isoformat()
         refs_json = json.dumps(entity_refs, ensure_ascii=False) if entity_refs else None
+        from tars.org import ORG_ID
+        from tars.context import get_current_user_id
+
+        try:
+            writer_user_id = get_current_user_id()
+        except RuntimeError:
+            writer_user_id = None
         cur.execute(
             """
-            INSERT INTO memories(id,tenant_id,content,category,importance,created_at,updated_at,last_accessed,access_count,source,event_time,entity_refs)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO memories(id,tenant_id,user_id,content,category,importance,created_at,updated_at,last_accessed,access_count,source,event_time,entity_refs)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
-            (mid, self.tenant_id, content, category, importance, now, now, None, 0, "conversation", et, refs_json),
+            (mid, ORG_ID, writer_user_id, content, category, importance, now, now, None, 0, "conversation", et, refs_json),
         )
         try:
             cur.execute("INSERT INTO memories_fts(rowid,content,category) VALUES(last_insert_rowid(),?,?)", (content, category))

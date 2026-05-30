@@ -8,6 +8,7 @@ from ..database import Database
 from ..orchestration.orchestration_memory import OrchestrationMemory
 from ..orchestration.multi_agent_orchestrator import MultiAgentOrchestrator
 from ._auth import Principal, require_authenticated_user
+from .scope import datasource_scope_id
 
 router = APIRouter(prefix="/api/orchestration", tags=["orchestration"])
 
@@ -32,7 +33,7 @@ def _require_db() -> Database:
 
 
 def _memory_for(principal: Principal) -> OrchestrationMemory:
-    tenant_id = principal.tenant_id or "default"
+    tenant_id = datasource_scope_id(principal)
     return OrchestrationMemory(db=_require_db(), tenant_id=tenant_id)
 
 
@@ -55,7 +56,7 @@ async def get_orchestration_task(
     if not detail:
         raise HTTPException(status_code=404, detail="调度任务不存在")
     task = detail["task"]
-    if not principal.is_admin and task.get("tenant_id") != (principal.tenant_id or "default"):
+    if not principal.is_admin and task.get("tenant_id") != datasource_scope_id(principal):
         raise HTTPException(status_code=403, detail="无权查看该调度任务")
     return detail
 
@@ -65,7 +66,7 @@ async def dispatch_orchestration(
     payload: DispatchRequest,
     principal: Principal = Depends(require_authenticated_user),
 ):
-    tenant_id = principal.tenant_id or "default"
+    tenant_id = datasource_scope_id(principal)
     orch = MultiAgentOrchestrator(db=_require_db(), tenant_id=tenant_id)
     result = await orch.orchestrate(
         session_id=payload.session_id,

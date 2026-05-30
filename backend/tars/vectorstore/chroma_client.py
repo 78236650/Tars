@@ -4,6 +4,8 @@ import uuid
 from typing import List, Dict, Any, Optional, Tuple
 
 from tars.memory.embeddings import EmbeddingProvider, LocalEmbeddingProvider
+from tars.org import ORG_ID
+from tars.vectorstore.scope import collection_full_name
 
 
 class ChromaVectorStore:
@@ -34,18 +36,18 @@ class ChromaVectorStore:
         return self._client is not None
 
     def _get_collection(self, tenant_id: str = "default", collection_name: str = "memories") -> Any:
-        """获取或创建 collection，按租户隔离"""
+        """获取或创建 collection（v5: org-scoped via ORG_ID suffix）。"""
         if not self.is_available:
             raise RuntimeError("Chroma client not available")
 
-        full_name = f"{collection_name}_{tenant_id}"
+        full_name = collection_full_name(collection_name, tenant_id)
 
         try:
             collection = self._client.get_collection(name=full_name)
         except Exception:
             collection = self._client.create_collection(
                 name=full_name,
-                metadata={"tenant_id": tenant_id, "collection_type": collection_name},
+                metadata={"org_id": ORG_ID, "collection_type": collection_name},
             )
         return collection
 
@@ -170,7 +172,7 @@ class ChromaVectorStore:
 
     def delete_collection(self, tenant_id: str = "default", collection_name: str = "memories") -> None:
         """删除整个 collection"""
-        full_name = f"{collection_name}_{tenant_id}"
+        full_name = collection_full_name(collection_name, tenant_id)
         try:
             self._client.delete_collection(name=full_name)
         except Exception:

@@ -12,7 +12,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
+from ..context import get_current_org_id
 from ..database import Database
+from ..org import ORG_ID
 from ..meeting.asr import display_model_name, resolve_backend_name
 from ..meeting.config import (
     get_whisper_model_options,
@@ -22,7 +24,7 @@ from ..meeting.config import (
     set_meeting_asr_runtime,
 )
 from ..tools.builtin.meeting_recognizer import MeetingRecognizerTool, SUPPORTED_AUDIO_FORMATS
-from ._auth import get_user_store, require_module, resolve_authenticated_principal
+from ._auth import Principal, get_user_store, require_module, resolve_authenticated_principal
 
 router = APIRouter(prefix="/api/meeting", tags=["会议助手"])
 secured_router = APIRouter(dependencies=[Depends(require_module("meeting"))])
@@ -63,13 +65,17 @@ def init_meeting_api(
     _recover_stale_transcriptions()
 
 
-def _resolve_user_id(
-    x_tenant_id: Optional[str] = None,
+def _effective_user_id(
+    principal: Principal,
     x_user_id: Optional[str] = None,
 ) -> str:
-    """与前端 X-Tenant-ID（用户 ID）对齐，用于隔离会议记录。"""
-    uid = (x_tenant_id or x_user_id or "default").strip()
-    return uid or "default"
+    """Per-user meeting isolation; admin may pass x_user_id to view another user."""
+    override = (x_user_id or "").strip()
+    if override:
+        if override != principal.user_id and not principal.is_admin:
+            raise HTTPException(status_code=403, detail="无权访问其他用户会议数据")
+        return override
+    return principal.user_id
 
 
 def _recover_stale_transcriptions(max_age_minutes: int = 180) -> None:
@@ -390,8 +396,8 @@ async def _do_summarization(transcription_id: str, transcript: str, language: Op
 async def upload_audio(
     file: UploadFile = File(...),
     language: Optional[str] = None,
-    x_tenant_id: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
+    principal: Principal = Depends(require_module("meeting")),
 ):
     """上传音频文件并开始转写"""
     if _db is None:
@@ -419,7 +425,7 @@ async def upload_audio(
             detail=f"文件过大（>{MAX_FILE_SIZE // 1024 // 1024}MB），请压缩后重试",
         )
 
-    user_id = _resolve_user_id(x_tenant_id, x_user_id)
+    user_id = _effective_user_id(principal, x_user_id)
     asr_language = resolve_asr_language(language)
 
     # 保存文件
@@ -563,14 +569,14 @@ async def summarize_transcription(request: SummarizeRequest):
 @secured_router.get("/{transcription_id}/audio")
 async def get_transcription_audio(
     transcription_id: str,
-    x_tenant_id: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
+    principal: Principal = Depends(require_module("meeting")),
 ):
     """下载/播放会议原音频（需 API Key）。"""
     if _db is None:
         raise HTTPException(status_code=500, detail="会议 API 未初始化")
 
-    user_id = _resolve_user_id(x_tenant_id, x_user_id)
+    user_id = _effective_user_id(principal, x_user_id)
     transcription = _db.get_transcription(transcription_id)
     if not transcription or transcription.user_id != user_id:
         raise HTTPException(status_code=404, detail="转录记录不存在")
@@ -607,14 +613,14 @@ async def get_status(transcription_id: str):
 async def list_history(
     limit: int = 50,
     offset: int = 0,
-    x_tenant_id: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
+    principal: Principal = Depends(require_module("meeting")),
 ):
     """获取转录历史列表"""
     if _db is None:
         raise HTTPException(status_code=500, detail="会议 API 未初始化")
 
-    user_id = _resolve_user_id(x_tenant_id, x_user_id)
+    user_id = _effective_user_id(principal, x_user_id)
     transcriptions = _db.list_transcriptions(
         user_id=user_id,
         limit=limit,
@@ -813,12 +819,17 @@ MEETING_KB_NAME = "会议纪要"
 MEETING_KB_LEGACY_NAME = "meeting_notes_kb"
 
 
-def _ensure_meeting_collection(cursor, tenant_id: str) -> str:
-    """在当前租户下获取或创建「会议纪要」知识库。"""
+def _ensure_meeting_collection(cursor, org_id: str | None = None) -> str:
+    """Get or create the org-scoped meeting notes collection."""
+    from ..knowledge.schema import ensure_knowledge_schema
+
+    org_id = org_id or ORG_ID
+    if _db is not None:
+        ensure_knowledge_schema(_db)
     for name in (MEETING_KB_NAME, MEETING_KB_LEGACY_NAME):
         cursor.execute(
             "SELECT id FROM document_collections WHERE name = ? AND tenant_id = ?",
-            (name, tenant_id),
+            (name, org_id),
         )
         row = cursor.fetchone()
         if row:
@@ -828,7 +839,7 @@ def _ensure_meeting_collection(cursor, tenant_id: str) -> str:
     now = _now()
     cursor.execute(
         "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (collection_id, tenant_id, MEETING_KB_NAME, "会议助手确认入库的纪要", now, now),
+        (collection_id, org_id, MEETING_KB_NAME, "会议助手确认入库的纪要", now, now),
     )
     return collection_id
 
@@ -850,13 +861,12 @@ class ApproveToKnowledgeRequest(BaseModel):
 async def approve_to_knowledge(
     transcription_id: str,
     request: ApproveToKnowledgeRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     """确认会议纪要并入库知识库"""
     if _db is None:
         raise HTTPException(status_code=500, detail="会议 API 未初始化")
 
-    tenant_id = (x_tenant_id or "default").strip() or "default"
+    org_id = get_current_org_id()
     summary = (request.summary or "").strip()
     if not summary:
         raise HTTPException(status_code=400, detail="摘要不能为空，请先生成或填写会议纪要摘要")
@@ -881,7 +891,7 @@ async def approve_to_knowledge(
 
     conn = _db._get_conn()
     cursor = conn.cursor()
-    collection_id = _ensure_meeting_collection(cursor, tenant_id)
+    collection_id = _ensure_meeting_collection(cursor, org_id)
     conn.commit()
 
     date_str = transcription.created_at.strftime("%Y-%m-%d") if transcription.created_at else ""
@@ -900,7 +910,7 @@ async def approve_to_knowledge(
         collection_id=collection_id,
         file_name=doc_title,
         file_type="meeting_summary",
-        tenant_id=tenant_id,
+        tenant_id=org_id,
     )
 
     result2: Dict[str, Any] = {"chunk_count": 0, "status": "indexed"}
@@ -911,7 +921,7 @@ async def approve_to_knowledge(
             collection_id=collection_id,
             file_name=doc_title + "_原文",
             file_type="meeting_transcript",
-            tenant_id=tenant_id,
+            tenant_id=org_id,
         )
 
     err = _index_failure_detail(result1, result2)
@@ -969,13 +979,15 @@ async def _close_ws_unauthorized(websocket: WebSocket, code: int, reason: str) -
 
 
 async def _authenticate_meeting_ws(websocket: WebSocket) -> Optional[str]:
-    """WebSocket 无法携带自定义 Header（浏览器），使用 query api_key（与 /ws 一致）。"""
-    api_key = websocket.query_params.get("api_key", "") or websocket.headers.get(
-        "x-api-key", ""
-    )
+    """WebSocket 使用 ?token= 或 ?api_key=（与 /ws 一致）。"""
+    from ..api._auth import _auth_token_store
+    from ..gateway.ws_auth import resolve_websocket_principal
+
     try:
-        principal = resolve_authenticated_principal(
-            api_key, None, None, get_user_store()
+        principal = resolve_websocket_principal(
+            websocket,
+            user_store=get_user_store(),
+            auth_token_store=_auth_token_store,
         )
     except HTTPException as exc:
         await _close_ws_unauthorized(websocket, 4401, str(exc.detail))
@@ -1004,7 +1016,7 @@ async def _authenticate_meeting_ws(websocket: WebSocket) -> Optional[str]:
             )
             return None
 
-    return principal.tenant_id
+    return principal.user_id
 
 
 @router.websocket("/ws/record")

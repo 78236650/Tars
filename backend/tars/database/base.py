@@ -17,6 +17,7 @@ from tars.database.repositories.session_repo import SessionRepo
 from tars.database.repositories.memory_repo import MemoryRepo
 from tars.database.repositories.cron_repo import CronRepo
 from tars.database.repositories.trans_repo import TranscriptionRepo
+from tars.database.auth_token_store import AuthTokenStore
 
 
 class Database:
@@ -29,6 +30,7 @@ class Database:
         self.memories = MemoryRepo(self._cm)
         self.crons = CronRepo(self._cm)
         self.transcriptions = TranscriptionRepo(self._cm)
+        self.auth_tokens = AuthTokenStore(self)
 
     def _get_conn(self):
         return self._cm.get_conn()
@@ -287,6 +289,15 @@ class Database:
 
     def get_evolution_apply_log(self, *args, **kwargs):
         return self.memories.get_evolution_apply_log(*args, **kwargs)
+
+    def insert_auth_token(self, jti: str, user_id: str, expires_at) -> None:
+        return self.auth_tokens.insert_token(jti, user_id, expires_at)
+
+    def revoke_auth_token(self, jti: str) -> None:
+        return self.auth_tokens.revoke_token(jti)
+
+    def is_auth_token_revoked(self, jti: str) -> bool:
+        return self.auth_tokens.is_token_revoked(jti)
 
     def execute(self, sql: str, params: tuple = ()) -> None:
         conn = self._get_conn()

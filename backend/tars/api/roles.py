@@ -67,12 +67,13 @@ def create_role(
         allowed_modules=body.allowed_modules, max_concurrent=body.max_concurrent,
         workspace_restriction=body.workspace_restriction,
     )
-    actor_id = principal.tenant_id
+    from ..org import ORG_ID
+
     safe_audit(
         lambda lg: lg.log_config_change(
             resource_id=f"role:{body.id}",
-            tenant_id=actor_id,
-            user_id=actor_id,
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
             detail=f"action=role_create,name={body.name}",
             client_ip=client_ip_from_request(http_request),
         )
@@ -90,12 +91,13 @@ def update_role(
     ok = _mgr().update_template(role_id, **body)
     if not ok:
         raise HTTPException(status_code=400, detail="更新失败（预置模板不可修改或模板不存在）")
-    actor_id = principal.tenant_id
+    from ..org import ORG_ID
+
     safe_audit(
         lambda lg: lg.log_config_change(
             resource_id=f"role:{role_id}",
-            tenant_id=actor_id,
-            user_id=actor_id,
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
             detail="action=role_update",
             client_ip=client_ip_from_request(http_request),
         )
@@ -112,12 +114,13 @@ def delete_role(
     ok = _mgr().delete_template(role_id)
     if not ok:
         raise HTTPException(status_code=400, detail="删除失败（预置模板不可删除或模板不存在）")
-    actor_id = principal.tenant_id
+    from ..org import ORG_ID
+
     safe_audit(
         lambda lg: lg.log_config_change(
             resource_id=f"role:{role_id}",
-            tenant_id=actor_id,
-            user_id=actor_id,
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
             detail="action=role_delete",
             client_ip=client_ip_from_request(http_request),
         )
@@ -155,13 +158,14 @@ def assign_user_role(
     role_map = {"admin": UserRole.ADMIN, "readonly": UserRole.GUEST}
     user_role = role_map.get(body.role_template_id, UserRole.USER)
     _user_store.update_user(user_id, role=user_role, role_template_id=body.role_template_id)
-    actor_id = principal.tenant_id
+    from ..org import ORG_ID
+
     safe_audit(
         lambda lg: lg.log_user_event(
             action="user_update",
             target_user_id=user_id,
-            actor_id=actor_id,
-            tenant_id=actor_id,
+            actor_id=principal.user_id,
+            tenant_id=ORG_ID,
             detail=f"role_template_id={body.role_template_id}",
             client_ip=client_ip_from_request(http_request),
         )

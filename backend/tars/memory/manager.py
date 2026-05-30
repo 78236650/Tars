@@ -7,6 +7,7 @@ from .reflector import Reflector
 from .search import HybridSearch
 from .embeddings import EmbeddingProvider
 from .compressor import MemoryCompressor
+from ..org import ORG_ID
 
 
 class MemoryManager:
@@ -17,7 +18,7 @@ class MemoryManager:
         db,
         provider=None,
         embedding_provider: Optional[EmbeddingProvider] = None,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         vector_store=None,
     ):
         self.db = db

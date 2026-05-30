@@ -29,9 +29,11 @@ def client(tmp_path):
 
     from tars.database import Database
     import tars.main as main
+    from tests.conftest import setup_main_api_auth
 
     test_db = Database(db_path=str(tmp_path / "t.db"))
     fake_runtime = FakeCronRuntime()
+    auth_headers, auth_user = setup_main_api_auth(test_db)
 
     main.db = test_db
     main.cron_runtime = fake_runtime
@@ -39,7 +41,7 @@ def client(tmp_path):
     main.cronjob_tool.set_runtime(fake_runtime)
 
     with TestClient(main.app) as test_client:
-        yield test_client, test_db
+        yield test_client, test_db, auth_headers, auth_user
 
     test_db.close()
 
@@ -61,9 +63,9 @@ def _create_notification(db, job, *, message: str, session_id: str | None, statu
 
 
 def test_reminder_notifications_api_supports_list_detail_and_mark_read(client):
-    http, db = client
+    http, db, auth_headers, auth_user = client
     job = db.create_cronjob(
-        user_id="default",
+        user_id=auth_user.id,
         name="喝水提醒",
         cron_expression="5 14 * * *",
         task_type="reminder",
@@ -84,7 +86,7 @@ def test_reminder_notifications_api_supports_list_detail_and_mark_read(client):
         status="broadcast",
     )
 
-    list_resp = http.get("/api/reminder-notifications")
+    list_resp = http.get("/api/reminder-notifications", headers=auth_headers)
     assert list_resp.status_code == 200
     payload = list_resp.json()["data"]
     assert payload["total"] == 2
@@ -93,29 +95,29 @@ def test_reminder_notifications_api_supports_list_detail_and_mark_read(client):
     assert payload["notifications"][0]["delivery_status"] == "broadcast"
     assert payload["notifications"][0]["is_read"] is False
 
-    detail_resp = http.get(f"/api/reminder-notifications/{latest.id}")
+    detail_resp = http.get(f"/api/reminder-notifications/{latest.id}", headers=auth_headers)
     assert detail_resp.status_code == 200
     detail = detail_resp.json()["data"]
     assert detail["job_id"] == job.id
     assert detail["session_id"] is None
     assert detail["summary_logs"][0]["step"] == "scheduler_matched"
 
-    read_resp = http.post(f"/api/reminder-notifications/{latest.id}/read")
+    read_resp = http.post(f"/api/reminder-notifications/{latest.id}/read", headers=auth_headers)
     assert read_resp.status_code == 200
     read_payload = read_resp.json()["data"]
     assert read_payload["id"] == latest.id
     assert read_payload["is_read"] is True
     assert read_payload["read_at"] is not None
 
-    updated_list = http.get("/api/reminder-notifications").json()["data"]
+    updated_list = http.get("/api/reminder-notifications", headers=auth_headers).json()["data"]
     assert updated_list["unread_total"] == 1
     assert updated_list["notifications"][0]["is_read"] is True
 
 
 def test_cronjob_api_includes_latest_notification_status(client):
-    http, db = client
+    http, db, auth_headers, auth_user = client
     job = db.create_cronjob(
-        user_id="default",
+        user_id=auth_user.id,
         name="站起来活动",
         cron_expression="5 14 * * *",
         task_type="reminder",
@@ -129,14 +131,14 @@ def test_cronjob_api_includes_latest_notification_status(client):
         status="broadcast",
     )
 
-    list_resp = http.get("/api/cronjobs")
+    list_resp = http.get("/api/cronjobs", headers=auth_headers)
     assert list_resp.status_code == 200
     jobs = list_resp.json()["data"]["jobs"]
     assert jobs[0]["latest_notification"]["job_id"] == job.id
     assert jobs[0]["latest_notification"]["delivery_status"] == "broadcast"
     assert jobs[0]["latest_notification"]["error_message"] == "缺少 session_id，回退广播路径"
 
-    detail_resp = http.get(f"/api/cronjobs/{job.id}")
+    detail_resp = http.get(f"/api/cronjobs/{job.id}", headers=auth_headers)
     assert detail_resp.status_code == 200
     detail = detail_resp.json()["data"]
     assert detail["latest_notification"]["id"] is not None

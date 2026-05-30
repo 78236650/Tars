@@ -7,8 +7,8 @@ def test_sessions_are_isolated_by_tenant(tmp_path):
     session_a = db.create_session(user_id="u1", title="Tenant A", tenant_id="tenant_a")
     session_b = db.create_session(user_id="u1", title="Tenant B", tenant_id="tenant_b")
 
-    assert db.get_session(session_a.id, tenant_id="tenant_a") is not None
-    assert db.get_session(session_a.id, tenant_id="tenant_b") is None
+    assert db.get_session(session_a.id, tenant_id="tenant_a", user_id="u1") is not None
+    assert db.get_session(session_a.id, tenant_id="tenant_b", user_id="u1") is None
 
     tenant_a_sessions = db.list_sessions(user_id="u1", tenant_id="tenant_a")
     tenant_b_sessions = db.list_sessions(user_id="u1", tenant_id="tenant_b")

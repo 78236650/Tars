@@ -18,6 +18,19 @@ _db: Optional[Database] = None
 _knowledge_bridge = None
 
 
+def _tool_tenant_scope(kwargs: Dict[str, Any]) -> str:
+    """Per-user BI scope from tool args or request context."""
+    explicit = (kwargs.get("tenant_id") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        from tars.context import get_current_user_id
+
+        return get_current_user_id()
+    except RuntimeError:
+        return "default"
+
+
 def init_insight_agent_tools(db: Database, knowledge_bridge=None) -> List[BaseTool]:
     global _db, _knowledge_bridge
     _db = db
@@ -55,7 +68,7 @@ class InsightGetWorkflowTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         db = _require_db()
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         wf = InsightWorkflowService(db)
         try:
             composite = wf.get_composite(
@@ -85,7 +98,7 @@ class InsightListSourcesTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         db = _require_db()
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         bi = DataSourceStore(db)
         wf = InsightWorkflowService(db)
         lines = []
@@ -104,7 +117,7 @@ class InsightListSourcesTool(BaseTool):
 class _ForgeStartMixin:
     async def _start_forge(self, **kwargs) -> ToolResult:
         db = _require_db()
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         ds_id = kwargs.get("datasource_id", "").strip()
         if not ds_id:
             return ToolResult(success=False, output="", error="需要 datasource_id")
@@ -180,7 +193,7 @@ class InsightAskMetricTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         db = _require_db()
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         engine = MetricQaEngine(db)
         try:
             answer = await engine.ask(
@@ -229,7 +242,7 @@ class InsightAdoptMetricTool(BaseTool):
 
         cfg = get_insight_config()
         service = AdoptionService(db, config=cfg, knowledge_bridge=_knowledge_bridge)
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         user_id = kwargs.get("user_id", "default")
         defer_publish = bool(_knowledge_bridge and cfg.adoption.publish_to_knowledge)
         try:
@@ -289,7 +302,7 @@ class InsightExplainMetricTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         db = _require_db()
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         store = InsightMetricStore(db)
         m = store.get_current_by_key(
             kwargs["datasource_id"], tenant_id, kwargs["metric_key"]
@@ -321,7 +334,7 @@ class InsightGiveFeedbackTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         db = _require_db()
-        tenant_id = kwargs.get("tenant_id", "default")
+        tenant_id = _tool_tenant_scope(kwargs)
         log_id = kwargs["question_log_id"]
         score = int(kwargs["feedback"])
         store = InsightQuestionLogStore(db)

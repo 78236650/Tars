@@ -43,18 +43,25 @@ class ArchivalInsertTool(BaseTool):
 
         import uuid
         from datetime import datetime, timezone, timedelta
+        from tars.context import get_current_user_id
+        from tars.org import ORG_ID
+
         now = datetime.now(timezone(timedelta(hours=8)))
         mid = str(uuid.uuid4())
 
         conn = self.db._get_conn()
         cur = conn.cursor()
         refs_json = json.dumps(entity_refs, ensure_ascii=False) if entity_refs else None
+        try:
+            writer_user_id = get_current_user_id()
+        except RuntimeError:
+            writer_user_id = None
         cur.execute(
             """
-            INSERT INTO memories(id,tenant_id,content,category,importance,created_at,updated_at,access_count,source,event_time,entity_refs)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO memories(id,tenant_id,user_id,content,category,importance,created_at,updated_at,access_count,source,event_time,entity_refs)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
             """,
-            (mid, "default", content, category, importance, now, now, 0, "urgent", now.isoformat(), refs_json),
+            (mid, ORG_ID, writer_user_id, content, category, importance, now, now, 0, "urgent", now.isoformat(), refs_json),
         )
         try:
             cur.execute("INSERT INTO memories_fts(rowid,content,category) VALUES(last_insert_rowid(),?,?)", (content, category))

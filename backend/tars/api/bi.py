@@ -16,6 +16,7 @@ from ..bi.schema_explorer import SchemaExplorer
 from ..bi.sql_agent import SQLAgent
 from ..bi.chart_generator import ChartGenerator
 from ._auth import Principal, require_module
+from .scope import datasource_scope_id
 
 router = APIRouter(prefix="/api/datasources", tags=["BI Analytics"])
 
@@ -167,11 +168,14 @@ def _test_url(connection_url: str) -> tuple[bool, str]:
 # ========== DataSource CRUD ==========
 
 @router.get("/")
-async def list_datasources(principal: Principal = Depends(_require)):
-    """获取当前租户数据源列表"""
+async def list_datasources(
+    user_id: Optional[str] = None,
+    principal: Principal = Depends(_require),
+):
+    """获取当前用户数据源列表（管理员可传 ``user_id`` 查看他人）。"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
-    datasources = _store.list_by_tenant(principal.tenant_id)
+    datasources = _store.list_by_tenant(datasource_scope_id(principal, user_id=user_id))
     return {"datasources": [_serialize_datasource(ds) for ds in datasources]}
 
 
@@ -198,13 +202,14 @@ async def test_connection_config(
 @router.post("/")
 async def create_datasource(
     request: CreateDataSourceRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """创建数据源 + 自动抓取 schema"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    tenant_id = principal.tenant_id
+    ds_scope = datasource_scope_id(principal, user_id=user_id)
     _, connection_url, stored_config = _resolve_connection(
         db_type=request.db_type,
         host=request.host,
@@ -228,7 +233,7 @@ async def create_datasource(
         explorer.close()
 
     ds = _store.create(
-        tenant_id=tenant_id,
+        tenant_id=ds_scope,
         name=request.name,
         db_type=request.db_type,
         connection_url=connection_url,
@@ -243,13 +248,14 @@ async def create_datasource(
 @router.get("/{ds_id}")
 async def get_datasource(
     ds_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """获取数据源详情"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    ds = _store.get(ds_id, principal.tenant_id)
+    ds = _store.get(ds_id, datasource_scope_id(principal, user_id=user_id))
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
@@ -260,14 +266,15 @@ async def get_datasource(
 async def update_datasource(
     ds_id: str,
     request: UpdateDataSourceRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """更新数据源配置"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    tenant_id = principal.tenant_id
-    ds = _store.get(ds_id, tenant_id)
+    ds_scope = datasource_scope_id(principal, user_id=user_id)
+    ds = _store.get(ds_id, ds_scope)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
@@ -305,20 +312,21 @@ async def update_datasource(
     if not update_data:
         raise HTTPException(status_code=400, detail="没有要更新的字段")
 
-    updated = _store.update(ds_id, tenant_id, **update_data)
+    updated = _store.update(ds_id, ds_scope, **update_data)
     return {"success": True, "datasource": _serialize_datasource(updated)}
 
 
 @router.delete("/{ds_id}")
 async def delete_datasource(
     ds_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """删除数据源"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    ok = _store.delete(ds_id, principal.tenant_id)
+    ok = _store.delete(ds_id, datasource_scope_id(principal, user_id=user_id))
     if not ok:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
@@ -328,13 +336,14 @@ async def delete_datasource(
 @router.post("/{ds_id}/test")
 async def test_datasource_connection(
     ds_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """测试数据源连接"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    ds = _store.get(ds_id, principal.tenant_id)
+    ds = _store.get(ds_id, datasource_scope_id(principal, user_id=user_id))
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
@@ -345,21 +354,22 @@ async def test_datasource_connection(
 @router.post("/{ds_id}/refresh-schema")
 async def refresh_schema(
     ds_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """重新抓取 schema"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    tenant_id = principal.tenant_id
-    ds = _store.get(ds_id, tenant_id)
+    ds_scope = datasource_scope_id(principal, user_id=user_id)
+    ds = _store.get(ds_id, ds_scope)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
     explorer = SchemaExplorer(ds.connection_url)
     try:
         schema = explorer.explore()
-        updated = _store.update(ds_id, tenant_id, schema_snapshot=schema)
+        updated = _store.update(ds_id, ds_scope, schema_snapshot=schema)
         return {
             "success": True,
             "schema_snapshot": updated.schema_snapshot,
@@ -374,18 +384,19 @@ async def refresh_schema(
 async def update_annotations(
     ds_id: str,
     request: UpdateAnnotationsRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """更新 schema 标注"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    tenant_id = principal.tenant_id
-    ds = _store.get(ds_id, tenant_id)
+    ds_scope = datasource_scope_id(principal, user_id=user_id)
+    ds = _store.get(ds_id, ds_scope)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
-    updated = _store.update(ds_id, tenant_id, schema_annotations=request.annotations)
+    updated = _store.update(ds_id, ds_scope, schema_annotations=request.annotations)
     return {"success": True, "schema_annotations": updated.schema_annotations}
 
 
@@ -395,14 +406,15 @@ async def update_annotations(
 async def execute_query(
     ds_id: str,
     request: ExecuteSQLRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """执行 SQL 查询（只读）"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    tenant_id = principal.tenant_id
-    ds = _store.get(ds_id, tenant_id)
+    ds_scope = datasource_scope_id(principal, user_id=user_id)
+    ds = _store.get(ds_id, ds_scope)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
@@ -422,14 +434,15 @@ async def execute_query(
 async def generate_chart(
     ds_id: str,
     request: GenerateChartRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """执行 SQL 并生成图表"""
     if _store is None:
         raise HTTPException(status_code=500, detail="BI API 未初始化")
 
-    tenant_id = principal.tenant_id
-    ds = _store.get(ds_id, tenant_id)
+    ds_scope = datasource_scope_id(principal, user_id=user_id)
+    ds = _store.get(ds_id, ds_scope)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
 

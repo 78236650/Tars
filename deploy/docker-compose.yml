@@ -1,7 +1,23 @@
-# TARS v4.3.2 stable — production compose
+# TARS v5.0 — production compose (Postgres + single uvicorn worker)
 # Usage: cd deploy && cp .env.example .env && docker compose up -d --build
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tars
+      POSTGRES_PASSWORD: tars
+      POSTGRES_DB: tars
+    volumes:
+      - tars-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tars -d tars"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
   backend:
     build:
       context: ..
@@ -16,6 +32,10 @@ services:
       - .env
     environment:
       - TARS_DATA_DIR=/app/data
+      - DATABASE_URL=postgresql://tars:tars@postgres:5432/tars
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/docs"]
@@ -37,3 +57,4 @@ services:
 
 volumes:
   tars-data:
+  tars-pg-data:

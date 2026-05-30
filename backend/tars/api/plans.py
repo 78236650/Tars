@@ -10,6 +10,7 @@ from ..database.audit_store import init_verification_audit_store, get_verificati
 from ..orchestration.plan_gate import PlanGateService, get_plan_gate, init_plan_gate
 from ..orchestration.plan_resume import get_plan_resume, init_plan_resume
 from ._auth import Principal, require_authenticated_user
+from .scope import datasource_scope_id
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 
@@ -55,13 +56,24 @@ def _gate() -> PlanGateService:
     return gate
 
 
+def _plan_scope(principal: Principal, user_id: Optional[str] = None) -> str:
+    """Per-user plan scope (legacy column ``tenant_id``); admin may pass ``?user_id=``."""
+    return datasource_scope_id(principal, user_id=user_id)
+
+
+def _assert_plan_access(plan, principal: Principal, user_id: Optional[str] = None) -> None:
+    if not principal.is_admin and plan.tenant_id != _plan_scope(principal, user_id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+
+
 @router.get("")
 async def list_plans(
     principal: Principal = Depends(require_authenticated_user),
     limit: int = 50,
+    user_id: Optional[str] = None,
 ):
-    tenant_id = principal.tenant_id or "default"
-    plans = _store().list_by_tenant(tenant_id, limit=limit)
+    scope = _plan_scope(principal, user_id)
+    plans = _store().list_by_tenant(scope, limit=limit)
     return {"plans": [p.to_dict() for p in plans]}
 
 
@@ -69,11 +81,12 @@ async def list_plans(
 async def get_plan(
     plan_id: str,
     principal: Principal = Depends(require_authenticated_user),
+    user_id: Optional[str] = None,
 ):
     detail = _store().get_detail(plan_id)
     if not detail:
         raise HTTPException(status_code=404, detail="计划不存在")
-    if not principal.is_admin and detail.get("tenant_id") != (principal.tenant_id or "default"):
+    if not principal.is_admin and detail.get("tenant_id") != _plan_scope(principal, user_id):
         raise HTTPException(status_code=403, detail="无权查看该计划")
     return detail
 
@@ -83,12 +96,12 @@ async def approve_plan(
     plan_id: str,
     body: PlanStepsUpdate = PlanStepsUpdate(),
     principal: Principal = Depends(require_authenticated_user),
+    user_id: Optional[str] = None,
 ):
     plan = _store().get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="计划不存在")
-    if not principal.is_admin and plan.tenant_id != (principal.tenant_id or "default"):
-        raise HTTPException(status_code=403, detail="无权审批该计划")
+    _assert_plan_access(plan, principal, user_id)
     ok = _gate().approve(plan_id, steps=body.steps)
     if not ok:
         raise HTTPException(status_code=409, detail="审批失败")
@@ -99,12 +112,12 @@ async def approve_plan(
 async def reject_plan(
     plan_id: str,
     principal: Principal = Depends(require_authenticated_user),
+    user_id: Optional[str] = None,
 ):
     plan = _store().get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="计划不存在")
-    if not principal.is_admin and plan.tenant_id != (principal.tenant_id or "default"):
-        raise HTTPException(status_code=403, detail="无权拒绝该计划")
+    _assert_plan_access(plan, principal, user_id)
     ok = _gate().reject(plan_id)
     if not ok:
         raise HTTPException(status_code=409, detail="拒绝失败")
@@ -115,12 +128,12 @@ async def reject_plan(
 async def retry_plan(
     plan_id: str,
     principal: Principal = Depends(require_authenticated_user),
+    user_id: Optional[str] = None,
 ):
     plan = _store().get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="计划不存在")
-    if not principal.is_admin and plan.tenant_id != (principal.tenant_id or "default"):
-        raise HTTPException(status_code=403, detail="无权重试该计划")
+    _assert_plan_access(plan, principal, user_id)
 
     resume_svc = get_plan_resume()
     if resume_svc is None:
@@ -145,11 +158,11 @@ async def retry_plan(
 async def get_plan_verification(
     plan_id: str,
     principal: Principal = Depends(require_authenticated_user),
+    user_id: Optional[str] = None,
 ):
     plan = _store().get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="计划不存在")
-    if not principal.is_admin and plan.tenant_id != (principal.tenant_id or "default"):
-        raise HTTPException(status_code=403, detail="无权查看该计划")
+    _assert_plan_access(plan, principal, user_id)
     items = get_verification_audit_store().list_by_plan(plan_id)
     return {"plan_id": plan_id, "items": items}

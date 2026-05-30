@@ -45,7 +45,7 @@ def bi_client():
         )
 
     client = TestClient(app)
-    headers = {"X-API-Key": admin.api_key, "X-Tenant-ID": admin.id}
+    headers = {"X-API-Key": admin.api_key}
     return client, headers, admin
 
 
@@ -113,7 +113,7 @@ def test_standard_role_can_access_bi_api(bi_client, sample_sqlite_url):
     user = user_store.create_user(username=name, email=f"{name}@t.local", role=UserRole.USER)
     user_store.update_user(user.id, role_template_id="standard")
     user = user_store.get_user_by_id(user.id)
-    headers = {"X-API-Key": user.api_key, "X-Tenant-ID": user.id}
+    headers = {"X-API-Key": user.api_key}
 
     list_res = client.get("/api/datasources/", headers=headers)
     assert list_res.status_code == 200, list_res.text
@@ -140,7 +140,7 @@ def test_business_analyst_role_cannot_access_bi_api(bi_client):
     user = user_store.create_user(username=name, email=f"{name}@t.local", role=UserRole.USER)
     user_store.update_user(user.id, role_template_id="business_analyst")
     user = user_store.get_user_by_id(user.id)
-    headers = {"X-API-Key": user.api_key, "X-Tenant-ID": user.id}
+    headers = {"X-API-Key": user.api_key}
 
     res = client.get("/api/datasources/", headers=headers)
     assert res.status_code == 403

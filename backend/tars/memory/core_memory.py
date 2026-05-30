@@ -1,7 +1,9 @@
 """Core Memory — Letta 模式的 4 块固定区块管理"""
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+
+from ..org import ORG_ID
 
 BLOCK_NAMES = ["persona", "user_profile", "project_context", "working_principles"]
 BLOCK_TITLES = {
@@ -17,12 +19,32 @@ def _now_iso() -> str:
 
 
 class CoreMemoryManager:
-    """4 块固定区块的读写 + 自动 trim"""
+    """4 块固定区块的读写 + 自动 trim（每用户私有）"""
 
-    def __init__(self, db, max_size: int = 2048, tenant_id: str = "default"):
+    def __init__(
+        self,
+        db,
+        max_size: int = 2048,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ):
         self.db = db
         self.max_size = max_size
         self.tenant_id = tenant_id
+        self._user_id_override = user_id
+
+    @staticmethod
+    def _resolve_user_id(user_id: Optional[str]) -> str:
+        if user_id is not None:
+            return user_id
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return "default"
+
+    def _user_id(self) -> str:
+        return self._resolve_user_id(self._user_id_override)
 
     def get(self, block: str) -> str:
         if block not in BLOCK_NAMES:
@@ -30,8 +52,11 @@ class CoreMemoryManager:
         conn = self.db._get_conn()
         cur = conn.cursor()
         cur.execute(
-            "SELECT content FROM core_memory_blocks WHERE name = ? AND tenant_id = ?",
-            (block, self.tenant_id),
+            """
+            SELECT content FROM core_memory_blocks
+            WHERE name = ? AND tenant_id = ? AND user_id = ?
+            """,
+            (block, self.tenant_id, self._user_id()),
         )
         row = cur.fetchone()
         return row[0] if row else ""
@@ -47,12 +72,12 @@ class CoreMemoryManager:
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO core_memory_blocks (name, tenant_id, content, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(tenant_id, name)
+            INSERT INTO core_memory_blocks (name, tenant_id, user_id, content, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id, user_id, name)
             DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at
             """,
-            (block, self.tenant_id, content, _now_iso()),
+            (block, self.tenant_id, self._user_id(), content, _now_iso()),
         )
         conn.commit()
         return True
@@ -157,14 +182,19 @@ class CoreMemoryAppendTool(BaseTool):
     def __init__(self, db):
         self.db = db
 
-    def _manager(self, tenant_id: str) -> CoreMemoryManager:
-        return CoreMemoryManager(self.db, tenant_id=tenant_id or "default")
+    def _manager(self, tenant_id: str, user_id: Optional[str] = None) -> CoreMemoryManager:
+        return CoreMemoryManager(
+            self.db,
+            tenant_id=tenant_id or ORG_ID,
+            user_id=user_id,
+        )
 
     async def execute(self, **kwargs) -> ToolResult:
-        tenant_id = str(kwargs.get("tenant_id") or "default")
+        tenant_id = str(kwargs.get("tenant_id") or ORG_ID)
+        user_id = kwargs.get("user_id")
         block = kwargs.get("block", "")
         content = kwargs.get("content", "").strip()
-        manager = self._manager(tenant_id)
+        manager = self._manager(tenant_id, user_id=user_id)
         if block not in BLOCK_NAMES:
             return ToolResult(success=False, output="", error=f"无效的区块名: {block}")
         if not content:
@@ -197,15 +227,20 @@ class CoreMemoryReplaceTool(BaseTool):
     def __init__(self, db):
         self.db = db
 
-    def _manager(self, tenant_id: str) -> CoreMemoryManager:
-        return CoreMemoryManager(self.db, tenant_id=tenant_id or "default")
+    def _manager(self, tenant_id: str, user_id: Optional[str] = None) -> CoreMemoryManager:
+        return CoreMemoryManager(
+            self.db,
+            tenant_id=tenant_id or ORG_ID,
+            user_id=user_id,
+        )
 
     async def execute(self, **kwargs) -> ToolResult:
-        tenant_id = str(kwargs.get("tenant_id") or "default")
+        tenant_id = str(kwargs.get("tenant_id") or ORG_ID)
+        user_id = kwargs.get("user_id")
         block = kwargs.get("block", "")
         old = kwargs.get("old", "")
         new = kwargs.get("new", "")
-        manager = self._manager(tenant_id)
+        manager = self._manager(tenant_id, user_id=user_id)
         if block not in BLOCK_NAMES:
             return ToolResult(success=False, output="", error=f"无效的区块名: {block}")
         ok = manager.replace(block, old, new)

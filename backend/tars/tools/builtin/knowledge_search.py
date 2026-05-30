@@ -1,6 +1,8 @@
 """知识库搜索工具 — 供 Agent 调用"""
 from typing import Any, Dict
 
+from tars.org import ORG_ID
+from tars.context import get_current_org_id
 from tars.knowledge.access import search_knowledge
 from tars.tools.base import BaseTool, ToolResult
 
@@ -42,7 +44,7 @@ class KnowledgeSearchTool(BaseTool):
         query = kwargs.get("query", "").strip()
         collection_id = kwargs.get("collection_id")
         top_k = kwargs.get("top_k", 5)
-        tenant_id = (kwargs.get("tenant_id") or "default").strip() or "default"
+        org_id = get_current_org_id()
 
         if not query:
             return ToolResult(success=False, output="", error="查询不能为空")
@@ -58,7 +60,7 @@ class KnowledgeSearchTool(BaseTool):
                 self._db,
                 self._retriever,
                 query=query,
-                tenant_id=tenant_id,
+                tenant_id=org_id,
                 collection_id=collection_id,
                 top_k=top_k,
             )

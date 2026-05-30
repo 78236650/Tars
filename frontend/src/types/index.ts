@@ -21,6 +21,7 @@ export interface UserListResponse {
 }
 
 export interface LoginResult {
+  access_token?: string
   api_key: string
   user: User
 }

@@ -119,12 +119,10 @@ async def invoke(
         if user is None:
             raise HTTPException(status_code=401, detail="无效的 API Key")
 
-    tenant_id = x_tenant_id or "default"
+    from ..org import ORG_ID
 
-    # v4.0.1: 验证 tenant_id 归属（非 admin 只能访问自己的租户空间）
-    if user and tenant_id != "default":
-        if getattr(user, "role", "user") != "admin" and user.id != tenant_id:
-            raise HTTPException(status_code=403, detail="无权访问其他用户的租户空间")
+    # v5.0: single org — machine invoke always uses org scope; X-Tenant-Id ignored.
+    tenant_id = ORG_ID
 
     session_id = payload.session_id or str(uuid.uuid4())
     tenant_context = _tenant_cache.get_or_create(

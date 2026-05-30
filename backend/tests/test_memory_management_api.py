@@ -24,6 +24,7 @@ class ExtractStubProvider:
 def _seed_memory(
     db,
     *,
+    user_id: str,
     content: str,
     category: str = "fact",
     importance: float = 0.5,
@@ -31,7 +32,12 @@ def _seed_memory(
     pinned: int = 0,
     entity_refs=None,
 ):
-    memory = db.add_memory(content=content, category=category, importance=importance)
+    memory = db.add_memory(
+        content=content,
+        category=category,
+        importance=importance,
+        user_id=user_id,
+    )
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -70,71 +76,121 @@ class TestMemoryManagementSchema:
 
 class TestMemoryManagementAPI:
     @pytest.fixture
-    def client_and_db(self, tmp_path):
+    def client_and_db(self, tmp_path, monkeypatch):
+        import uuid
+
+        monkeypatch.setenv("TARS_MEMORY_COMPRESSOR", "true")
+        from tars.config import memory as memory_config_mod
+
+        memory_config_mod.config.compressor_enabled = True
+
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
+        from tars.api._auth import init_auth
         from tars.api.memory import init_memory_api, router
-        from tars.database import Database
+        from tars.database import Database, UserStore
+        from tars.gateway.permission import UserRole
         from tars.memory.manager import MemoryManager
+        from tars.middleware.user_context import UserContextMiddleware
+        from tars.org import ORG_ID
 
         db = Database(db_path=str(tmp_path / "memory.db"))
         manager = MemoryManager(db, provider=StubLLMProvider())
+        store = UserStore(db)
+        suffix = uuid.uuid4().hex[:8]
+        user = store.create_user(
+            username=f"mem_{suffix}",
+            email=f"mem_{suffix}@test.local",
+            role=UserRole.USER,
+        )
+        from tars.database.auth_token_store import AuthTokenStore
+
+        init_auth(store, AuthTokenStore(db))
+        auth_headers = {"X-API-Key": user.api_key}
 
         app = FastAPI()
+        app.state.user_store = store
+        app.state.auth_token_store = AuthTokenStore(db)
+        app.add_middleware(UserContextMiddleware)
         app.include_router(router)
         init_memory_api(db, manager)
-        return TestClient(app), db, manager
+        return TestClient(app), db, manager, auth_headers, user
 
     def test_core_memory_roundtrip(self, client_and_db):
-        client, _db, manager = client_and_db
+        client, _db, manager, auth_headers, _user = client_and_db
 
-        before = client.get("/api/memory/core")
+        before = client.get("/api/memory/core", headers=auth_headers)
         assert before.status_code == 200
         assert "persona" in before.json()["blocks"]
 
-        resp = client.put("/api/memory/core/persona", json={"content": "新的 TARS 自我认知"})
+        resp = client.put(
+            "/api/memory/core/persona",
+            json={"content": "新的 TARS 自我认知"},
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
         assert resp.json()["block"] == "persona"
-        assert manager.core.get("persona") == "新的 TARS 自我认知"
+        after = client.get("/api/memory/core", headers=auth_headers)
+        assert after.json()["blocks"]["persona"] == "新的 TARS 自我认知"
 
-    def test_core_memory_respects_tenant_header(self, client_and_db):
-        client, _db, manager = client_and_db
-        headers = {"X-Tenant-ID": "tenant-user-a"}
+    def test_core_memory_isolated_per_user(self, client_and_db):
+        import uuid
+
+        from tars.api._auth import init_auth
+        from tars.database import UserStore
+        from tars.gateway.permission import UserRole
+        from tars.org import ORG_ID
+
+        client, db, _manager, headers_a, user_a = client_and_db
+        store = UserStore(db)
+        suffix = uuid.uuid4().hex[:8]
+        user_b = store.create_user(
+            username=f"mem_b_{suffix}",
+            email=f"mem_b_{suffix}@test.local",
+            role=UserRole.USER,
+        )
+        from tars.database.auth_token_store import AuthTokenStore
+
+        init_auth(store, AuthTokenStore(db))
+        headers_b = {"X-API-Key": user_b.api_key}
 
         resp = client.put(
             "/api/memory/core/user_profile",
             json={"content": "用户 A 的画像"},
-            headers=headers,
+            headers=headers_a,
         )
         assert resp.status_code == 200
-        assert resp.json()["tenant_id"] == "tenant-user-a"
+        assert resp.json()["tenant_id"] == ORG_ID
+        assert resp.json()["user_id"] == user_a.id
 
-        scoped = manager.for_tenant("tenant-user-a")
-        assert scoped.core.get("user_profile") == "用户 A 的画像"
-        assert manager.core.get("user_profile") != "用户 A 的画像"
+        loaded_b = client.get("/api/memory/core", headers=headers_b)
+        assert loaded_b.status_code == 200
+        assert loaded_b.json()["blocks"].get("user_profile", "") != "用户 A 的画像"
 
-        loaded = client.get("/api/memory/core", headers=headers)
-        assert loaded.json()["blocks"]["user_profile"] == "用户 A 的画像"
-        assert loaded.json()["tenant_id"] == "tenant-user-a"
+        loaded_a = client.get("/api/memory/core", headers=headers_a)
+        assert loaded_a.json()["blocks"]["user_profile"] == "用户 A 的画像"
 
     def test_recent_endpoint_filters_by_days_and_category(self, client_and_db):
-        client, db, _manager = client_and_db
+        client, db, _manager, auth_headers, user = client_and_db
 
         keep = _seed_memory(
             db,
+            user_id=user.id,
             content="最近 7 天内的开发偏好",
             category="fact",
             memory_type="episodic",
         )
         _seed_memory(
             db,
+            user_id=user.id,
             content="近期但不同分类",
             category="decision",
             memory_type="episodic",
         )
         stale = _seed_memory(
             db,
+            user_id=user.id,
             content="8 天前的旧记忆",
             category="fact",
             memory_type="episodic",
@@ -153,7 +209,7 @@ class TestMemoryManagementAPI:
         )
         conn.commit()
 
-        resp = client.get("/api/memory/recent?page=1&cat=fact")
+        resp = client.get("/api/memory/recent?page=1&cat=fact", headers=auth_headers)
         assert resp.status_code == 200
         payload = resp.json()
         ids = [item["id"] for item in payload["items"]]
@@ -163,10 +219,11 @@ class TestMemoryManagementAPI:
         assert payload["page"] == 1
 
     def test_longterm_endpoint_groups_records(self, client_and_db):
-        client, db, _manager = client_and_db
+        client, db, _manager, auth_headers, user = client_and_db
 
         _seed_memory(
             db,
+            user_id=user.id,
             content="Alice 偏好命令行工作流",
             importance=0.8,
             memory_type="longterm",
@@ -174,13 +231,14 @@ class TestMemoryManagementAPI:
         )
         _seed_memory(
             db,
+            user_id=user.id,
             content="一条被 pin 的通用长期记忆",
             importance=0.3,
             memory_type="episodic",
             pinned=1,
         )
 
-        resp = client.get("/api/memory/longterm?page=1&group_by=entity")
+        resp = client.get("/api/memory/longterm?page=1&group_by=entity", headers=auth_headers)
         assert resp.status_code == 200
         groups = resp.json()["groups"]
 
@@ -189,10 +247,11 @@ class TestMemoryManagementAPI:
         assert "通用" in group_names
 
     def test_all_endpoint_includes_old_low_importance_records(self, client_and_db):
-        client, db, _manager = client_and_db
+        client, db, _manager, auth_headers, user = client_and_db
 
         old_memory = _seed_memory(
             db,
+            user_id=user.id,
             content="这是一条旧的低重要度记忆，也应该能在全部记忆里看到",
             category="fact",
             importance=0.1,
@@ -211,7 +270,7 @@ class TestMemoryManagementAPI:
         )
         conn.commit()
 
-        resp = client.get("/api/memory/all?page=1")
+        resp = client.get("/api/memory/all?page=1", headers=auth_headers)
         assert resp.status_code == 200
         payload = resp.json()
         ids = [item["id"] for item in payload["items"]]
@@ -220,12 +279,20 @@ class TestMemoryManagementAPI:
         assert payload["total"] >= 1
 
     def test_all_endpoint_supports_memory_type_filter(self, client_and_db):
-        client, db, _manager = client_and_db
+        client, db, _manager, auth_headers, user = client_and_db
 
-        episodic = _seed_memory(db, content="可见的 episodic 记忆", memory_type="episodic")
-        longterm = _seed_memory(db, content="可见的 longterm 记忆", memory_type="longterm", importance=0.8)
+        episodic = _seed_memory(
+            db, user_id=user.id, content="可见的 episodic 记忆", memory_type="episodic"
+        )
+        longterm = _seed_memory(
+            db,
+            user_id=user.id,
+            content="可见的 longterm 记忆",
+            memory_type="longterm",
+            importance=0.8,
+        )
 
-        resp = client.get("/api/memory/all?page=1&memory_type=longterm")
+        resp = client.get("/api/memory/all?page=1&memory_type=longterm", headers=auth_headers)
         assert resp.status_code == 200
         payload = resp.json()
         ids = [item["id"] for item in payload["items"]]
@@ -234,34 +301,41 @@ class TestMemoryManagementAPI:
         assert episodic.id not in ids
 
     def test_pin_promote_update_delete_flow(self, client_and_db):
-        client, db, _manager = client_and_db
-        memory = _seed_memory(db, content="待编辑记忆", importance=0.4)
+        client, db, _manager, auth_headers, user = client_and_db
+        memory = _seed_memory(db, user_id=user.id, content="待编辑记忆", importance=0.4)
 
-        pin_resp = client.post(f"/api/memory/{memory.id}/pin", json={"pinned": True})
+        pin_resp = client.post(
+            f"/api/memory/{memory.id}/pin", json={"pinned": True}, headers=auth_headers
+        )
         assert pin_resp.status_code == 200
         assert pin_resp.json()["pinned"] is True
 
-        promote_resp = client.post(f"/api/memory/{memory.id}/promote")
+        promote_resp = client.post(f"/api/memory/{memory.id}/promote", headers=auth_headers)
         assert promote_resp.status_code == 200
         assert promote_resp.json()["memory_type"] == "longterm"
 
-        update_resp = client.put(f"/api/memory/{memory.id}", json={"content": "编辑后的记忆内容"})
+        update_resp = client.put(
+            f"/api/memory/{memory.id}",
+            json={"content": "编辑后的记忆内容"},
+            headers=auth_headers,
+        )
         assert update_resp.status_code == 200
 
-        detail = client.get(f"/api/memory/{memory.id}")
+        detail = client.get(f"/api/memory/{memory.id}", headers=auth_headers)
         assert detail.status_code == 200
         assert detail.json()["content"] == "编辑后的记忆内容"
 
-        delete_resp = client.delete(f"/api/memory/{memory.id}")
+        delete_resp = client.delete(f"/api/memory/{memory.id}", headers=auth_headers)
         assert delete_resp.status_code == 200
 
-        missing = client.get(f"/api/memory/{memory.id}")
+        missing = client.get(f"/api/memory/{memory.id}", headers=auth_headers)
         assert missing.status_code == 404
 
     def test_merge_preview_and_confirm_replace_originals(self, client_and_db):
-        client, db, _manager = client_and_db
+        client, db, _manager, auth_headers, user = client_and_db
         first = _seed_memory(
             db,
+            user_id=user.id,
             content="用户偏好使用 Python 处理自动化脚本",
             importance=0.55,
             memory_type="longterm",
@@ -269,6 +343,7 @@ class TestMemoryManagementAPI:
         )
         second = _seed_memory(
             db,
+            user_id=user.id,
             content="用户在新项目中也优先选择 Python 技术栈",
             importance=0.65,
             memory_type="longterm",
@@ -278,6 +353,7 @@ class TestMemoryManagementAPI:
         preview_resp = client.post(
             "/api/memory/merge",
             json={"memory_ids": [first.id, second.id], "preview_only": True},
+            headers=auth_headers,
         )
         assert preview_resp.status_code == 200
         preview = preview_resp.json()
@@ -287,6 +363,7 @@ class TestMemoryManagementAPI:
         confirm_resp = client.post(
             "/api/memory/merge",
             json={"memory_ids": [first.id, second.id], "preview_only": False},
+            headers=auth_headers,
         )
         assert confirm_resp.status_code == 200
         result = confirm_resp.json()
@@ -294,22 +371,23 @@ class TestMemoryManagementAPI:
         assert result["memory"]["memory_type"] == "longterm"
         assert sorted(result["memory"]["compressed_from"]) == sorted([first.id, second.id])
 
-        assert client.get(f"/api/memory/{first.id}").status_code == 404
-        assert client.get(f"/api/memory/{second.id}").status_code == 404
+        assert client.get(f"/api/memory/{first.id}", headers=auth_headers).status_code == 404
+        assert client.get(f"/api/memory/{second.id}", headers=auth_headers).status_code == 404
 
     def test_manual_compress_updates_status(self, client_and_db):
-        client, db, _manager = client_and_db
+        client, db, _manager, auth_headers, user = client_and_db
 
         for i in range(11):
             _seed_memory(
                 db,
+                user_id=user.id,
                 content=f"Alice 第 {i} 条近期记忆",
                 importance=0.45,
                 memory_type="episodic",
                 entity_refs=["person:alice"],
             )
 
-        compress_resp = client.post("/api/memory/compress")
+        compress_resp = client.post("/api/memory/compress", headers=auth_headers)
         assert compress_resp.status_code == 200
         report = compress_resp.json()
         assert report["status"] == "completed"
@@ -322,7 +400,7 @@ class TestMemoryManagementAPI:
         assert status["last_report"]["compressed_count"] >= 1
 
     def test_extract_and_save_from_turn(self, client_and_db):
-        client, _db, manager = client_and_db
+        client, _db, manager, auth_headers, _user = client_and_db
         manager.set_provider(ExtractStubProvider())
         extract_resp = client.post(
             "/api/memory/extract-from-turn",
@@ -330,6 +408,7 @@ class TestMemoryManagementAPI:
                 "user_content": "我喜欢使用 React 开发前端",
                 "assistant_content": "好的，我会记住你偏好 React，并在后续建议中优先考虑。",
             },
+            headers=auth_headers,
         )
         assert extract_resp.status_code == 200
         items = extract_resp.json()["items"]
@@ -339,6 +418,7 @@ class TestMemoryManagementAPI:
         save_resp = client.post(
             "/api/memory/save-from-turn",
             json={"items": items},
+            headers=auth_headers,
         )
         assert save_resp.status_code == 200
         payload = save_resp.json()

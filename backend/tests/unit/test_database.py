@@ -19,7 +19,7 @@ class TestDatabase:
 
     def test_get_session(self, test_db):
         session = test_db.create_session(user_id="user1")
-        retrieved = test_db.get_session(session.id)
+        retrieved = test_db.get_session(session.id, user_id="user1")
         
         assert retrieved is not None
         assert retrieved.id == session.id

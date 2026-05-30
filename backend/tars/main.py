@@ -78,7 +78,7 @@ from tars.cron import CronRuntime
 # 初始化应用
 app = FastAPI(
     title="PortMeta Agent",
-    version="4.3.4",
+    version="5.0.0",
     description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 
@@ -104,9 +104,20 @@ _StarletteRequest.form = _patched_form
 # 初始化组件
 db = Database()
 user_store = UserStore(db)
+from tars.database.auth_token_store import AuthTokenStore
 
-from tars.api._auth import init_auth, require_admin, Principal
-init_auth(user_store)
+auth_token_store = AuthTokenStore(db)
+app.state.user_store = user_store
+app.state.auth_token_store = auth_token_store
+
+from tars.middleware.user_context import UserContextMiddleware
+
+app.add_middleware(UserContextMiddleware)
+
+from tars.api._auth import init_auth, require_admin, require_authenticated_user, Principal
+from tars.context import get_current_org_id, require_current_user_id
+
+init_auth(user_store, auth_token_store)
 
 permission_manager = PermissionManager()
 evolution_manager = EvolutionManager(db=db)
@@ -634,6 +645,14 @@ async def get_current_user(api_key: Optional[str] = None):
     return _serialize_user(user)
 
 
+@app.get("/api/users/me/context")
+async def get_current_user_context(
+    user_id: str = Depends(require_current_user_id),
+):
+    """Request context probe (v5.0); requires JWT or API key via middleware."""
+    return {"user_id": user_id, "org_id": get_current_org_id()}
+
+
 @app.post("/api/auth/login", response_model=SkillResponse)
 async def login(body: AuthLoginRequest, http_request: Request):
     """使用账号密码登录并返回现有 API Key"""
@@ -642,11 +661,13 @@ async def login(body: AuthLoginRequest, http_request: Request):
     identifier = body.identifier.strip()
     user = _get_user_by_identifier(identifier)
     client_ip = client_ip_from_request(http_request)
+    from tars.org import ORG_ID
+
     if not user or not user_store.verify_password(user.id, body.password):
         safe_audit(
             lambda lg: lg.log_login(
                 user_id=user.id if user else "unknown",
-                tenant_id=user.id if user else "default",
+                tenant_id=ORG_ID,
                 success=False,
                 detail=f"identifier={identifier}",
                 client_ip=client_ip,
@@ -659,26 +680,57 @@ async def login(body: AuthLoginRequest, http_request: Request):
     safe_audit(
         lambda lg: lg.log_login(
             user_id=fresh_user.id,
-            tenant_id=fresh_user.id,
+            tenant_id=ORG_ID,
             success=True,
             detail=fresh_user.username,
             client_ip=client_ip,
         )
     )
+    from tars.gateway.jwt_auth import create_access_token, decode_access_token
+
+    access_token = create_access_token(fresh_user.id)
+    claims = decode_access_token(access_token)
+    auth_token_store.insert_token(
+        claims["jti"],
+        fresh_user.id,
+        claims["exp"],
+    )
     return {
         "success": True,
         "message": "登录成功",
         "data": {
+            "access_token": access_token,
             "api_key": fresh_user.api_key,
             "user": _serialize_user(fresh_user),
         },
     }
 
+
+@app.post("/api/auth/logout", response_model=SkillResponse)
+async def logout(principal=Depends(require_authenticated_user), authorization: Optional[str] = Header(default=None)):
+    """Revoke current JWT (jti) so Bearer token cannot be reused."""
+    from tars.api._auth import _bearer_token
+    from tars.gateway.jwt_auth import decode_access_token
+    import jwt
+
+    token = _bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Bearer token required for logout")
+    try:
+        claims = decode_access_token(token)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    jti = claims.get("jti")
+    if jti:
+        auth_token_store.revoke_token(jti)
+    return {"success": True, "message": "已登出"}
+
+
 @app.post("/api/users", response_model=SkillResponse)
 async def create_user(
     request: UserCreateRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """创建新用户"""
     from tars.security.audit import safe_audit, client_ip_from_request
@@ -700,13 +752,14 @@ async def create_user(
         role,
         password=request.password,
     )
-    actor_id = x_tenant_id or "default"
+    from tars.org import ORG_ID
+
     safe_audit(
         lambda lg: lg.log_user_event(
             action="user_create",
             target_user_id=user.id,
-            actor_id=actor_id,
-            tenant_id=actor_id,
+            actor_id=principal.user_id,
+            tenant_id=ORG_ID,
             detail=f"username={user.username}, role={user.role.value}",
             client_ip=client_ip_from_request(http_request),
         )
@@ -728,7 +781,7 @@ async def update_user(
     user_id: str,
     request: UserUpdateRequest,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """更新用户信息"""
     from tars.security.audit import safe_audit, client_ip_from_request
@@ -751,14 +804,15 @@ async def update_user(
     success = user_store.update_user(user_id, **update_data)
     if success:
         user = user_store.get_user_by_id(user_id)
-        actor_id = x_tenant_id or "default"
+        from tars.org import ORG_ID
+
         changed_fields = ",".join(sorted(update_data.keys()))
         safe_audit(
             lambda lg: lg.log_user_event(
                 action="user_update",
                 target_user_id=user_id,
-                actor_id=actor_id,
-                tenant_id=actor_id,
+                actor_id=principal.user_id,
+                tenant_id=ORG_ID,
                 detail=f"fields={changed_fields}, role={user.role.value}",
                 client_ip=client_ip_from_request(http_request),
             )
@@ -780,20 +834,21 @@ async def update_user(
 async def delete_user(
     user_id: str,
     http_request: Request,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """删除用户"""
     from tars.security.audit import safe_audit, client_ip_from_request
 
     success = user_store.delete_user(user_id)
     if success:
-        actor_id = x_tenant_id or "default"
+        from tars.org import ORG_ID
+
         safe_audit(
             lambda lg: lg.log_user_event(
                 action="user_delete",
                 target_user_id=user_id,
-                actor_id=actor_id,
-                tenant_id=actor_id,
+                actor_id=principal.user_id,
+                tenant_id=ORG_ID,
                 client_ip=client_ip_from_request(http_request),
             )
         )
@@ -1078,15 +1133,16 @@ def _serialize_reminder_notification(notification, include_logs: bool = True) ->
 
 
 def _resolve_cron_user_id(
+    principal: Principal,
     user_id: Optional[str] = None,
-    x_tenant_id: Optional[str] = None,
 ) -> str:
-    """Resolve cron/reminder scope: explicit query param > X-Tenant-Id header > default."""
-    if user_id:
-        return user_id
-    if x_tenant_id:
-        return x_tenant_id
-    return "default"
+    """Cron/reminder scope: authenticated user, or explicit user_id for admin."""
+    if user_id and user_id.strip():
+        target = user_id.strip()
+        if target != principal.user_id and not principal.is_admin:
+            raise HTTPException(status_code=403, detail="无权访问其他用户定时任务")
+        return target
+    return principal.user_id
 
 
 def _serialize_cronjob(job, include_config: bool = False) -> Dict[str, Any]:
@@ -1116,10 +1172,10 @@ def _serialize_cronjob(job, include_config: bool = False) -> Dict[str, Any]:
 @app.get("/api/cronjobs", response_model=CronJobResponse)
 async def get_cronjobs(
     user_id: Optional[str] = None,
-    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-Id"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """获取用户的定时任务列表"""
-    jobs = db.get_user_cronjobs(_resolve_cron_user_id(user_id, x_tenant_id))
+    jobs = db.get_user_cronjobs(_resolve_cron_user_id(principal, user_id))
     return {
         "success": True,
         "message": "success",
@@ -1148,9 +1204,9 @@ async def list_reminder_notifications(
     user_id: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
-    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-Id"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
-    effective_user_id = _resolve_cron_user_id(user_id, x_tenant_id)
+    effective_user_id = _resolve_cron_user_id(principal, user_id)
     notifications = db.list_reminder_notifications(effective_user_id, limit=limit, offset=offset)
     return {
         "success": True,
@@ -1195,11 +1251,11 @@ async def mark_reminder_notification_read(notification_id: str):
 async def create_cronjob(
     request: CronJobCreateRequest,
     user_id: Optional[str] = None,
-    x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-Id"),
+    principal: Principal = Depends(require_authenticated_user),
 ):
     """创建定时任务"""
     job = db.create_cronjob(
-        user_id=_resolve_cron_user_id(user_id, x_tenant_id),
+        user_id=_resolve_cron_user_id(principal, user_id),
         name=request.name,
         cron_expression=request.cron,
         task_type=request.task_type,
@@ -1270,45 +1326,53 @@ async def delete_cronjob(job_id: str):
 
 # ================ WebSocket 路由 ================
 
-async def _serve_websocket(websocket: WebSocket, tenant_id: str):
-    # v4.0.1: 验证 WebSocket 连接的 tenant 归属
-    api_key = websocket.query_params.get("api_key", "")
-    ws_user = None
-    if api_key and user_store:
-        ws_user = user_store.get_user_by_api_key(api_key)
-        if ws_user and tenant_id != "default":
-            if getattr(ws_user, "role", "user") != "admin" and ws_user.id != tenant_id:
-                await websocket.close(code=4003, reason="无权访问该租户空间")
-                return
+async def _serve_websocket(websocket: WebSocket):
+    """v5.0: JWT ?token= or api_key query; org-scoped memory via ORG_ID."""
+    from tars.context import clear_request_context
+    from tars.gateway.ws_auth import authenticate_websocket
+    from tars.org import ORG_ID
 
-    # v4.0.2: 构建 request_context 传递用户角色
-    ws_request_context = {"transport": "websocket"}
-    if ws_user:
-        role_val = ws_user.role.value if hasattr(ws_user.role, "value") else str(ws_user.role)
-        ws_request_context["user_id"] = ws_user.id
-        ws_request_context["user_role"] = role_val
-
-    tenant_context = tenant_context_cache.get_or_create(
-        tenant_id or "default",
-        lambda current_tenant: memory_manager.for_tenant(current_tenant),
-    )
-
-    await channel_router.handle_websocket(
+    principal = await authenticate_websocket(
         websocket,
-        connection_manager=connection_manager,
-        tenant_context=tenant_context,
-        request_context=ws_request_context,
+        user_store=user_store,
+        auth_token_store=auth_token_store,
+        require_auth=True,
     )
+    if principal is None:
+        return
+
+    try:
+        role_val = principal.role
+        ws_request_context = {
+            "transport": "websocket",
+            "user_id": principal.user_id,
+            "user_role": role_val,
+        }
+
+        tenant_context = tenant_context_cache.get_or_create(
+            ORG_ID,
+            lambda _org: memory_manager.for_tenant(ORG_ID),
+        )
+
+        await channel_router.handle_websocket(
+            websocket,
+            connection_manager=connection_manager,
+            tenant_context=tenant_context,
+            request_context=ws_request_context,
+        )
+    finally:
+        clear_request_context()
 
 
 @app.websocket("/ws")
-async def websocket_endpoint_default(websocket: WebSocket):
-    await _serve_websocket(websocket, "default")
+async def websocket_endpoint(websocket: WebSocket):
+    await _serve_websocket(websocket)
 
 
-@app.websocket("/ws/{tenant_id}")
-async def websocket_endpoint_tenant(websocket: WebSocket, tenant_id: str):
-    await _serve_websocket(websocket, tenant_id)
+@app.websocket("/ws/{_legacy_tenant}")
+async def websocket_endpoint_legacy(websocket: WebSocket, _legacy_tenant: str):
+    """Deprecated v4 path; tenant segment ignored (single org)."""
+    await _serve_websocket(websocket)
 
 # ================ v4.0.0: Provider + Module API ================
 
@@ -1319,7 +1383,9 @@ async def get_provider_usage(
     principal: Principal = Depends(require_admin),
 ):
     """Provider token usage stats (v4.1.0). Admin only."""
-    rows, total = db.list_provider_usage(tenant_id=principal.tenant_id, provider=provider, limit=limit)
+    from tars.org import ORG_ID
+
+    rows, total = db.list_provider_usage(tenant_id=ORG_ID, provider=provider, limit=limit)
     return {"items": rows, "total": total}
 
 

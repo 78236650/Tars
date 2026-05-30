@@ -6,6 +6,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..database.base import Database, get_local_now
+from ..org import ORG_ID
 from .version import CAPABILITY_NAME, INS_VERSION
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ class KnowledgePublisher:
     def collection_id_for(self, datasource_id: str) -> str:
         return f"insight_{datasource_id}"
 
-    def ensure_collection(self, collection_id: str, name: str, tenant_id: str) -> None:
+    def ensure_collection(self, collection_id: str, name: str, tenant_id: str = ORG_ID) -> None:
         conn = self.db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -120,8 +121,8 @@ class KnowledgePublisher:
         self,
         datasource_id: str,
         datasource_name: str,
-        tenant_id: str,
         markdown: str,
+        tenant_id: str = ORG_ID,
         run_id: Optional[str] = None,
         metric_ids: Optional[List[str]] = None,
     ) -> Optional[str]:

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from tars.org import ORG_ID
+
 BROWSE_CHUNK_TYPES = frozenset({"doc_summary", "section_summary", "key_fact"})
 BROWSE_TYPE_BOOST = {
     "doc_summary": 0.15,
@@ -48,7 +50,7 @@ def _derive_source_type(doc_id: str, file_name: str) -> str:
     return "document"
 
 
-def enrich_hit(hit: Dict[str, Any], *, db=None, tenant_id: str = "default") -> Dict[str, Any]:
+def enrich_hit(hit: Dict[str, Any], *, db=None, tenant_id: str = ORG_ID) -> Dict[str, Any]:
     """Add citation fields used by agent prompt and frontend [ref:doc_id] cards."""
     source = dict(hit.get("source", {}) or {})
     meta = dict(hit.get("metadata", {}) or {})
@@ -112,20 +114,23 @@ def format_citation_results(ranked: List[Dict[str, Any]]) -> str:
 
 def list_collection_targets(
     db,
-    tenant_id: str,
+    tenant_id: str | None = None,
     collection_id: Optional[str] = None,
     include_shared_default: bool = True,
 ) -> List[Tuple[str, str]]:
     """
-    Return (collection_id, owner_tenant_id) pairs for search.
-    Vectors are stored under owner_tenant_id in Chroma (knowledge_{id}_{tenant}).
+    Return (collection_id, org_id) pairs for search within the org knowledge pool.
+    Vectors are stored under org scope in Chroma (``knowledge_{id}_{ORG_ID}``).
     """
+    del include_shared_default
+    org_id = tenant_id or ORG_ID
+
     if collection_id:
         conn = db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, tenant_id FROM document_collections WHERE id = ?",
-            (collection_id,),
+            "SELECT id, tenant_id FROM document_collections WHERE id = ? AND tenant_id = ?",
+            (collection_id, org_id),
         )
         row = cursor.fetchone()
         if not row:
@@ -134,28 +139,11 @@ def list_collection_targets(
 
     conn = db._get_conn()
     cursor = conn.cursor()
-    targets: List[Tuple[str, str]] = []
-    seen: set[str] = set()
-
     cursor.execute(
         "SELECT id, tenant_id FROM document_collections WHERE tenant_id = ?",
-        (tenant_id,),
+        (org_id,),
     )
-    for coll_id, owner in cursor.fetchall():
-        targets.append((coll_id, owner))
-        seen.add(coll_id)
-
-    if include_shared_default and tenant_id != "default":
-        cursor.execute(
-            "SELECT id, tenant_id FROM document_collections WHERE tenant_id = ?",
-            ("default",),
-        )
-        for coll_id, owner in cursor.fetchall():
-            if coll_id not in seen:
-                targets.append((coll_id, owner))
-                seen.add(coll_id)
-
-    return targets
+    return [(coll_id, owner) for coll_id, owner in cursor.fetchall()]
 
 
 def _apply_browse_filter(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -187,7 +175,7 @@ def search_knowledge(
     db,
     retriever,
     query: str,
-    tenant_id: str = "default",
+    tenant_id: str | None = None,
     collection_id: Optional[str] = None,
     top_k: int = 5,
     mode: str = "chat",
@@ -202,7 +190,8 @@ def search_knowledge(
     if retriever is None or db is None:
         return "", []
 
-    targets = list_collection_targets(db, tenant_id, collection_id=collection_id)
+    org_id = tenant_id or ORG_ID
+    targets = list_collection_targets(db, org_id, collection_id=collection_id)
     if not targets:
         return "（当前账号下暂无知识库文档）", []
 
@@ -262,5 +251,5 @@ def search_knowledge(
     else:
         ranked = ranked[:top_k]
 
-    ranked = [enrich_hit(r, db=db, tenant_id=tenant_id) for r in ranked]
+    ranked = [enrich_hit(r, db=db, tenant_id=org_id) for r in ranked]
     return format_citation_results(ranked), ranked

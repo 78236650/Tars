@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ...api._auth import Principal, require_module
+from ...api.scope import datasource_scope_id
 from ...database import Database
 from ...database.bi_store import DataSourceStore
 from ..config import get_insight_config
@@ -83,10 +84,15 @@ def init_insight_api(db: Database, knowledge_indexer=None, feedback_collector=No
 
 
 # All routes require an authenticated principal who can access the
-# `insight` module. tenant_id is derived from the principal (admin can
-# impersonate via X-Tenant-Id, non-admin always == user.id).
+# `insight` module. Datasource scope uses ``principal.user_id`` (admin
+# may pass ``user_id`` query on selected routes).
 _require = require_module("insight")
 router.dependencies = [Depends(_require)]
+
+
+def _ds_scope(principal: Principal, user_id: Optional[str] = None) -> str:
+    """Per-user BI/Insight scope; admins may pass ``?user_id=`` to act on behalf of another user."""
+    return datasource_scope_id(principal, user_id=user_id)
 
 
 class InsightLlmSelectionBody(BaseModel):
@@ -141,11 +147,12 @@ async def _start_forge_impl(
     body: StartProfileRequest,
     background_tasks: BackgroundTasks,
     principal: Principal,
+    user_id: Optional[str] = None,
 ):
     if _run_store is None or _ds_store is None or _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
 
-    tenant_id = principal.tenant_id
+    tenant_id = _ds_scope(principal, user_id)
     ds = _ds_store.get(datasource_id, tenant_id)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
@@ -220,13 +227,14 @@ async def insight_llm_options(principal: Principal = Depends(_require)):
 
 @router.get("/llm/settings")
 async def get_insight_llm_settings(
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     if _llm_settings_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     from ..llm_resolver import get_chat_model_selection, resolve_insight_llm
 
-    saved = _llm_settings_store.get(principal.tenant_id)
+    saved = _llm_settings_store.get(_ds_scope(principal, user_id))
     chat_current = get_chat_model_selection()
     effective = resolve_insight_llm(saved)
     return {
@@ -243,6 +251,7 @@ async def get_insight_llm_settings(
 @router.put("/llm/settings")
 async def put_insight_llm_settings(
     body: InsightLlmSettingsBody,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     if _llm_settings_store is None:
@@ -252,7 +261,7 @@ async def put_insight_llm_settings(
 
     saved = _llm_settings_store.save(
         InsightLlmSettings(
-            tenant_id=principal.tenant_id,
+            tenant_id=_ds_scope(principal, user_id),
             use_chat_default=body.use_chat_default,
             provider=body.provider or "ollama",
             model=body.model or "",
@@ -295,6 +304,7 @@ async def insight_version(principal: Principal = Depends(_require)):
 async def forge_events_sse(
     datasource_id: str,
     request: Request,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """SSE stream for active forge run (in-process buffer; see deploy docs H1)."""
@@ -302,7 +312,7 @@ async def forge_events_sse(
 
     if _run_store is None or _ds_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    tenant_id = principal.tenant_id
+    tenant_id = _ds_scope(principal, user_id)
     if not _ds_store.get(datasource_id, tenant_id):
         raise HTTPException(status_code=404, detail="数据源不存在")
 
@@ -337,10 +347,11 @@ async def forge_events_sse(
 async def get_datasource_workflow(
     datasource_id: str,
     session_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     wf = _workflow_service()
-    tenant_id = principal.tenant_id
+    tenant_id = _ds_scope(principal, user_id)
     if _ds_store and not _ds_store.get(datasource_id, tenant_id):
         raise HTTPException(status_code=404, detail="数据源不存在")
     try:
@@ -354,11 +365,12 @@ async def start_forge(
     datasource_id: str,
     body: StartProfileRequest,
     background_tasks: BackgroundTasks,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """Canonical INS-2.0 endpoint to start profiling."""
     return await _start_forge_impl(
-        datasource_id, body, background_tasks, principal
+        datasource_id, body, background_tasks, principal, user_id
     )
 
 
@@ -367,6 +379,7 @@ async def start_profile(
     datasource_id: str,
     body: StartProfileRequest,
     background_tasks: BackgroundTasks,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """INS-1.0 compatibility alias — forwards to /forge.
@@ -374,18 +387,19 @@ async def start_profile(
     Deprecated: prefer POST /datasources/{id}/forge (kept through INS-2.0 GA).
     """
     return await _start_forge_impl(
-        datasource_id, body, background_tasks, principal
+        datasource_id, body, background_tasks, principal, user_id
     )
 
 
 @router.get("/datasources/{datasource_id}/profile/runs")
 async def list_profile_runs(
     datasource_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     if _run_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    runs = _run_store.list_by_datasource(datasource_id, principal.tenant_id)
+    runs = _run_store.list_by_datasource(datasource_id, _ds_scope(principal, user_id))
     return {
         "runs": [
             {
@@ -405,11 +419,12 @@ async def list_profile_runs(
 @router.get("/profile/runs/{run_id}")
 async def get_profile_run(
     run_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     if _run_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    run = _run_store.get(run_id, principal.tenant_id)
+    run = _run_store.get(run_id, _ds_scope(principal, user_id))
     if not run:
         raise HTTPException(status_code=404, detail="任务不存在")
     return {
@@ -431,6 +446,7 @@ async def get_profile_run(
 async def ask_metric(
     datasource_id: str,
     body: AskMetricRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """Synchronous metric QA — does not set session asking (H2)."""
@@ -440,7 +456,7 @@ async def ask_metric(
     try:
         answer = await engine.ask(
             datasource_id,
-            principal.tenant_id,
+            _ds_scope(principal, user_id),
             body.question,
             user_id=principal.user_id,
             candidate_metric_keys=body.candidate_metric_keys,
@@ -461,7 +477,7 @@ async def ask_metric(
 
     try:
         _db.add_audit_log(
-            tenant_id=principal.tenant_id,
+            tenant_id=_ds_scope(principal, user_id),
             user_id=principal.user_id,
             action="insight_ask",
             resource_type="datasource",
@@ -486,23 +502,25 @@ async def ask_metric(
 async def ask_metric_stream(
     datasource_id: str,
     body: AskMetricRequest,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """Stream placeholder — sets session asking during execution (H2)."""
     wf = _workflow_service()
     if body.session_id:
-        wf.set_session_asking_for_stream(body.session_id, principal.tenant_id, True)
+        wf.set_session_asking_for_stream(body.session_id, _ds_scope(principal, user_id), True)
     try:
-        return await ask_metric(datasource_id, body, principal)
+        return await ask_metric(datasource_id, body, user_id, principal)
     finally:
         if body.session_id:
-            wf.set_session_asking_for_stream(body.session_id, principal.tenant_id, False)
+            wf.set_session_asking_for_stream(body.session_id, _ds_scope(principal, user_id), False)
 
 
 @router.post("/ask/{question_log_id}/feedback")
 async def ask_feedback(
     question_log_id: str,
     body: InsightFeedbackBody,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     from ..question_log_store import InsightQuestionLogStore
@@ -511,13 +529,13 @@ async def ask_feedback(
     if _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     store = InsightQuestionLogStore(_db)
-    ok = store.update_feedback(question_log_id, principal.tenant_id, body.feedback)
+    ok = store.update_feedback(question_log_id, _ds_scope(principal, user_id), body.feedback)
     if not ok:
         raise HTTPException(status_code=404, detail="问答记录不存在")
     adoption = AdoptionService(_db, knowledge_bridge=_knowledge_bridge, feedback_collector=_feedback_collector)
     result = adoption.process_feedback(
         question_log_id,
-        principal.tenant_id,
+        _ds_scope(principal, user_id),
         body.feedback,
         principal.user_id,
     )
@@ -529,6 +547,7 @@ def _adopt_metric_impl(
     body: AdoptMetricRequest,
     principal: Principal,
     background_tasks: Optional[BackgroundTasks] = None,
+    user_id: Optional[str] = None,
 ):
     from ..adoption_service import AdoptionService
     from ..store import AdoptionConflictError
@@ -546,7 +565,7 @@ def _adopt_metric_impl(
     try:
         result = service.adopt(
             mid,
-            principal.tenant_id,
+            _ds_scope(principal, user_id),
             principal.user_id,
             definition=body.definition,
             sql_template=body.sql_template,
@@ -576,12 +595,12 @@ def _adopt_metric_impl(
     if defer_publish and background_tasks and result.get("metric"):
         from ..store import InsightMetricStore
 
-        approved = InsightMetricStore(_db).get_by_id(result["metric"]["id"], principal.tenant_id)
+        approved = InsightMetricStore(_db).get_by_id(result["metric"]["id"], _ds_scope(principal, user_id))
         if approved:
             background_tasks.add_task(
                 service.publish_adopted_metric,
                 approved,
-                principal.tenant_id,
+                _ds_scope(principal, user_id),
                 principal.user_id,
             )
     return {"success": True, **result}
@@ -591,9 +610,10 @@ def _adopt_metric_impl(
 async def adopt_metric_body(
     body: AdoptMetricRequest,
     background_tasks: BackgroundTasks,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
-    return _adopt_metric_impl(None, body, principal, background_tasks)
+    return _adopt_metric_impl(None, body, principal, background_tasks, user_id)
 
 
 @router.post("/metrics/{metric_id}/adopt")
@@ -601,30 +621,35 @@ async def adopt_metric(
     metric_id: str,
     body: AdoptMetricRequest,
     background_tasks: BackgroundTasks,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
-    return _adopt_metric_impl(metric_id, body, principal, background_tasks)
+    return _adopt_metric_impl(metric_id, body, principal, background_tasks, user_id)
 
 
 @router.get("/metrics/pending_adoption")
-async def list_pending_adoption(principal: Principal = Depends(_require)):
+async def list_pending_adoption(
+    user_id: Optional[str] = None,
+    principal: Principal = Depends(_require),
+):
     from ..adoption_service import AdoptionService
 
     if _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
     service = AdoptionService(_db, knowledge_bridge=_knowledge_bridge, feedback_collector=_feedback_collector)
-    return {"items": service.list_pending_adoptions(principal.tenant_id)}
+    return {"items": service.list_pending_adoptions(_ds_scope(principal, user_id))}
 
 
 @router.get("/datasources/{datasource_id}/brief")
 async def get_datasource_brief(
     datasource_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     """工作台用：合并数据源、最新建档、标注与指标。"""
     if _run_store is None or _ds_store is None or _metric_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    tenant_id = principal.tenant_id
+    tenant_id = _ds_scope(principal, user_id)
     ds = _ds_store.get(datasource_id, tenant_id)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源不存在")
@@ -690,11 +715,12 @@ async def get_datasource_brief(
 @router.get("/datasources/{datasource_id}/metrics")
 async def list_metrics(
     datasource_id: str,
+    user_id: Optional[str] = None,
     principal: Principal = Depends(_require),
 ):
     if _metric_store is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    metrics = _metric_store.list_by_datasource(datasource_id, principal.tenant_id)
+    metrics = _metric_store.list_by_datasource(datasource_id, _ds_scope(principal, user_id))
     return {
         "metrics": [
             {

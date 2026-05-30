@@ -3,20 +3,29 @@ import asyncio
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
+from ..context import get_current_org_id
 from ..database import Database
 from ..knowledge.access import search_knowledge as search_knowledge_access
 from ..knowledge.config import get_enrichment_config, get_reindex_config, load_knowledge_config
+from ..knowledge.schema import ensure_knowledge_schema
 from ..knowledge.indexer import KnowledgeIndexer
 from ..knowledge.retriever import KnowledgeRetriever
 from ..reranker import CrossEncoderReranker
 from ..search.query_expansion import QueryExpander
 from ._auth import Principal, require_module
+from .scope import org_scope
 
 router = APIRouter(prefix="/api/knowledge", tags=["Knowledge Base"])
+
+_require_knowledge = require_module("knowledge")
+
+
+def _org_id() -> str:
+    return get_current_org_id()
 
 _db: Optional[Database] = None
 _vector_store = None
@@ -53,6 +62,7 @@ def init_knowledge_api(
 ) -> None:
     global _db, _vector_store, _embedding_provider, _indexer, _retriever, _llm_settings_store, _knowledge_config
     _db = db
+    ensure_knowledge_schema(db)
     _vector_store = vector_store
     _embedding_provider = embedding_provider
     _knowledge_config = knowledge_config or load_knowledge_config()
@@ -115,16 +125,17 @@ class ReindexRequest(BaseModel):
 # ========== Collection CRUD ==========
 
 @router.get("/collections")
-async def list_collections(x_tenant_id: Optional[str] = Header(default="default")):
+async def list_collections():
     if _db is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
+    org_id = _org_id()
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, name, description, default_doc_type, created_at, updated_at "
         "FROM document_collections WHERE tenant_id = ? ORDER BY updated_at DESC",
-        (x_tenant_id or "default",),
+        (org_id,),
     )
     rows = cursor.fetchall()
     return {
@@ -145,21 +156,21 @@ async def list_collections(x_tenant_id: Optional[str] = Header(default="default"
 @router.post("/collections")
 async def create_collection(
     request: CreateCollectionRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
     coll_id = str(uuid.uuid4())
     now = _now()
-    tenant_id = x_tenant_id or "default"
+    org_id = org_scope(principal)
 
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO document_collections (id, tenant_id, name, description, default_doc_type, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (coll_id, tenant_id, request.name, request.description or "", request.default_doc_type, now, now),
+        (coll_id, org_id, request.name, request.description or "", request.default_doc_type, now, now),
     )
     conn.commit()
 
@@ -177,25 +188,25 @@ async def create_collection(
 @router.delete("/collections/{coll_id}")
 async def delete_collection(
     coll_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = org_scope(principal)
     conn = _db._get_conn()
     cursor = conn.cursor()
 
     # 删除关联的文档记录
     cursor.execute("DELETE FROM document_files WHERE collection_id = ?", (coll_id,))
     # 删除集合
-    cursor.execute("DELETE FROM document_collections WHERE id = ? AND tenant_id = ?", (coll_id, tenant_id))
+    cursor.execute("DELETE FROM document_collections WHERE id = ? AND tenant_id = ?", (coll_id, org_id))
     conn.commit()
 
     # 删除向量数据库中的 collection
     if _vector_store and _vector_store.is_available:
         try:
-            _vector_store.delete_collection(tenant_id=tenant_id, collection_name=f"knowledge_{coll_id}")
+            _vector_store.delete_collection(tenant_id=org_id, collection_name=f"knowledge_{coll_id}")
         except Exception as e:
             print(f"[KnowledgeAPI] 删除向量集合失败: {e}")
 
@@ -279,19 +290,19 @@ async def upload_document(
     metric_ids: Optional[str] = Form(default=None),
     doc_type: Optional[str] = Form(default=None),
     target: str = Query(default="auto", pattern="^(auto|wiki|rag)$"),
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None or _indexer is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = org_scope(principal)
 
     # 验证集合存在并取默认 doc_type
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, default_doc_type FROM document_collections WHERE id = ? AND tenant_id = ?",
-        (coll_id, tenant_id),
+        (coll_id, org_id),
     )
     row = cursor.fetchone()
     if not row:
@@ -379,7 +390,7 @@ async def upload_document(
             doc_id=doc_id,
             file_path=file_path,
             collection_id=coll_id,
-            tenant_id=tenant_id,
+            tenant_id=org_id,
             doc_type=parse_doc_type,
         )
 
@@ -536,19 +547,18 @@ async def _run_ingest(
 async def get_document_profile(
     coll_id: str,
     doc_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = _org_id()
     conn = _db._get_conn()
     cur = conn.cursor()
     cur.execute(
         "SELECT df.id, df.file_name, df.status, df.chunk_count FROM document_files df "
         "JOIN document_collections dc ON dc.id = df.collection_id "
         "WHERE df.id = ? AND df.collection_id = ? AND dc.tenant_id = ?",
-        (doc_id, coll_id, tenant_id),
+        (doc_id, coll_id, org_id),
     )
     row = cur.fetchone()
     if not row:
@@ -580,18 +590,17 @@ async def get_document_passages(
     coll_id: str,
     doc_id: str,
     section_id: Optional[str] = None,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = _org_id()
     conn = _db._get_conn()
     cur = conn.cursor()
     cur.execute(
         "SELECT df.id FROM document_files df JOIN document_collections dc ON dc.id = df.collection_id "
         "WHERE df.id = ? AND df.collection_id = ? AND dc.tenant_id = ?",
-        (doc_id, coll_id, tenant_id),
+        (doc_id, coll_id, org_id),
     )
     if not cur.fetchone():
         raise HTTPException(status_code=404, detail="文档不存在")
@@ -607,12 +616,12 @@ async def get_document_passages(
 async def re_enrich_document(
     coll_id: str,
     doc_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None or _indexer is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = org_scope(principal)
     doc = _db.get_document_file(doc_id)
     if not doc or doc.get("collection_id") != coll_id:
         raise HTTPException(status_code=404, detail="文档不存在")
@@ -621,7 +630,7 @@ async def re_enrich_document(
     cur = conn.cursor()
     cur.execute(
         "SELECT id FROM document_collections WHERE id = ? AND tenant_id = ?",
-        (coll_id, tenant_id),
+        (coll_id, org_id),
     )
     if not cur.fetchone():
         raise HTTPException(status_code=404, detail="知识库不存在")
@@ -635,7 +644,7 @@ async def re_enrich_document(
         doc_id=doc_id,
         file_path=file_path,
         collection_id=coll_id,
-        tenant_id=tenant_id,
+        tenant_id=org_id,
         doc_type=doc.get("doc_type") or "generic",
     )
     return {"success": True, "doc_id": doc_id, "status": "pending"}
@@ -645,18 +654,17 @@ async def re_enrich_document(
 async def get_document_status(
     coll_id: str,
     doc_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     """轻量轮询：仅返回 status / profile_ready / one_liner。"""
     if _db is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
-    tenant_id = x_tenant_id or "default"
+    org_id = _org_id()
     conn = _db._get_conn()
     cur = conn.cursor()
     cur.execute(
         "SELECT df.id FROM document_files df JOIN document_collections dc ON dc.id = df.collection_id "
         "WHERE df.id = ? AND df.collection_id = ? AND dc.tenant_id = ?",
-        (doc_id, coll_id, tenant_id),
+        (doc_id, coll_id, org_id),
     )
     if not cur.fetchone():
         raise HTTPException(status_code=404, detail="文档不存在")
@@ -676,17 +684,17 @@ async def get_document_status(
 async def batch_upload_documents(
     coll_id: str,
     files: List[UploadFile] = File(...),
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None or _indexer is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = org_scope(principal)
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id FROM document_collections WHERE id = ? AND tenant_id = ?",
-        (coll_id, tenant_id),
+        (coll_id, org_id),
     )
     if not cursor.fetchone():
         raise HTTPException(status_code=404, detail="知识库不存在")
@@ -718,7 +726,7 @@ async def batch_upload_documents(
                 file_path=file_path,
                 doc_id=doc_id,
                 collection_id=coll_id,
-                tenant_id=tenant_id,
+                tenant_id=org_id,
             )
             cursor.execute(
                 "UPDATE document_files SET chunk_count = ?, status = ? WHERE id = ?",
@@ -752,17 +760,19 @@ async def batch_upload_documents(
 @router.get("/collections/{coll_id}/documents")
 async def list_documents(
     coll_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
+    org_id = _org_id()
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, file_name, file_type, chunk_count, status, doc_type, profile_ready, one_liner, created_at "
-        "FROM document_files WHERE collection_id = ? ORDER BY created_at DESC",
-        (coll_id,),
+        "SELECT df.id, df.file_name, df.file_type, df.chunk_count, df.status, df.doc_type, df.profile_ready, df.one_liner, df.created_at "
+        "FROM document_files df "
+        "JOIN document_collections dc ON dc.id = df.collection_id "
+        "WHERE df.collection_id = ? AND dc.tenant_id = ? ORDER BY df.created_at DESC",
+        (coll_id, org_id),
     )
     rows = cursor.fetchall()
     return {
@@ -787,7 +797,7 @@ async def list_documents(
 async def delete_document(
     coll_id: str,
     doc_id: str,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
@@ -798,7 +808,7 @@ async def delete_document(
     deleted = _indexer.delete_document(
         doc_id=doc_id,
         collection_id=coll_id,
-        tenant_id=x_tenant_id or "default",
+        tenant_id=org_scope(principal),
     )
     if not deleted:
         raise HTTPException(status_code=404, detail="文档不存在或删除失败")
@@ -811,18 +821,17 @@ async def delete_document(
 @router.post("/search")
 async def search_knowledge_endpoint(
     request: SearchRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _retriever is None:
         raise HTTPException(status_code=500, detail="知识库检索器未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = _org_id()
     mode = request.mode or "chat"
     if request.collection_ids:
         results = []
         for coll_id in request.collection_ids:
             _, hits = search_knowledge_access(
-                _db, _retriever, request.query, tenant_id=tenant_id,
+                _db, _retriever, request.query, tenant_id=org_id,
                 collection_id=coll_id, top_k=request.top_k, mode=mode,
             )
             results.extend(hits)
@@ -831,7 +840,7 @@ async def search_knowledge_endpoint(
             results = merge_results_by_doc(results, request.top_k)
     else:
         _, results = search_knowledge_access(
-            _db, _retriever, request.query, tenant_id=tenant_id, top_k=request.top_k, mode=mode,
+            _db, _retriever, request.query, tenant_id=org_id, top_k=request.top_k, mode=mode,
         )
 
     return {
@@ -846,18 +855,17 @@ async def search_knowledge_endpoint(
 async def query_collection(
     coll_id: str,
     request: QueryRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
 ):
     if _retriever is None:
         raise HTTPException(status_code=500, detail="知识库检索器未初始化")
 
-    tenant_id = x_tenant_id or "default"
+    org_id = _org_id()
     mode = request.mode or "chat"
     _, results = search_knowledge_access(
         _db,
         _retriever,
         request.query,
-        tenant_id=tenant_id,
+        tenant_id=org_id,
         collection_id=coll_id,
         top_k=request.top_k,
         mode=mode,
@@ -897,12 +905,12 @@ def _collection_doc_ids(coll_id: str, tenant_id: str, doc_ids: Optional[List[str
 async def reindex_estimate(
     coll_id: str,
     request: ReindexEstimateRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
-    tenant_id = x_tenant_id or "default"
-    docs = _collection_doc_ids(coll_id, tenant_id, request.doc_ids)
+    org_id = org_scope(principal)
+    docs = _collection_doc_ids(coll_id, org_id, request.doc_ids)
     if not docs:
         raise HTTPException(status_code=404, detail="未找到待重建文档")
     cfg = get_reindex_config()
@@ -921,13 +929,13 @@ async def reindex_estimate(
 async def reindex_collection(
     coll_id: str,
     request: ReindexRequest,
-    x_tenant_id: Optional[str] = Header(default="default"),
+    principal: Principal = Depends(_require_knowledge),
 ):
     if _db is None or _indexer is None:
         raise HTTPException(status_code=500, detail="知识库 API 未初始化")
 
-    tenant_id = x_tenant_id or "default"
-    docs = _collection_doc_ids(coll_id, tenant_id, request.doc_ids)
+    org_id = org_scope(principal)
+    docs = _collection_doc_ids(coll_id, org_id, request.doc_ids)
     if not docs:
         raise HTTPException(status_code=404, detail="未找到待重建文档")
 
@@ -956,7 +964,7 @@ async def reindex_collection(
             doc_id=doc_id,
             file_path=file_path,
             collection_id=coll_id,
-            tenant_id=tenant_id,
+            tenant_id=org_id,
             doc_type=doc.get("doc_type") or "generic",
         )
         scheduled += 1
@@ -964,7 +972,7 @@ async def reindex_collection(
     return {"success": True, "scheduled": scheduled, "status": "pending"}
 
 
-def _fetch_ref_snippet(cursor, doc_id: str, tenant_id: str, limit: int = 400) -> str:
+def _fetch_ref_snippet(cursor, doc_id: str, org_id: str, limit: int = 400) -> str:
     cursor.execute(
         """
         SELECT content FROM knowledge_chunks
@@ -972,7 +980,7 @@ def _fetch_ref_snippet(cursor, doc_id: str, tenant_id: str, limit: int = 400) ->
         ORDER BY chunk_index ASC
         LIMIT 1
         """,
-        (doc_id, tenant_id),
+        (doc_id, org_id),
     )
     row = cursor.fetchone()
     if not row or not row[0]:
@@ -992,7 +1000,7 @@ async def resolve_document_ref(
     if _db is None:
         raise HTTPException(status_code=500, detail="数据库未初始化")
 
-    tenant_id = principal.tenant_id
+    org_id = org_scope(principal)
     conn = _db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
@@ -1000,14 +1008,14 @@ async def resolve_document_ref(
            FROM document_files df
            JOIN document_collections dc ON dc.id = df.collection_id
            WHERE df.id = ? AND dc.tenant_id = ?""",
-        (doc_id, tenant_id),
+        (doc_id, org_id),
     )
     row = cursor.fetchone()
     if row:
         from ..knowledge.profile_store import get_profile
 
         profile = get_profile(_db, doc_id)
-        chunk_excerpt = _fetch_ref_snippet(cursor, doc_id, tenant_id)
+        chunk_excerpt = _fetch_ref_snippet(cursor, doc_id, org_id)
         one_liner = None
         summary_excerpt = None
         doc_type = None
@@ -1044,7 +1052,7 @@ async def resolve_document_ref(
         ORDER BY chunk_index ASC
         LIMIT 1
         """,
-        (doc_id, tenant_id),
+        (doc_id, org_id),
     )
     chunk = cursor.fetchone()
     if chunk:

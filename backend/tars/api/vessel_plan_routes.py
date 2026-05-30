@@ -8,6 +8,7 @@ from ..database import Database
 from ..orchestration.multi_agent_orchestrator import MultiAgentOrchestrator
 from ..vessel_plan.service import VesselPlanService
 from ._auth import Principal, require_authenticated_user
+from .scope import datasource_scope_id
 
 router = APIRouter(prefix="/api/vessel-plans", tags=["vessel-plans"])
 
@@ -26,7 +27,7 @@ def _require_db() -> Database:
 
 
 def _service_for(principal: Principal) -> VesselPlanService:
-    return VesselPlanService(_require_db(), tenant_id=principal.tenant_id or "default")
+    return VesselPlanService(_require_db(), tenant_id=datasource_scope_id(principal))
 
 
 class OptimizeRequest(BaseModel):
@@ -123,7 +124,7 @@ async def adopt_plans(
     body: AdoptRequest,
     principal: Principal = Depends(require_authenticated_user),
 ):
-    tenant_id = principal.tenant_id or "default"
+    tenant_id = datasource_scope_id(principal)
     svc = _service_for(principal)
     orch = MultiAgentOrchestrator(db=_require_db(), tenant_id=tenant_id)
     return await svc.adopt(body.voyage_ids, body.session_id, orch)

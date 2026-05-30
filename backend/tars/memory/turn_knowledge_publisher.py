@@ -6,6 +6,9 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 
+from ..org import ORG_ID
+
+
 CHAT_KB_NAME = "对话精华"
 CHAT_KB_DESCRIPTION = "从聊天记忆中升格合成的技术笔记（非碎片直写）"
 
@@ -14,7 +17,10 @@ def _now() -> str:
     return datetime.now(timezone(timedelta(hours=8))).isoformat()
 
 
-def ensure_chat_knowledge_collection(db, tenant_id: str) -> str:
+def ensure_chat_knowledge_collection(db, tenant_id: str = ORG_ID) -> str:
+    from ..knowledge.schema import ensure_knowledge_schema
+
+    ensure_knowledge_schema(db)
     conn = db._get_conn()
     cursor = conn.cursor()
     cursor.execute(
@@ -43,7 +49,7 @@ def publish_synthesized_note(
     db,
     vector_store,
     embedding_provider,
-    tenant_id: str,
+    tenant_id: str = ORG_ID,
     title: str,
     markdown: str,
     source_memory_ids: Optional[List[str]] = None,

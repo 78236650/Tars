@@ -3,6 +3,7 @@ from typing import Optional
 
 from .deduplicator import MemoryDeduplicator
 from .embeddings import EmbeddingProvider, serialize_vector
+from ..vectorstore.scope import memory_chroma_metadata
 
 
 class ArchivalManager:
@@ -44,6 +45,8 @@ class ArchivalManager:
             # 同步更新 Chroma
             if self.vector_store and self.vector_store.is_available:
                 try:
+                    scope = getattr(update_target, "scope", "private") or "private"
+                    uid = getattr(update_target, "user_id", None)
                     self.vector_store.delete(
                         ids=[update_target.id],
                         tenant_id=self.tenant_id,
@@ -51,7 +54,11 @@ class ArchivalManager:
                     )
                     self.vector_store.add_documents(
                         documents=[content],
-                        metadatas=[{"category": category, "importance": importance, "source": source}],
+                        metadatas=[
+                            memory_chroma_metadata(
+                                scope, uid, category=category, importance=importance, source=source
+                            )
+                        ],
                         ids=[update_target.id],
                         tenant_id=self.tenant_id,
                         collection_name="memories",
@@ -83,7 +90,15 @@ class ArchivalManager:
             try:
                 self.vector_store.add_documents(
                     documents=[content],
-                    metadatas=[{"category": category, "importance": importance, "source": source}],
+                    metadatas=[
+                        memory_chroma_metadata(
+                            mem.scope,
+                            mem.user_id,
+                            category=category,
+                            importance=importance,
+                            source=source,
+                        )
+                    ],
                     ids=[mem.id],
                     tenant_id=self.tenant_id,
                     collection_name="memories",

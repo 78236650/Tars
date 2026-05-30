@@ -55,18 +55,21 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const apiKey = localStorage.getItem('apiKey')
-  if (apiKey) {
-    config.headers['X-API-Key'] = apiKey
+  const accessToken = localStorage.getItem('tars_access_token')
+  if (accessToken) {
+    config.headers['Authorization'] = `Bearer ${accessToken}`
+  } else {
+    const apiKey = localStorage.getItem('apiKey')
+    if (apiKey) {
+      config.headers['X-API-Key'] = apiKey
+    }
   }
-  // v4.0.2: 发送用户 ID 作为 tenant_id 实现多租户隔离
   const userJson = localStorage.getItem('auth_user')
   if (userJson) {
     try {
       const user = JSON.parse(userJson)
-      if (user?.id) {
-        config.headers['X-Tenant-ID'] = user.id
-        config.headers['X-User-Role'] = user.role || 'user'
+      if (user?.role) {
+        config.headers['X-User-Role'] = user.role
       }
     } catch {}
   }
@@ -86,6 +89,10 @@ export const authApi = {
     const params = apiKey ? { api_key: apiKey } : undefined
     const response = await api.get<User>('/users/me', { params })
     return response.data
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/auth/logout')
   },
   
   getUsers: async (): Promise<UserListResponse> => {
@@ -463,32 +470,48 @@ export const approvalsApi = {
   },
 }
 
+const scopeUserParams = (userId?: string) =>
+  userId ? { user_id: userId } : undefined
+
 export const plansApi = {
-  list: async (): Promise<{ plans: Record<string, unknown>[] }> => {
-    const response = await api.get('/plans')
+  list: async (options?: { userId?: string }): Promise<{ plans: Record<string, unknown>[] }> => {
+    const response = await api.get('/plans', { params: scopeUserParams(options?.userId) })
     return response.data
   },
 
-  get: async (planId: string): Promise<Record<string, unknown>> => {
-    const response = await api.get(`/plans/${planId}`)
+  get: async (planId: string, options?: { userId?: string }): Promise<Record<string, unknown>> => {
+    const response = await api.get(`/plans/${planId}`, { params: scopeUserParams(options?.userId) })
     return response.data
   },
 
   approve: async (
     planId: string,
     steps?: Record<string, unknown>[],
+    options?: { userId?: string },
   ): Promise<{ success: boolean; plan_id: string; status: string }> => {
-    const response = await api.post(`/plans/${planId}/approve`, { steps })
+    const response = await api.post(`/plans/${planId}/approve`, { steps }, {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 
-  reject: async (planId: string): Promise<{ success: boolean; plan_id: string; status: string }> => {
-    const response = await api.post(`/plans/${planId}/reject`)
+  reject: async (
+    planId: string,
+    options?: { userId?: string },
+  ): Promise<{ success: boolean; plan_id: string; status: string }> => {
+    const response = await api.post(`/plans/${planId}/reject`, undefined, {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 
-  retry: async (planId: string): Promise<{ success: boolean; plan_id: string; status: string }> => {
-    const response = await api.post(`/plans/${planId}/retry`)
+  retry: async (
+    planId: string,
+    options?: { userId?: string },
+  ): Promise<{ success: boolean; plan_id: string; status: string }> => {
+    const response = await api.post(`/plans/${planId}/retry`, undefined, {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 }
@@ -508,8 +531,10 @@ export const handoffsApi = {
 // ========= BI Analytics API =========
 
 export const biApi = {
-  listDataSources: async (): Promise<{ datasources: DataSource[] }> => {
-    const response = await api.get('/datasources/')
+  listDataSources: async (options?: { userId?: string }): Promise<{ datasources: DataSource[] }> => {
+    const response = await api.get('/datasources/', {
+      params: options?.userId ? { user_id: options.userId } : undefined,
+    })
     return response.data
   },
 
@@ -599,6 +624,13 @@ export interface InsightLlmSettingsResponse {
   }
 }
 
+const insightScopeParams = (options?: { userId?: string; sessionId?: string }) => {
+  const params: Record<string, string> = {}
+  if (options?.userId) params.user_id = options.userId
+  if (options?.sessionId) params.session_id = options.sessionId
+  return Object.keys(params).length ? params : undefined
+}
+
 export const insightApi = {
   version: async (): Promise<Record<string, unknown>> => {
     const response = await api.get('/insight/version')
@@ -610,15 +642,20 @@ export const insightApi = {
     return response.data
   },
 
-  getLlmSettings: async (): Promise<InsightLlmSettingsResponse> => {
-    const response = await api.get('/insight/llm/settings')
+  getLlmSettings: async (options?: { userId?: string }): Promise<InsightLlmSettingsResponse> => {
+    const response = await api.get('/insight/llm/settings', {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 
   saveLlmSettings: async (
-    body: InsightLlmSettingsPayload
+    body: InsightLlmSettingsPayload,
+    options?: { userId?: string },
   ): Promise<InsightLlmSettingsResponse & { success: boolean }> => {
-    const response = await api.put('/insight/llm/settings', body)
+    const response = await api.put('/insight/llm/settings', body, {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 
@@ -629,6 +666,7 @@ export const insightApi = {
       llm?: InsightLlmSettingsPayload & { persist?: boolean }
       pending_question?: string
       session_id?: string
+      userId?: string
     }
   ): Promise<{ success: boolean; run_id: string; status: string }> => {
     const response = await api.post(`/insight/datasources/${datasourceId}/profile`, {
@@ -636,6 +674,8 @@ export const insightApi = {
       llm: options?.llm,
       pending_question: options?.pending_question,
       session_id: options?.session_id,
+    }, {
+      params: scopeUserParams(options?.userId),
     })
     return response.data
   },
@@ -646,39 +686,55 @@ export const insightApi = {
       force?: boolean
       pending_question?: string
       session_id?: string
+      userId?: string
     }
   ): Promise<{ success: boolean; run_id: string; status: string }> => {
     const response = await api.post(`/insight/datasources/${datasourceId}/forge`, {
       force: options?.force ?? false,
       pending_question: options?.pending_question,
       session_id: options?.session_id,
+    }, {
+      params: scopeUserParams(options?.userId),
     })
     return response.data
   },
 
   listProfileRuns: async (
-    datasourceId: string
+    datasourceId: string,
+    options?: { userId?: string },
   ): Promise<{ runs: InsightProfileRunSummary[] }> => {
-    const response = await api.get(`/insight/datasources/${datasourceId}/profile/runs`)
+    const response = await api.get(`/insight/datasources/${datasourceId}/profile/runs`, {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 
-  getProfileRun: async (runId: string): Promise<InsightProfileRunSummary & { insight_snapshot?: unknown }> => {
-    const response = await api.get(`/insight/profile/runs/${runId}`)
+  getProfileRun: async (
+    runId: string,
+    options?: { userId?: string },
+  ): Promise<InsightProfileRunSummary & { insight_snapshot?: unknown }> => {
+    const response = await api.get(`/insight/profile/runs/${runId}`, {
+      params: scopeUserParams(options?.userId),
+    })
     return response.data
   },
 
-  getDatasourceBrief: async (datasourceId: string): Promise<InsightDatasourceBrief> => {
-    const response = await api.get(`/insight/datasources/${datasourceId}/brief`)
+  getDatasourceBrief: async (
+    datasourceId: string,
+    options?: { userId?: string },
+  ): Promise<InsightDatasourceBrief> => {
+    const response = await api.get(`/insight/datasources/${datasourceId}/brief`, {
+      params: options?.userId ? { user_id: options.userId } : undefined,
+    })
     return response.data
   },
 
   getWorkflow: async (
     datasourceId: string,
-    sessionId?: string
+    options?: { sessionId?: string; userId?: string },
   ): Promise<Record<string, unknown>> => {
     const response = await api.get(`/insight/datasources/${datasourceId}/workflow`, {
-      params: sessionId ? { session_id: sessionId } : undefined,
+      params: insightScopeParams(options),
     })
     return response.data
   },
@@ -691,9 +747,16 @@ export const insightApi = {
       as_of_date?: string
       session_id?: string
     },
-    config?: { signal?: AbortSignal },
+    config?: { signal?: AbortSignal; userId?: string },
   ): Promise<InsightMetricAnswer> => {
-    const response = await api.post(`/insight/datasources/${datasourceId}/ask`, body, config)
+    const response = await api.post(
+      `/insight/datasources/${datasourceId}/ask`,
+      body,
+      {
+        ...config,
+        params: scopeUserParams(config?.userId),
+      },
+    )
     return response.data
   },
 

@@ -61,8 +61,19 @@ class MemoryCompressor:
     def status(self) -> Dict[str, Any]:
         return self._status.to_dict()
 
+    def _viewer_user_id(self) -> Optional[str]:
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return None
+
     async def merge_memories(self, memory_ids: List[str], preview_only: bool = False) -> Dict[str, Any]:
-        memories = [self.db.get_memory(memory_id, tenant_id=self.tenant_id) for memory_id in memory_ids]
+        viewer = self._viewer_user_id()
+        memories = [
+            self.db.get_memory(memory_id, tenant_id=self.tenant_id, user_id=viewer)
+            for memory_id in memory_ids
+        ]
         memories = [memory for memory in memories if memory is not None]
         if len(memories) < 2:
             raise ValueError("至少需要 2 条记忆才能合并")
@@ -91,6 +102,7 @@ class MemoryCompressor:
             memory_type=memory_type,
             entity_refs=entity_refs,
             tenant_id=self.tenant_id,
+            user_id=viewer,
         )
         for memory in memories:
             self.db.delete_memory(memory.id, tenant_id=self.tenant_id)
