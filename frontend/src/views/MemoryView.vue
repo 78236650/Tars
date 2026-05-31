@@ -250,10 +250,10 @@ onMounted(() => {
               <div v-else-if="adminUsers.length > 0" class="space-y-1">
                 <button
                   v-for="u in adminUsers"
-                  :key="u.user_id"
-                  @click="loadAdminUserMemories(u.user_id)"
+                  :key="u.tenant_id"
+                  @click="loadAdminUserMemories(u.tenant_id)"
                   class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-sm transition"
-                  :class="adminSelectedUserId === u.user_id
+                  :class="adminSelectedUserId === u.tenant_id
                     ? 'bg-amber-500/15 text-amber-200'
                     : 'text-stone-300 hover:bg-white/[0.04]'"
                 >
