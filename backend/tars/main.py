@@ -79,7 +79,7 @@ from tars.cron import CronRuntime
 # 初始化应用
 app = FastAPI(
     title="PortMeta Agent",
-    version="5.0.1",
+    version="5.0.3",
     description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 

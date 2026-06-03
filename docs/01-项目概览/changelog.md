@@ -2,6 +2,28 @@
 
 > 版本真相源：[VERSION.md](./VERSION.md)
 
+## v5.0.3 「多用户隔离 + DeepSeek + 安全加固」(2026-06-03)
+
+> 📄 审计报告：[多用户隔离审计](../audit/multi-user-isolation-audit.md)
+
+**安全 patch**：多用户隔离 P0 修复 + DeepSeek 官方连接器 + PPTX 解析
+
+### Security — P0 修复
+- ✅ `/api/files/` `/api/wiki/` `/api/tasks/` `/api/tools/` `/api/settings/` — 全部加 `Depends(require_authenticated_user)`
+- ✅ `FileRecord` 加 `user_id`，上传/读取/删除校验所有权
+- ✅ `POST /api/tools/execute` 限制为 `require_admin`
+- ✅ 任务列表按 `user_id` JOIN `user_sessions` 过滤
+- ✅ Wiki / Embedding 配置需认证
+
+### Features
+- ✅ DeepSeek 官方连接器（deepseek-v4-flash/pro, deepseek-reasoner）
+- ✅ PPTX 文件解析支持（python-pptx 提取文字+表格）
+- ✅ 模型配置页「测试连接」按钮
+- ✅ `TenantWorkspaceManager` 支持 `extra_allowed_dirs`
+
+### Fixes
+- ✅ DeepSeek reasoning_content 在工具调用轮次丢失导致 400 错误
+
 ## v5.0.0 「多用户协作 + 并发底座」(2026-05-30)
 
 > 📄 [v5.0.0 发布说明](./v5.0.0-release-notes.md) · [升级指南](../UPGRADE_GUIDE_v5.0.0.md) · 设计：[multiuser-design.md](../superpowers/plans/2026-05-30-tars-v5.0.0-multiuser-design.md)

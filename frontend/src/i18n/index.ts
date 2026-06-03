@@ -304,7 +304,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': '当前模型',
-    'sidebar.version': 'PortMeta v4.3.3',
+    'sidebar.version': 'TARS v5.0.3',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': '自定义模型',
     'sidebar.openrouter': 'OpenRouter',
@@ -1708,7 +1708,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': 'Current Model',
-    'sidebar.version': 'PortMeta v4.3.3',
+    'sidebar.version': 'TARS v5.0.3',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': 'Custom',
     'sidebar.openrouter': 'OpenRouter',
