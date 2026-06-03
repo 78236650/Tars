@@ -35,7 +35,7 @@ from tars.skills.curator import init_skill_curator
 # 新的工具/技能/SkillHub 系统
 from tars.tools import registry as tool_registry
 from tars.tools.builtin import (
-    BrowserTool, WeatherTool, WindStowageTool, FileTool, FileListTool, CommandTool,
+    WeatherTool, WindStowageTool, FileTool, FileListTool, CommandTool,
     MemoryTool, CronJobTool, FileWriteTool, ShellTool, ProcessTool,
     NetworkTool, MeetingRecognizerTool,
 )
@@ -152,7 +152,6 @@ from tars.tools.tenant_workspace import init_tenant_workspace
 init_tenant_workspace(extra_allowed_dirs=[str(project_dir / "uploads")])
 workspace_sandbox = WorkspaceSandbox(workspace_dir=str(project_dir.parent))
 
-tool_registry.register(BrowserTool())
 tool_registry.register(WeatherTool())
 tool_registry.register(WindStowageTool())
 tool_registry.register(FileTool(allowed_dirs=[str(project_dir.parent)]))
