@@ -178,21 +178,24 @@ class WebSocketChannel(Channel):
         if not queue:
             return
 
-        was_busy = queue.is_busy(session_id)
         queue.request_cancel(session_id)
         cleared = queue.clear_pending(session_id)
 
         if cleared:
             await self._emit_queue_status(session_id, 0)
 
-        if not was_busy:
-            await self.send(session_id, {
-                "type": "generation_stopped",
-                "session_id": session_id,
-                "reason": "user_cancelled",
-                "cleared_pending": cleared,
-                "timestamp": now_iso(),
-            })
+        # 立即响应前端，无论 agent 是否正忙
+        # 用户点击停止应立刻看到按钮恢复，不等 agent 检测到取消
+        await self.send(session_id, {
+            "type": "generation_stopped",
+            "session_id": session_id,
+            "reason": "user_cancelled",
+            "cleared_pending": cleared,
+            "timestamp": now_iso(),
+        })
+        # 如果 agent 正忙（was_busy），generation_end 由 agent 的
+        # _abort_if_cancelled 或 finally 块发送；否则立即发
+        if not queue.is_busy(session_id):
             await self.send(session_id, {
                 "type": "generation_end",
                 "session_id": session_id,

@@ -1,5 +1,6 @@
 from .weather import WeatherTool
 from .wind_stowage import WindStowageTool
+from .browser import BrowserTool
 from .file import FileTool, FileListTool
 from .command import CommandTool
 from .memory import MemoryTool
@@ -13,6 +14,7 @@ from .network import NetworkTool
 from .meeting_recognizer import MeetingRecognizerTool
 
 __all__ = [
+    "BrowserTool",
     "WeatherTool", "FileTool", "FileListTool",
     "CommandTool", "MemoryTool", "CronJobTool",
     "WebSearchTool", "WebFetchTool",

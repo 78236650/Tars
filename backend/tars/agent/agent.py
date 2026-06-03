@@ -606,12 +606,12 @@ class AgentV2:
             pass
         import asyncio as _asyncio
         from ..utils.env_helpers import get_int_env
-        _stall_timeout = get_int_env("TARS_LLM_STALL_TIMEOUT", 60)
+        _stall_timeout = get_int_env("TARS_LLM_STALL_TIMEOUT", 120)
         model_lower = (self.current_model or "").lower()
-        if "27b" in model_lower or "26b" in model_lower or "31b" in model_lower:
+        if any(k in model_lower for k in ("27b", "26b", "31b", "deepseek", "reasoner", "pro")):
             _stall_timeout = max(
                 _stall_timeout,
-                get_int_env("TARS_LLM_STALL_TIMEOUT_LARGE", 180),
+                get_int_env("TARS_LLM_STALL_TIMEOUT_LARGE", 300),
             )
         try:
             _stream = self.dispatcher.chat_with_tools(
