@@ -1,0 +1,99 @@
+# TARS — build context exclusions
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+develop-eggs/
+
+# Virtualenv
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitattributes
+.gitmodules
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files (use .env.example as template)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+nohup*.log
+
+# Data directories (runtime, not build)
+backend/data/
+backend/storage/meetings/
+backend/uploads/
+
+# Chroma vector store (runtime)
+backend/data/vectorstore/
+
+# LLM Wiki (runtime)
+backend/data/wiki/
+
+# ASR models (large, download via script)
+backend/data/models/
+backend/data/hf-cache/
+
+# Deploy (deploy directory is its own context)
+deploy/
+
+# MCP test files
+gomoku.html
+
+# Skills tenants (runtime data, not code)
+skills/tenants/
+
+# Docs (large, not needed at runtime)
+docs/
+
+# Scripts (not needed at runtime)
+scripts/
+
+# Superpowers (workspace state)
+.superpowers/
+.trae/
+
+# Misc
+*.tar.gz
+*.zip

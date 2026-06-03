@@ -1,21 +1,40 @@
-# TARS v5.0 — production compose (Postgres + single uvicorn worker)
+# TARS v5.0.3 — production compose (Postgres + ChromaDB + single uvicorn worker)
 # Usage: cd deploy && cp .env.example .env && docker compose up -d --build
 
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: tars
-      POSTGRES_PASSWORD: tars
-      POSTGRES_DB: tars
+      POSTGRES_USER: ${PG_USER:-tars}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-tars}
+      POSTGRES_DB: ${PG_DATABASE:-tars}
     volumes:
       - tars-pg-data:/var/lib/postgresql/data
+    networks:
+      - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tars -d tars"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-tars} -d ${PG_DATABASE:-tars}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    volumes:
+      - tars-chroma-data:/chroma/chroma
+    networks:
+      - internal
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   backend:
@@ -32,13 +51,22 @@ services:
       - .env
     environment:
       - TARS_DATA_DIR=/app/data
-      - DATABASE_URL=postgresql://tars:tars@postgres:5432/tars
+      - DATABASE_URL=${DATABASE_URL:-postgresql://tars:tars@postgres:5432/tars}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+      - public
     depends_on:
       postgres:
         condition: service_healthy
+      chromadb:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/docs"]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,11 +78,19 @@ services:
       dockerfile: deploy/Dockerfile.frontend
     ports:
       - "${TARS_FRONTEND_PORT:-8080}:80"
+    networks:
+      - public
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
 
+networks:
+  internal:
+    internal: true
+  public:
+
 volumes:
   tars-data:
   tars-pg-data:
+  tars-chroma-data:

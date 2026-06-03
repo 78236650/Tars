@@ -106,6 +106,11 @@ async def _patched_form(self, *, max_files=1000, max_fields=1000, max_part_size=
     return await _original_form(self, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size, **kwargs)
 _StarletteRequest.form = _patched_form
 
+# ── Health check (no auth, before middleware) ────────────────────────
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "version": "5.0.3"}
+
 # 初始化组件
 db = Database()
 user_store = UserStore(db)
