@@ -465,7 +465,9 @@ class TestE2EFlow:
         ds_store.update(ds.id, "demo", schema_snapshot=json.dumps(schema))
         updated_ds = ds_store.get(ds.id, "demo")
         assert updated_ds is not None
-        stored_schema = json.loads(updated_ds.schema_snapshot)
+        stored_schema = updated_ds.schema_snapshot
+        if isinstance(stored_schema, str):
+            stored_schema = json.loads(stored_schema)
         assert "orders" in stored_schema["tables"]
 
         # Step 5: 用户标注 schema

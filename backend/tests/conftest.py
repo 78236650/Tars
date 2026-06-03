@@ -28,6 +28,13 @@ def setup_main_api_auth(db, *, role=None):
     return {"X-API-Key": user.api_key}, user
 
 
+def setup_admin_auth(db):
+    """Return (headers, admin user) for admin-only API routes."""
+    from tars.gateway.permission import UserRole
+
+    return setup_main_api_auth(db, role=UserRole.ADMIN)
+
+
 def setup_knowledge_auth(db):
     """Wire auth store and return (headers, user) for mutating knowledge routes."""
     from tars.api._auth import init_auth

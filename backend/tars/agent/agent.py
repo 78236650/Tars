@@ -474,7 +474,11 @@ class AgentV2:
         # 6. 构建消息列表
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         for msg in history:
-            messages.append({"role": msg.role, "content": msg.content})
+            msg_dict = {"role": msg.role, "content": msg.content}
+            # DeepSeek 推理模型要求将 reasoning_content 传回 API
+            if msg.metadata_json and msg.metadata_json.get("reasoning_content"):
+                msg_dict["reasoning_content"] = msg.metadata_json["reasoning_content"]
+            messages.append(msg_dict)
 
         # 7. 处理文件附件
         if file_ids and self.file_storage and self.file_parser:
@@ -603,12 +607,18 @@ class AgentV2:
         import asyncio as _asyncio
         from ..utils.env_helpers import get_int_env
         _stall_timeout = get_int_env("TARS_LLM_STALL_TIMEOUT", 60)
+        model_lower = (self.current_model or "").lower()
+        if "27b" in model_lower or "26b" in model_lower or "31b" in model_lower:
+            _stall_timeout = max(
+                _stall_timeout,
+                get_int_env("TARS_LLM_STALL_TIMEOUT_LARGE", 180),
+            )
         try:
             _stream = self.dispatcher.chat_with_tools(
                 messages=messages,
                 model_name=self.current_model,
                 stream=True,
-                max_rounds=5,
+                max_rounds=None,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 tools=self._get_allowed_tool_schemas(),
@@ -875,7 +885,12 @@ class AgentV2:
         except Exception:
             pass
 
-        self.db.add_message(session_id, "assistant", full_response)
+        # v4.3.0: DeepSeek 推理模型 - 保存 reasoning_content 到 metadata
+        assistant_metadata = None
+        if hasattr(self.dispatcher, "last_reasoning_content") and self.dispatcher.last_reasoning_content:
+            assistant_metadata = {"reasoning_content": self.dispatcher.last_reasoning_content}
+
+        self.db.add_message(session_id, "assistant", full_response, metadata=assistant_metadata)
 
         # 9.5 自进化：回合 ingest（隐式信号 + 计数 + 可选 optimize）
         if self.evolution_manager:

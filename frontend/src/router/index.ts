@@ -185,6 +185,17 @@ const router = createRouter({
         desktopSubtitleKey: 'desktop.orchestration.subtitle',
       }
     },
+    {
+      path: '/presales',
+      name: 'presales',
+      component: () => import('@/views/PresalesView.vue'),
+      meta: {
+        requiresAuth: true,
+        module: 'presales',
+        desktopTitleKey: 'desktop.presales.title',
+        desktopSubtitleKey: 'desktop.presales.subtitle',
+      }
+    },
   ]
 })
 

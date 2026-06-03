@@ -3,10 +3,11 @@ import json
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 
+from ._auth import require_authenticated_user, Principal
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -81,13 +82,24 @@ def _step_to_dict(row):
 # ========= 端点 =========
 
 @router.get("/")
-async def list_tasks(session_id: Optional[str] = None):
+async def list_tasks(
+    session_id: Optional[str] = None,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     if session_id:
-        cur.execute("SELECT * FROM tasks WHERE session_id = ? ORDER BY created_at DESC", (session_id,))
+        cur.execute(
+            "SELECT t.* FROM tasks t JOIN user_sessions us ON t.session_id = us.session_id "
+            "WHERE us.user_id = ? AND t.session_id = ? ORDER BY t.created_at DESC",
+            (principal.user_id, session_id),
+        )
     else:
-        cur.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT 50")
+        cur.execute(
+            "SELECT t.* FROM tasks t JOIN user_sessions us ON t.session_id = us.session_id "
+            "WHERE us.user_id = ? ORDER BY t.created_at DESC LIMIT 50",
+            (principal.user_id,),
+        )
     tasks = []
     for row in cur.fetchall():
         cur.execute("SELECT * FROM task_steps WHERE task_id = ? ORDER BY step_order", (row[0],))
@@ -97,7 +109,10 @@ async def list_tasks(session_id: Optional[str] = None):
 
 
 @router.post("/")
-async def create_task(request: TaskCreateRequest):
+async def create_task(
+    request: TaskCreateRequest,
+    principal: Principal = Depends(require_authenticated_user),
+):
     if not db or not agent:
         raise HTTPException(status_code=503, detail="服务未就绪")
 
@@ -140,7 +155,10 @@ async def create_task(request: TaskCreateRequest):
 
 
 @router.get("/{task_id}")
-async def get_task(task_id: str):
+async def get_task(
+    task_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -153,7 +171,10 @@ async def get_task(task_id: str):
 
 
 @router.post("/{task_id}/confirm")
-async def confirm_task(task_id: str):
+async def confirm_task(
+    task_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ?", (_now_iso(), task_id))
@@ -162,7 +183,10 @@ async def confirm_task(task_id: str):
 
 
 @router.post("/{task_id}/pause")
-async def pause_task(task_id: str):
+async def pause_task(
+    task_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE tasks SET status = 'paused', updated_at = ? WHERE id = ? AND status = 'running'",
@@ -172,7 +196,10 @@ async def pause_task(task_id: str):
 
 
 @router.post("/{task_id}/resume")
-async def resume_task(task_id: str):
+async def resume_task(
+    task_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status = 'paused'",
@@ -182,7 +209,10 @@ async def resume_task(task_id: str):
 
 
 @router.post("/{task_id}/cancel")
-async def cancel_task(task_id: str):
+async def cancel_task(
+    task_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE tasks SET status = 'aborted', updated_at = ?, completed_at = ? WHERE id = ?",
@@ -194,7 +224,10 @@ async def cancel_task(task_id: str):
 # ========= v2.5 权限查询 =========
 
 @router.get("/skills/{skill_id}/permissions")
-async def get_skill_permissions(skill_id: str):
+async def get_skill_permissions(
+    skill_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     from ..skills.permission_engine import permission_engine
     declared = permission_engine.get_declared_permissions(skill_id)
     granted = permission_engine.get_skill_permissions(skill_id)
@@ -206,7 +239,10 @@ async def get_skill_permissions(skill_id: str):
 
 
 @router.post("/{task_id}/retry")
-async def retry_task(task_id: str):
+async def retry_task(
+    task_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE tasks SET status = 'pending', current_step = 0, updated_at = ?, completed_at = NULL, error_message = NULL WHERE id = ?",

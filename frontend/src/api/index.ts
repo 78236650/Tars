@@ -22,6 +22,7 @@ import type {
   ApiResponse,
   ChatSession,
   ChatHistoryMessage,
+  SessionArtifactsData,
   Endpoint,
   ModelsOverviewResponse,
   ModelSwitchBody,
@@ -438,6 +439,11 @@ export const sessionsApi = {
 
   updateTitle: async (id: string, title: string): Promise<void> => {
     await api.patch(`/sessions/${id}`, { title })
+  },
+
+  getArtifacts: async (id: string): Promise<SessionArtifactsData> => {
+    const response = await api.get<{ success: boolean; data: SessionArtifactsData }>(`/sessions/${id}/artifacts`)
+    return response.data.data
   },
 }
 
@@ -1321,6 +1327,142 @@ export const vesselPlanApi = {
     const response = await api.post<VpAdoptResult>('/vessel-plans/adopt', {
       voyage_ids: voyageIds,
       session_id: sessionId,
+    })
+    return response.data
+  },
+}
+
+// ── v5.0.1: 售前管理 ────────────────────────────────────────
+
+export interface PresalesProject {
+  id: string
+  name: string
+  customer_name: string
+  industry: string
+  status: string
+  requirement_summary: string
+  proposal_content: string
+  ppt_outline: string
+  tags: string[]
+  created_by: string
+  created_at: string
+  updated_at: string
+  tenant_id: string
+}
+
+export interface PresalesProjectListResponse {
+  projects: PresalesProject[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface PresalesMaterial {
+  id: string
+  project_id: string
+  material_type: string
+  title: string
+  wiki_page_name: string
+  knowledge_doc_id: string
+  file_path: string
+  uploaded_by: string
+  created_at: string
+}
+
+export interface PresalesMaterialListResponse {
+  materials: PresalesMaterial[]
+}
+
+export interface PresalesWorkflow {
+  id: string
+  project_id: string
+  workflow_type: string
+  status: string
+  orchestration_task_id: string
+  input_data: string
+  output_data: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  tenant_id: string
+}
+
+export const presalesApi = {
+  listProjects: async (params?: {
+    page?: number
+    page_size?: number
+    status?: string
+  }): Promise<PresalesProjectListResponse> => {
+    const response = await api.get<PresalesProjectListResponse>('/presales/projects', { params })
+    return response.data
+  },
+
+  getProject: async (id: string): Promise<PresalesProject> => {
+    const response = await api.get<PresalesProject>(`/presales/projects/${id}`)
+    return response.data
+  },
+
+  createProject: async (data: {
+    name: string
+    customer_name?: string
+    industry?: string
+    tags?: string[]
+  }): Promise<{ success: boolean; id: string }> => {
+    const response = await api.post<{ success: boolean; id: string }>('/presales/projects', data)
+    return response.data
+  },
+
+  updateProject: async (id: string, data: Record<string, unknown>): Promise<{ success: boolean }> => {
+    const response = await api.put<{ success: boolean }>(`/presales/projects/${id}`, data)
+    return response.data
+  },
+
+  deleteProject: async (id: string): Promise<{ success: boolean }> => {
+    const response = await api.delete<{ success: boolean }>(`/presales/projects/${id}`)
+    return response.data
+  },
+
+  listMaterials: async (projectId: string): Promise<PresalesMaterialListResponse> => {
+    const response = await api.get<PresalesMaterialListResponse>(`/presales/projects/${projectId}/materials`)
+    return response.data
+  },
+
+  addMaterial: async (projectId: string, data: {
+    material_type?: string
+    title?: string
+    wiki_page_name?: string
+    knowledge_doc_id?: string
+    file_path?: string
+  }): Promise<{ success: boolean; id: string }> => {
+    const response = await api.post<{ success: boolean; id: string }>(`/presales/projects/${projectId}/materials`, data)
+    return response.data
+  },
+
+  startWorkflow: async (data: {
+    workflow_type: string
+    input_data?: string
+  }): Promise<{ success: boolean; id: string; status: string }> => {
+    const response = await api.post<{ success: boolean; id: string; status: string }>('/presales/workflows', data)
+    return response.data
+  },
+
+  getWorkflow: async (id: string): Promise<PresalesWorkflow> => {
+    const response = await api.get<PresalesWorkflow>(`/presales/workflows/${id}`)
+    return response.data
+  },
+
+  generateProposal: async (projectId: string, context?: string): Promise<{ success: boolean; project_id: string; message: string }> => {
+    const response = await api.post<{ success: boolean; project_id: string; message: string }>('/presales/generate/proposal', {
+      project_id: projectId,
+      context: context || '',
+    })
+    return response.data
+  },
+
+  generatePpt: async (projectId: string, context?: string): Promise<{ success: boolean; project_id: string; message: string }> => {
+    const response = await api.post<{ success: boolean; project_id: string; message: string }>('/presales/generate/ppt', {
+      project_id: projectId,
+      context: context || '',
     })
     return response.data
   },

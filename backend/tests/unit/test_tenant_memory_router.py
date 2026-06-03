@@ -32,14 +32,20 @@ def test_memory_manager_for_tenant_keeps_core_memory_isolated(tmp_path):
 
 
 def test_memory_router_keyword_route_respects_tenant(tmp_path):
+    from tars.context import set_request_context
+    from tars.org import ORG_ID
+
     db = Database(db_path=str(tmp_path / "tenant-memory.db"))
-    db.add_memory(content="tenant a docker", category="general", tenant_id="tenant_a")
-    db.add_memory(content="tenant b docker", category="general", tenant_id="tenant_b")
+    set_request_context("user_a", ORG_ID)
+    db.add_memory(content="tenant a docker", category="general", tenant_id=ORG_ID)
+    set_request_context("user_b", ORG_ID)
+    db.add_memory(content="tenant b docker", category="general", tenant_id=ORG_ID)
 
-    router_a = MemoryRouter(db, embedding_provider=None, tenant_id="tenant_a")
-    router_b = MemoryRouter(db, embedding_provider=None, tenant_id="tenant_b")
-
+    set_request_context("user_a", ORG_ID)
+    router_a = MemoryRouter(db, embedding_provider=None, tenant_id=ORG_ID)
     ctx_a = router_a.retrieve("docker", {}, limit=3)
+    set_request_context("user_b", ORG_ID)
+    router_b = MemoryRouter(db, embedding_provider=None, tenant_id=ORG_ID)
     ctx_b = router_b.retrieve("docker", {}, limit=3)
 
     assert "tenant a docker" in "\n".join(ctx_a["knowledge"])

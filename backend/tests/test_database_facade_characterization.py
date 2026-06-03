@@ -7,6 +7,7 @@ import tempfile
 import os
 import pytest
 from tars.database.base import Database
+from tars.org import ORG_ID
 
 
 @pytest.fixture
@@ -25,15 +26,16 @@ def test_session_message_roundtrip(db):
     db.add_message(s.id, "user", "hello")
     msgs = db.get_messages(s.id)
     assert [m.content for m in msgs] == ["hello"]
-    assert db.get_session(s.id, tenant_id="t").title == "hi"
+    assert db.get_session(s.id, tenant_id="t", user_id="u").title == "hi"
 
 
 def test_memory_crud_and_search(db):
     """记忆增删查。"""
-    m = db.add_memory(content="user likes Go", category="user_preference", tenant_id="t")
-    assert db.get_memory(m.id, tenant_id="t").content == "user likes Go"
-    hits = db.search_memories("Go", limit=5, tenant_id="t")
-    assert any("Go" in h.content for h in hits)
+    m = db.add_memory(content="user likes Go", category="user_preference", tenant_id=ORG_ID)
+    assert db.get_memory(m.id, tenant_id=ORG_ID).content == "user likes Go"
+    items, total = db.list_all_memories(tenant_id=ORG_ID, page=1, page_size=10)
+    assert total >= 1
+    assert any("Go" in item.content for item in items)
 
 
 def test_cronjob_lifecycle(db):

@@ -64,7 +64,9 @@ class Reflector:
         self.core = core
         self.archival = archival
         self.db = db
-        self.tenant_id = getattr(core, "tenant_id", "default")
+        from ..org import ORG_ID
+
+        self.tenant_id = getattr(core, "tenant_id", ORG_ID)
 
     async def reflect(
         self,

@@ -106,12 +106,16 @@ async def invoke(
     payload: InvokeRequest,
     x_tenant_id: Optional[str] = Header(default="default"),
     authorization: Optional[str] = Header(default=None),
+    x_api_key: Optional[str] = Header(default=None),
 ):
     if _tenant_cache is None or _memory_manager is None:
         raise HTTPException(status_code=500, detail="invoke api not initialized")
 
     user = None
     api_key = _extract_api_key(authorization)
+    # Fallback to X-API-Key header for browser client compatibility
+    if not api_key and x_api_key:
+        api_key = x_api_key.strip() or None
     if _user_store is not None:
         if not api_key:
             raise HTTPException(status_code=401, detail="未提供 API Key")

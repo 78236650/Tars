@@ -13,6 +13,7 @@ class FileRecord:
     size: int
     path: str
     created_at: datetime
+    user_id: str = "default"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -21,6 +22,7 @@ class FileRecord:
             "type": self.type,
             "mime_type": self.mime_type,
             "size": self.size,
+            "user_id": self.user_id,
             "created_at": self.created_at.isoformat(),
         }
 

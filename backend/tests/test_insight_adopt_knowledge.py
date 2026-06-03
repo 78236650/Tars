@@ -39,7 +39,15 @@ def test_adopt_publishes_metric_card_metadata(db, tenant_ds, monkeypatch):
     published: dict = {}
 
     class FakePublisher:
-        def publish(self, datasource_id, datasource_name, tenant_id, markdown, run_id=None, metric_ids=None):
+        def publish(
+            self,
+            datasource_id,
+            datasource_name,
+            markdown,
+            tenant_id="default",
+            run_id=None,
+            metric_ids=None,
+        ):
             published["markdown"] = markdown
             published["metric_ids"] = metric_ids
             doc_id = "doc-metric-1"

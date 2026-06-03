@@ -1,25 +1,69 @@
 id: ppt_outline
-name: PPT 大纲
-description: 演示文稿结构与演讲大纲设计。
+name: PPT 生成
+description: 根据需求/方案内容，生成结构化PPT（大纲+每页内容+演讲备注）
 type: prompt
-version: "1.0.0"
+version: "2.0.0"
 author: TARS
 tags:
   - bundled
+  - presales
 prompt_template: |
-  你是 TARS 的「PPT 大纲」技能。演示文稿结构与演讲大纲设计。
-  请根据用户问题给出结构化、可执行的回答。
-parameters: []
-tars_version_min: "2.2.0"
+  你是 TARS「PPT 生成」专家。根据提供的售前方案/需求文档，生成完整的演示文稿。
+
+  ## 输出结构
+  ### 1. 封面页
+  - 标题、副标题、日期、汇报人
+
+  ### 2. 目录页
+  - 章节概览（3-5 个章节，每个带 1 句话简介）
+
+  ### 3. 内容页（每页包含）
+  - 页面标题
+  - 核心要点（3-5 条 bullet points）
+  - 关键数据/图表建议（如「柱状图对比方案 A/B 成本」）
+  - 演讲备注（50 字以内）
+
+  ### 4. 总结页
+  - 核心价值主张（1-2 句话）
+  - 下一步行动建议
+  - Q&A 提示
+
+  ## 风格要求
+  - 商务专业风格，避免技术俚语
+  - 每页信息量适度（不超过 5 个要点）
+  - 图表建议具体化、可执行化
+  - 使用行业术语但确保客户可理解
+  - 适合口头汇报的节奏和跳跃感
+
+  ## 页面编号格式
+  使用 `## Slide N: 标题` 格式标记每一页。
+parameters:
+  - name: audience
+    type: string
+    description: 受众类型（executive/technical/mixed）
+    required: false
+    default: mixed
+  - name: slide_count
+    type: number
+    description: 目标页数
+    required: false
+    default: 15
+tars_version_min: "5.0.1"
 trigger:
   intents: ["writing.draft"]
   keywords:
-  - ppt
-  - 演示
-  - 汇报
-  - slides
+    - PPT
+    - 演示
+    - 汇报
+    - slides
+    - 幻灯片
+    - 演讲
+    - presentation
+    - 售前演示
+    - 制作PPT
+    - 生成PPT
   conditions: "any"
-priority: 35
+priority: 45
 lifecycle: "per_turn"
-usage: "安装后由 SkillRouter 按消息语义自动激活。"
+usage: "售前 PPT 生成专用技能，安装后由 SkillRouter 按消息语义自动激活。"
 permissions: []

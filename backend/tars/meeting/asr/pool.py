@@ -17,7 +17,7 @@ def _init_asr_worker() -> None:
 def get_asr_pool() -> ProcessPoolExecutor:
     global _pool
     if _pool is None:
-        _pool = ProcessPoolExecutor(max_workers=1, initializer=_init_asr_worker)
+        _pool = ProcessPoolExecutor(max_workers=2, initializer=_init_asr_worker)
     return _pool
 
 

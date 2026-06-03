@@ -34,6 +34,7 @@ class ChatMessage:
     tool_calls: List[Dict[str, Any]] | None = None
     name: str | None = None
     images: List[str] | None = None
+    reasoning_content: str | None = None  # DeepSeek 推理模型的推理过程内容
 
 
 @dataclass

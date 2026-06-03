@@ -194,8 +194,8 @@ class KnowledgeBridge:
         doc_id = self._publisher.publish(
             datasource_id,
             datasource_name,
-            tenant_id,
             markdown,
+            tenant_id=tenant_id,
             run_id=metric.id,
             metric_ids=[metric.id],
         )

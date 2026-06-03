@@ -612,25 +612,39 @@ class TestToolsAPI:
 
 class TestSkillsAPI:
     @pytest.fixture
-    def client(self):
+    def client(self, tmp_path):
         from fastapi.testclient import TestClient
         from fastapi import FastAPI
         from tars.api.skills import router
         from tars.skills import skill_registry
+        from tars.api._auth import init_auth
+        from tars.database import Database, UserStore
+        from tars.gateway.permission import UserRole
 
         app = FastAPI()
         app.include_router(router)
 
         skill_registry.clear()
-        return TestClient(app)
+        db = Database(str(tmp_path / "skills_api.db"))
+        store = UserStore(db)
+        user = store.create_user(
+            username="skills_api_user",
+            email="skills_api@test.local",
+            role=UserRole.USER,
+        )
+        init_auth(store)
+        headers = {"X-API-Key": user.api_key}
+        return TestClient(app), headers
 
     def test_list_skills_empty(self, client):
-        resp = client.get("/api/skills/")
+        test_client, headers = client
+        resp = test_client.get("/api/skills/", headers=headers)
         assert resp.status_code == 200
         assert resp.json()["total"] == 0
 
     def test_create_prompt_skill(self, client):
-        resp = client.post("/api/skills/create-prompt", json={
+        test_client, headers = client
+        resp = test_client.post("/api/skills/create-prompt", json={
             "id": "writer",
             "name": "Writer",
             "description": "Writing assistant",
@@ -643,24 +657,25 @@ class TestSkillsAPI:
         assert data["skill"]["type"] == "prompt"
 
         # 验证已注册
-        resp2 = client.get("/api/skills/")
+        resp2 = test_client.get("/api/skills/", headers=headers)
         assert resp2.json()["total"] == 1
 
     def test_delete_skill(self, client):
+        test_client, headers = client
         # 先创建
-        client.post("/api/skills/create-prompt", json={
+        test_client.post("/api/skills/create-prompt", json={
             "id": "temp",
             "name": "Temp",
             "description": "temp",
             "prompt_template": "x",
         })
         # 再删除
-        resp = client.delete("/api/skills/temp")
+        resp = test_client.delete("/api/skills/temp")
         assert resp.status_code == 200
         assert resp.json()["success"] is True
 
         # 验证已删除
-        resp2 = client.get("/api/skills/")
+        resp2 = test_client.get("/api/skills/", headers=headers)
         assert resp2.json()["total"] == 0
 
 

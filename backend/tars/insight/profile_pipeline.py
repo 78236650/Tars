@@ -293,8 +293,8 @@ class ProfilePipeline:
                 knowledge_doc_id = self.publisher.publish(
                     datasource.id,
                     datasource.name,
-                    datasource.tenant_id,
                     md,
+                    tenant_id=datasource.tenant_id,
                     run_id=run_id,
                 )
                 tracker.end_phase("publish")

@@ -135,6 +135,29 @@ BUILTIN_TEMPLATES = [
         allowed_modules=[],
         workspace_restriction=True, max_concurrent=1,
     ),
+    RoleTemplate(
+        id="presales_manager",
+        name="售前经理",
+        description="售前需求调研、方案撰写、历史资料库、汇报PPT",
+        is_builtin=True,
+        allowed_tools=[
+            "weather", "web_search", "web_fetch",
+            "file", "file_list", "file_write",
+            "knowledge_search", "read_wiki", "write_wiki",
+            "memory",
+            "insight_get_workflow", "insight_list_sources",
+            "insight_start_forge", "insight_profile_datasource",
+            "insight_ask_metric", "insight_explain_metric",
+        ],
+        denied_tools=[
+            "shell", "command", "python_exec",
+            "bi_query", "bi_generate_chart",
+            "process", "network", "cronjob",
+        ],
+        allowed_modules=["presales", "knowledge", "insight", "orchestration"],
+        workspace_restriction=True,
+        max_concurrent=3,
+    ),
 ]
 
 

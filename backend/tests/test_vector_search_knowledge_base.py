@@ -271,10 +271,10 @@ class TestKnowledgeIndexer:
 
         class MockCollection:
             def __init__(self):
-                self.deleted_ids = []
+                self.deleted_where = None
 
-            def delete(self, ids):
-                self.deleted_ids.extend(ids)
+            def delete(self, where=None):
+                self.deleted_where = where
 
         class MockVectorStore:
             def __init__(self):
@@ -302,11 +302,7 @@ class TestKnowledgeIndexer:
         indexer = KnowledgeIndexer(vector_store, embedding_provider=None, db=db)
 
         assert indexer.delete_document("doc1", "coll1") is True
-        assert vector_store.collection.deleted_ids == [
-            "doc1_chunk_0",
-            "doc1_chunk_1",
-            "doc1_chunk_2",
-        ]
+        assert vector_store.collection.deleted_where == {"doc_id": "doc1"}
 
         cursor.execute("SELECT id FROM document_files WHERE id = ?", ("doc1",))
         assert cursor.fetchone() is None
@@ -420,7 +416,7 @@ class TestKnowledgeRetriever:
                 ]
 
         class StubExpander:
-            def expand(self, query):
+            def expand(self, query, method="synonym"):
                 return [query, "扩展问题"]
 
         retriever = KnowledgeRetriever(MockVectorStore(), query_expander=StubExpander())
@@ -518,17 +514,20 @@ class TestKnowledgeApiUpgrade:
                 return kwargs["ids"]
 
         db = Database(db_path=str(tmp_path / "test.db"))
+        from tars.org import ORG_ID
         conn = db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ("coll1", "default", "知识库", "", "2026-05-16T00:00:00", "2026-05-16T00:00:00"),
+            ("coll1", ORG_ID, "知识库", "", "2026-05-16T00:00:00", "2026-05-16T00:00:00"),
         )
         conn.commit()
 
         app = FastAPI()
         app.include_router(router)
         init_knowledge_api(db, StubVectorStore(), None)
+        from tests.conftest import setup_knowledge_auth
+        auth_headers, _user = setup_knowledge_auth(db)
         client = TestClient(app)
 
         response = client.post(
@@ -537,6 +536,7 @@ class TestKnowledgeApiUpgrade:
                 ("files", ("good.txt", b"hello world", "text/plain")),
                 ("files", ("bad.bin", b"\xff\xfe\x00", "application/octet-stream")),
             ],
+            headers=auth_headers,
         )
 
         assert response.status_code == 200
@@ -567,7 +567,9 @@ class TestDatabaseSchema:
 
     def test_search_cache_table(self, tmp_path):
         from tars.database import Database
+        from tars.search.cache import SearchCache
         db = Database(db_path=str(tmp_path / "test.db"))
+        SearchCache(db)  # 缓存表由 SearchCache 初始化时创建
         conn = db._get_conn()
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='search_cache'")

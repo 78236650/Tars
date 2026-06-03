@@ -69,6 +69,7 @@ from tars.api.plans import router as plans_router, init_plans_api
 from tars.api.handoffs import router as handoffs_router, init_handoff_api
 from tars.api.orchestration_routes import router as orchestration_router, init_orchestration_api
 from tars.api.vessel_plan_routes import router as vessel_plan_router, init_vessel_plan_api
+from tars.api.presales import router as presales_router, init_presales_api
 from tars.api.admin import router as admin_router, init_admin_api
 from tars.api.roles import router as roles_router, init_roles_api
 from tars.memory.scheduler import MemoryScheduler
@@ -78,7 +79,7 @@ from tars.cron import CronRuntime
 # 初始化应用
 app = FastAPI(
     title="PortMeta Agent",
-    version="5.0.0",
+    version="5.0.1",
     description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 
@@ -89,6 +90,10 @@ _cors_origins = os.environ.get(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _cors_origins if o.strip()],
+    allow_origin_regex=os.environ.get(
+        "TARS_CORS_ORIGIN_REGEX",
+        r"http://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?",
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -134,12 +139,12 @@ init_skill_curator(db)
 from tars.database.skill_routing_store import init_skill_routing_store
 init_skill_routing_store(db)
 
-# v4.0.1: Per-tenant workspace 隔离
-from tars.tools.tenant_workspace import init_tenant_workspace
-init_tenant_workspace()
-
 # ========= 注册内置工具到全局 tool_registry =========
 project_dir = Path(__file__).parent.parent
+
+# v4.0.1: Per-tenant workspace 隔离
+from tars.tools.tenant_workspace import init_tenant_workspace
+init_tenant_workspace(extra_allowed_dirs=[str(project_dir / "uploads")])
 workspace_sandbox = WorkspaceSandbox(workspace_dir=str(project_dir.parent))
 
 tool_registry.register(WeatherTool())
@@ -338,6 +343,8 @@ if default_provider:
     agent.provider = wrapped
     agent.dispatcher.set_provider(wrapped)
     memory_manager.set_provider(wrapped)
+    if evolution_manager._case_distiller:
+        evolution_manager._case_distiller.provider = wrapped
 
 # v2.5: 初始化权限引擎
 from tars.skills.permission_engine import permission_engine
@@ -422,6 +429,8 @@ if module_registry.is_enabled("meeting"):
 if module_registry.is_enabled("orchestration"):
     app.include_router(orchestration_router)
     app.include_router(vessel_plan_router)
+if module_registry.is_enabled("presales"):
+    app.include_router(presales_router)
 
 init_sessions_api(db)
 init_tasks_api(db, agent)
@@ -455,6 +464,11 @@ if module_registry.is_enabled("orchestration"):
     init_vessel_plan_api(db)
 else:
     print("[Startup] 调度编排模块已禁用 (config/modules.yaml → orchestration.enabled)")
+if module_registry.is_enabled("presales"):
+    init_presales_api(db)
+    print("[Startup] 售前管理模块已启用")
+else:
+    print("[Startup] 售前管理模块已禁用 (config/modules.yaml → presales.enabled)")
 init_memory_api(db, memory_manager)
 set_memory_provider_resolver(lambda: agent.provider)
 init_audit_api(db)
@@ -1439,9 +1453,11 @@ if __name__ == "__main__":
     # 初始化技能系统
     init_skills()
     
+    # reload 会启动双进程并重复加载嵌入模型，易导致 OOM (exit 137)。本地默认关闭，需热重载时设 TARS_RELOAD=1。
+    reload_enabled = os.getenv("TARS_RELOAD", "").strip().lower() in ("1", "true", "yes")
     uvicorn.run(
         "tars.main:app",
         host=os.getenv("TARS_HOST", "0.0.0.0"),
         port=int(os.getenv("TARS_PORT", "8000")),
-        reload=True
+        reload=reload_enabled,
     )

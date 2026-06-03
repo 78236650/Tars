@@ -15,7 +15,9 @@ def _unique(prefix: str) -> str:
 @pytest.fixture
 def app_client():
     from tars import main as tars_main
+    from tars.api._auth import init_auth
 
+    init_auth(tars_main.user_store, tars_main.auth_token_store)
     return TestClient(tars_main.app), tars_main.user_store
 
 

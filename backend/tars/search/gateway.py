@@ -59,14 +59,14 @@ class SearchGateway:
             queries = self.expander.expand(query, method="synonym")
 
         # 记忆搜索
-        if "memory" in sources and self.memory_search:
+        if "memory" in sources:
             memory_results = []
             for q in queries:
-                # 检查缓存
+                # 检查缓存（命中时独立于后端，无需 memory_search）
                 cached = self.cache.get(q, "memory", limit) if use_cache else None
                 if cached is not None:
                     memory_results.extend(cached)
-                else:
+                elif self.memory_search:
                     try:
                         hits = self.memory_search.search(q, limit=limit)
                         formatted = [{"content": m.content, "category": m.category, "id": m.id} for m in hits]

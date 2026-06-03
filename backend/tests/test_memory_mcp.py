@@ -9,7 +9,9 @@ from tars_memory_server import _search_memory, _add_memory
 
 
 def test_mcp_add_and_search(tmp_path, monkeypatch):
+    from tars.org import ORG_ID
+
     monkeypatch.setenv("TARS_DATA_DIR", str(tmp_path))
-    _add_memory(content="user prefers dark mode", category="user_preference", tenant="t")
-    out = _search_memory(query="dark mode", tenant="t", limit=5)
+    _add_memory(content="user prefers dark mode", category="user_preference", tenant=ORG_ID)
+    out = _search_memory(query="dark mode", tenant=ORG_ID, limit=5)
     assert "dark mode" in out

@@ -18,13 +18,20 @@ def test_sessions_are_isolated_by_tenant(tmp_path):
 
 
 def test_memories_are_isolated_by_tenant(tmp_path):
+    from tars.context import set_request_context
+    from tars.org import ORG_ID
+
     db = Database(db_path=str(tmp_path / "tenant.db"))
 
-    db.add_memory(content="tenant a memory", category="general", tenant_id="tenant_a")
-    db.add_memory(content="tenant b memory", category="general", tenant_id="tenant_b")
+    set_request_context("user_a", ORG_ID)
+    db.add_memory(content="tenant a memory", category="general", tenant_id=ORG_ID)
+    set_request_context("user_b", ORG_ID)
+    db.add_memory(content="tenant b memory", category="general", tenant_id=ORG_ID)
 
-    tenant_a = db.search_memories("memory", tenant_id="tenant_a")
-    tenant_b = db.search_memories("memory", tenant_id="tenant_b")
+    set_request_context("user_a", ORG_ID)
+    user_a_hits = db.search_memories("memory", tenant_id=ORG_ID)
+    set_request_context("user_b", ORG_ID)
+    user_b_hits = db.search_memories("memory", tenant_id=ORG_ID)
 
-    assert [item.content for item in tenant_a] == ["tenant a memory"]
-    assert [item.content for item in tenant_b] == ["tenant b memory"]
+    assert [item.content for item in user_a_hits] == ["tenant a memory"]
+    assert [item.content for item in user_b_hits] == ["tenant b memory"]

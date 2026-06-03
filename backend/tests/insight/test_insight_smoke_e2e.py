@@ -19,7 +19,7 @@ from tars.insight.api.router import _require as insight_require, init_insight_ap
 from tars.insight.job_runner import InsightJobRunner
 from tars.modules.registry import module_registry
 
-from tests.insight.case_orders_shop import TENANT, seed
+from tests.insight.case_orders_shop import USER_ID, seed
 from tests.insight.conftest import _qa_engine_factory
 from tests.insight.suite_runner import load_suite_cases, run_smoke_steps
 
@@ -74,15 +74,15 @@ def tars_smoke_stack(tmp_path_factory) -> Tuple[TestClient, Any, Dict[str, str]]
 
     headers = {
         "X-API-Key": admin.api_key,
-        "X-Tenant-ID": TENANT,
+        "X-Tenant-ID": USER_ID,
     }
 
     async def _smoke_insight_principal() -> Principal:
         return Principal(
-            user_id=admin.id,
+            user_id=USER_ID,
             role="admin",
             role_template_id="admin",
-            tenant_id=TENANT,
+            tenant_id=USER_ID,
             is_admin=True,
             api_key=admin.api_key,
         )
@@ -91,7 +91,7 @@ def tars_smoke_stack(tmp_path_factory) -> Tuple[TestClient, Any, Dict[str, str]]
 
     with patch(
         "tars.insight.api.router.MetricQaEngine",
-        side_effect=lambda db: _qa_engine_factory(db),
+        side_effect=lambda db, **kwargs: _qa_engine_factory(db, **kwargs),
     ), patch.object(InsightJobRunner, "start_profile", _fake_forge_complete):
         with TestClient(main.app) as client:
             _skip_if_insight_unavailable(client)
@@ -125,7 +125,7 @@ def test_insight_smoke_suite_case(case, tars_smoke_stack):
         from tars.insight.workflow_service import InsightWorkflowService
 
         InsightWorkflowService(ctx.db).set_datasource_state(
-            ctx.datasource_id, TENANT, "needs_forge"
+            ctx.datasource_id, USER_ID, "needs_forge"
         )
     run_smoke_steps(case, client, ctx, headers)
 

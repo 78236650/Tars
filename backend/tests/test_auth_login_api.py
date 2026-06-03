@@ -15,8 +15,11 @@ def _build_store(tmp_path, monkeypatch, db_name="auth.db"):
     test_db = Database(db_path=str(tmp_path / db_name))
     test_store = UserStore(test_db)
     test_tokens = AuthTokenStore(test_db)
+    from tars.api._auth import init_auth
+
     monkeypatch.setattr(main, "user_store", test_store)
     monkeypatch.setattr(main, "auth_token_store", test_tokens)
+    init_auth(test_store, test_tokens)
     monkeypatch.setenv("TARS_JWT_SECRET", "test-jwt-secret-for-login-api-tests")
     return main, test_db, test_store
 
@@ -55,27 +58,39 @@ def test_get_all_users_includes_role_template_id(client):
 
 
 def test_create_user_requires_password(client):
-    http, _ = client
+    http, store = client
+    admin = store.create_user(
+        username="creator",
+        email="creator@example.com",
+        password="CreatorPass1!",
+    )
 
     response = http.post(
         "/api/users",
         json={"username": "bob", "email": "bob@example.com", "role": "user"},
+        headers={"X-API-Key": admin.api_key},
     )
 
     assert response.status_code == 422
 
 
 def test_create_user_rejects_short_password(client):
-    http, _ = client
+    http, store = client
+    admin = store.create_user(
+        username="creator2",
+        email="creator2@example.com",
+        password="CreatorPass1!",
+    )
 
     response = http.post(
         "/api/users",
         json={
             "username": "bob",
-            "email": "bob@example.com",
+            "email": "bob2@example.com",
             "password": "short7!",
             "role": "user",
         },
+        headers={"X-API-Key": admin.api_key},
     )
 
     assert response.status_code == 400

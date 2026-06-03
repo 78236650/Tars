@@ -57,14 +57,14 @@ class DocumentChunker:
         chunks = []
         start = 0
         text_len = len(text)
+        step = max(1, self.chunk_size - self.chunk_overlap)
 
         while start < text_len:
             end = min(start + self.chunk_size, text_len)
-            chunk = text[start:end]
-            chunks.append(chunk.strip())
-            start += self.chunk_size - self.chunk_overlap
-            if start >= end:
+            chunks.append(text[start:end].strip())
+            if end >= text_len:
                 break
+            start += step
 
         return [c for c in chunks if c]
 

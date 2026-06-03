@@ -51,10 +51,19 @@ class MemoryRepo:
             return None
 
     def _visibility_clause(self, user_id: Optional[str] = None) -> Tuple[str, List[Any]]:
+        """v5: org_default + user_id; legacy: tenant_id column stored per-user scope key."""
         viewer = self._resolve_viewer_user_id(user_id)
         if viewer is None:
-            return "tenant_id = ? AND (scope = 'shared' OR user_id IS NULL)", [ORG_ID]
-        return "tenant_id = ? AND (scope = 'shared' OR user_id = ?)", [ORG_ID, viewer]
+            return (
+                "((tenant_id = ? AND (scope = 'shared' OR user_id IS NULL)) "
+                "OR (tenant_id != ? AND user_id IS NULL))",
+                [ORG_ID, ORG_ID],
+            )
+        return (
+            "((tenant_id = ? AND (scope = 'shared' OR user_id = ?)) "
+            "OR (tenant_id = ? AND user_id IS NULL))",
+            [ORG_ID, viewer, viewer],
+        )
 
     def _get_conn(self):
         return self._cm.get_conn()
@@ -183,22 +192,16 @@ class MemoryRepo:
     ) -> Optional[Memory]:
         conn = self._get_conn()
         cursor = conn.cursor()
+        visibility, vis_params = self._visibility_clause(user_id)
         cursor.execute(
             f"""
             SELECT {_MEMORY_SELECT}
             FROM memories
-            WHERE id = ? AND tenant_id = ?
+            WHERE id = ? AND {visibility}
             """,
-            (memory_id, tenant_id or ORG_ID),
+            (memory_id, *vis_params),
         )
-        memory = self._memory_from_row(cursor.fetchone())
-        if memory is None:
-            return None
-        if memory.scope == "private":
-            viewer = self._resolve_viewer_user_id(user_id)
-            if memory.user_id != viewer:
-                return None
-        return memory
+        return self._memory_from_row(cursor.fetchone())
 
     @staticmethod
     def _has_cjk(text: str) -> bool:
@@ -713,9 +716,10 @@ class MemoryRepo:
         conn.commit()
         return cursor.rowcount > 0
 
-    def get_memory_stats(self, tenant_id: str = ORG_ID) -> Dict[str, Any]:
+    def get_memory_stats(self, tenant_id: str = ORG_ID, user_id: Optional[str] = None) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
+        visibility, vis_params = self._visibility_clause(user_id)
         time_expr = "julianday(replace(substr(created_at, 1, 19), 'T', ' '))"
         cursor.execute(
             f"""
@@ -723,23 +727,23 @@ class MemoryRepo:
                 COUNT(*),
                 SUM(CASE WHEN memory_type = 'episodic' AND {time_expr} >= julianday('now', '-7 day') THEN 1 ELSE 0 END),
                 SUM(CASE WHEN importance >= 0.6 OR pinned = 1 OR memory_type = 'longterm' THEN 1 ELSE 0 END)
-            FROM memories WHERE tenant_id = ?
+            FROM memories WHERE {visibility}
             """,
-            (tenant_id,),
+            vis_params,
         )
         row = cursor.fetchone()
         total, recent, longterm = row[0], row[1] or 0, row[2] or 0
         cursor.execute(
-            """
+            f"""
             SELECT COUNT(*) FROM (
                 SELECT entity_refs
                 FROM memories
-                WHERE tenant_id = ? AND entity_refs IS NOT NULL AND pinned = 0
+                WHERE {visibility} AND entity_refs IS NOT NULL AND pinned = 0
                 GROUP BY entity_refs
                 HAVING COUNT(*) > 10
             )
             """,
-            (tenant_id,),
+            vis_params,
         )
         pending = cursor.fetchone()[0]
         return {
@@ -864,21 +868,27 @@ class MemoryRepo:
         items = [self._memory_from_row(row) for row in cursor.fetchall()]
         return items, total
 
-    def list_memories_for_tree(self, tenant_id: str = ORG_ID, limit: int = 5000) -> List[Memory]:
-        """Load tenant memories for entity tree assembly (bounded)."""
+    def list_memories_for_tree(
+        self,
+        tenant_id: str = ORG_ID,
+        limit: int = 5000,
+        user_id: Optional[str] = None,
+    ) -> List[Memory]:
+        """Load visible memories for entity tree assembly (bounded)."""
         conn = self._get_conn()
         cursor = conn.cursor()
+        visibility, vis_params = self._visibility_clause(user_id)
         cursor.execute(
-            """
+            f"""
             SELECT
                 id, tenant_id, content, category, importance, created_at, updated_at,
                 last_accessed, source, pinned, compressed_from, memory_type, entity_refs, event_time, scope
             FROM memories
-            WHERE tenant_id = ?
+            WHERE {visibility}
             ORDER BY pinned DESC, importance DESC, updated_at DESC
             LIMIT ?
             """,
-            (tenant_id, limit),
+            [*vis_params, limit],
         )
         return [self._memory_from_row(row) for row in cursor.fetchall()]
 

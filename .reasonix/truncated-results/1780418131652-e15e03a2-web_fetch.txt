@@ -1,0 +1,320 @@
+【EverOS · EverCore】开源 Agent 记忆基础设施架构与设计原理深度解析 | 程序员的自我修养
+https://xuqi2024.github.io/2026/05/12/2026-05-12-everos-evercore-memory-architecture-deep-dive/
+
+<!DOCTYPE html>【EverOS · EverCore】开源 Agent 记忆基础设施架构与设计原理深度解析 | 程序员的自我修养
+
+程序员的自我修养
+
+链接、装载与库
+
+【EverOS · EverCore】开源 Agent 记忆基础设施架构与设计原理深度解析
+
+发表于 2026-05-12 更新于 2026-06-02 分类于 AI ， 项目评测
+
+【EverOS · EverCore】开源 Agent 记忆基础设施架构与设计原理深度解析
+
+引子：为什么 Agent 需要”记忆”？
+
+当我们与 AI 对话时，模型本身是无状态的（Stateless）——每一次对话都是独立的，模型不会记住你昨天说了什么、你喜欢什么、你和它讨论过哪些项目。然而，对于真正有用的个人 AI 助手而言，跨越会话的记忆能力是核心需求。
+
+举一个直观的例子：你让 AI 推荐晚餐，它回答”根据您所在地推荐中餐”。但如果 AI 知道”你上周刚拔了智齿，正在恢复期”，它就会自动过滤掉辛辣食物，给出更合适的建议。这种基于历史上下文的主动感知，正是 EverCore 要解决的核心问题。
+
+EverCore 是 EverOS 项目中的长期记忆操作系统，为 AI Agent 提供从对话中提取、结构化存储和精准检索记忆的能力，让 Agent 能够真正”认识”用户。
+
+项目信息：
+
+GitHub：EverMind-AI/EverOS，⭐ 4,600+，2025年10月创建，持续活跃
+
+核心技术：MemCell 原子记忆单元 + 多层记忆类型 + 混合检索（BM25 + Vector + RRF）
+
+支持场景：单人对话、多人团队协作
+
+基准测试：在 LoCoMo 基准上达到 92.3% 推理准确率
+
+一、问题定位：现有 Agent 记忆方案有什么缺陷？
+
+当前主流的 Agent 记忆方案大致分为三类，它们各有明显不足：
+
+方案类型代表项目核心问题
+
+向量数据库Chroma / Pinecone只能做相似性检索，无法理解语义层级；检索结果碎片化，缺乏叙事连贯性
+
+简单 KV 存储Mem0 / Letta仅做消息压缩或摘要，丢失细节；没有多层记忆抽象
+
+RAG PipelineLangChain / LlamaIndex通用文档检索，不针对 Agent 场景优化；记忆更新不及时
+
+EverCore 提出的核心洞察是：Agent 记忆不只是”存储-检索”，而是一个”认知循环”——记忆需要被结构化地组织（MemCell → Episode → Profile），并在检索时支持多路径融合（Hybrid Retrieval + Rerank）。
+
+二、EverCore 架构总览
+
+EverCore 采用六层分层架构，将 Agent 记忆的完整生命周期拆解为清晰的职责分层：
+<code class="highlight mermaid">flowchart TB
+subgraph AL["Agentic Layer · 智能编排层"]
+MA[Memory Agent 编排器]
+VS[Vector 向量化服务]
+RS[Rerank 重排序引擎]
+end
+
+subgraph ML["Memory Layer · 记忆提取层"]
+MCE[MemCell Extractor<br/>原子记忆单元提取]
+MEX[Memory Extractors<br/>Episode / Profile / Foresight / AtomicFact]
+PROM[Prompt Templates]
+end
+
+subgraph RL["Retrieval Layer · 检索层"]
+VS2[Vector Search<br/>Milvus]
+KS[Keyword Search<br/>Elasticsearch BM25]
+RRF[RRF Fusion 混合融合]
+AMR[Agentic Multi-Round<br/>多轮推理召回]
+end
+
+subgraph BL["Business Layer · 业务层"]
+API[FastAPI Endpoints]
+SVC[Service Layer]
+end
+
+subgraph IL["Infrastructure Layer · 基础设施层"]
+MON[MongoDB]
+RED[Redis Cache]
+ES[Elasticsearch]
+MIL[Milvus]
+end
+
+subgraph CL["Core Framework · 核心框架"]
+DI[Dependency Injection]
+LC[Lifecycle Manager]
+MID[Middleware Pipeline]
+end
+
+AL --> ML
+ML --> RL
+RL --> BL
+BL --> IL
+CL --> IL
+CL --> BL
+CL --> AL</code>
+两条核心认知轨道
+
+EverCore 的设计围绕两条认知轨道运转：
+<code class="highlight mermaid">flowchart LR
+subgraph CONSTRUCT["Memory Construction · 记忆构建"]
+A[对话原始数据] --> B[MemCell 原子化]
+B --> C[Episode 情景记忆]
+C --> D[Profile 用户画像]
+D --> E[(持久化存储)]
+end
+
+subgraph PERCEIVE["Memory Perception · 记忆感知"]
+F[用户查询] --> G[混合检索]
+G --> H[RRF 融合]
+H --> I[Rerank 重排]
+I --> J[上下文组装]
+J --> K[LLM 推理生成]
+end
+
+E --> G</code>
+记忆构建（Memory Construction）：对话 → MemCell → Episode/Profile → 存储索引
+
+记忆感知（Memory Perception）：查询 → 混合检索 → 重排 → LLM 推理生成
+
+三、核心机制深度解析
+
+3.1 MemCell：原子记忆单元
+
+MemCell 是 EverCore 最基础的结构化记忆单元，它不是简单的文本片段，而是从对话中提取的语义完整的记忆原子。
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line"><span class="comment"># MemCell 数据结构（来源：api_specs/memory_types.py）</span></span><br><span class="line"><span class="meta">@dataclass</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">MemCell</span>:</span><br><span class="line"> content: <span class="built_in">str</span> <span class="comment"># 记忆内容文本</span></span><br><span class="line"> memory_type: <span class="type">List</span>[<span class="built_in">str</span>] <span class="comment"># 记忆类型标签</span></span><br><span class="line"> created_at: datetime <span class="comment"># 创建时间</span></span><br><span class="line"> summary: <span class="built_in">str</span> <span class="comment"># 摘要（LLM生成）</span></span><br><span class="line"> source: <span class="built_in">str</span> <span class="comment"># 数据来源</span></span><br><span class="line"> user_id: <span class="built_in">str</span> <span class="comment"># 关联用户ID</span></span><br><span class="line"> group_id: <span class="built_in">str</span> <span class="comment"># 所属对话组ID</span></span><br><span class="line"> evidence: <span class="type">List</span>[<span class="built_in">str</span>] <span class="comment"># 支撑证据（原始对话片段）</span></span><br><span class="line"> importance_score: <span class="built_in">float</span> <span class="comment"># 重要性评分</span></span><br>
+
+MemCell 的提取过程由 ConvMemCellExtractor 完成，其核心逻辑是：
+
+边界检测（Boundary Detection）：将连续对话切分为语义完整的片段
+
+LLM 摘要生成：对每个片段生成摘要和重要性评分
+
+证据保留：保留原始对话作为 evidence，避免幻觉
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line"><span class="comment"># 简化版 MemCell 提取流程伪代码</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">ConvMemCellExtractor</span>:</span><br><span class="line"> <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line"> <span class="variable language_">self</span>.llm_provider = LLMProvider()</span><br><span class="line"> <span class="variable language_">self</span>.prompt = get_prompt_by(<span class="string">"CONV_BATCH_BOUNDARY_DETECTION_PROMPT"</span>)</span><br><span class="line"></span><br><span class="line"> <span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">extract_memcell</span>(<span class="params">self, request: MemCellExtractRequest</span>):</span><br><span class="line"> <span class="comment"># Step 1: 如果强制刷新或达到硬限制，直接切分</span></span><br><span class="line"> <span class="keyword">if</span> request.flush <span class="keyword">or</span> <span class="variable language_">self</span>._exceeds_hard_limit(request):</span><br><span class="line"> <span class="keyword">return</span> <span class="variable language_">self</span>._force_split(request)</span><br><span class="line"></span><br><span class="line"> <span class="comment"># Step 2: 调用 LLM 进行语义边界检测</span></span><br><span class="line"> boundary_prompt = <span class="variable language_">self</span>._build_boundary_prompt(request)</span><br><span class="line"> llm_result = <span class="keyword">await</span> <span class="variable language_">self</span>.llm_provider.chat(boundary_prompt)</span><br><span class="line"> boundaries = <span class="variable language_">self</span>._parse_boundaries(llm_result)</span><br><span class="line"></span><br><span class="line"> <span class="comment"># Step 3: 为每个语义块创建 MemCell</span></span><br><span class="line"> memcells = []</span><br><span class="line"> <span class="keyword">for</span> segment <span class="keyword">in</span> <span class="variable language_">self</span>._split_by_boundaries(request, boundaries):</span><br><span class="line"> memcell = MemCell(</span><br><span class="line"> content=segment.text,</span><br><span class="line"> summary=<span class="keyword">await</span> <span class="variable language_">self</span>._llm_summarize(segment.text),</span><br><span class="line"> evidence=<span class="variable language_">self</span>._extract_evidence(segment),</span><br><span class="line"> importance_score=<span class="variable language_">self</span>._score_importance(segment)</span><br><span class="line"> )</span><br><span class="line"> memcells.append(memcell)</span><br><span class="line"></span><br><span class="line"> <span class="keyword">return</span> memcells, StatusResult(should_wait=<span class="literal">False</span>)</span><br>
+
+关键设计：MemCell 包含 evidence 字段，记录原始对话片段，这在检索后供 LLM 推理时非常关键——可溯源的推理能有效减少幻觉。
+
+3.2 多层记忆类型体系
+
+EverCore 不只有一种”记忆”，而是通过不同提取器构建多层次记忆结构：
+
+记忆类型提取器作用示例
+
+MemCellConvMemCellExtractor原子级记忆“用户喜欢巴塞罗那”
+
+EpisodeEpisodeMemoryExtractor情景/主题记忆“讨论足球爱好的完整对话”
+
+ProfileProfileExtractor用户画像“用户是足球迷，喜欢梅西”
+
+ForesightForesightExtractor前瞻性记忆“用户明天下午要开会”
+
+AtomicFactAtomicFactExtractor原子事实“梅西是阿根廷人”
+
+AgentCaseAgentCaseExtractorAgent 经验案例“此类问题应先检索记忆再回答”
+
+AgentSkillAgentSkillExtractorAgent 技能“可用工具：网页搜索、计算器”
+
+多层记忆的设计理念是：信息在不同抽象级别被组织，检索时可以按需获取不同粒度的记忆。
+
+3.3 混合检索与 RRF 融合
+
+EverCore 的检索层支持多种检索策略，并可通过 RRF（Reciprocal Rank Fusion） 算法融合：
+<code class="highlight mermaid">flowchart TD
+Q[查询 Query] -->|并行| V[Vector Search<br/>Milvus]
+Q -->|并行| K[Keyword Search<br/>Elasticsearch BM25]
+V -->|Top-K 结果| RRF[RRF Fusion]
+K -->|Top-K 结果| RRF
+RRF -->|融合结果| RK[Rerank Service]
+RK -->|最终排序| TOP[Top-N 最终结果]</code>
+RRF 融合公式：
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line"><span class="keyword">def</span> <span class="title function_">rrf_fusion</span>(<span class="params">results_list: <span class="type">List</span>[<span class="type">List</span>[RetrievedDoc]], k=<span class="number">60</span></span>):</span><br><span class="line"> <span class="string">"""</span></span><br><span class="line"><span class="string"> Reciprocal Rank Fusion: 将多路检索结果按排名融合</span></span><br><span class="line"><span class="string"> k 是一个常数（通常为60），用于平滑排名差异</span></span><br><span class="line"><span class="string"> """</span></span><br><span class="line"> scores = {}</span><br><span class="line"> <span class="keyword">for</span> results <span class="keyword">in</span> results_list:</span><br><span class="line"> <span class="keyword">for</span> rank, doc <span class="keyword">in</span> <span class="built_in">enumerate</span>(results):</span><br><span class="line"> doc_id = doc.<span class="built_in">id</span></span><br><span class="line"> scores[doc_id] = scores.get(doc_id, <span class="number">0</span>) + <span class="number">1</span> / (k + rank + <span class="number">1</span>)</span><br><span class="line"> <span class="keyword">return</span> <span class="built_in">sorted</span>(scores.items(), key=<span class="keyword">lambda</span> x: -x[<span class="number">1</span>])</span><br>
+
+检索策略：
+
+策略描述适用场景
+
+keyword纯 BM25 关键词检索延迟敏感、简单查询
+
+vector纯向量语义检索语义模糊、需要理解意图
+
+hybridBM25 + Vector + RRF默认推荐，平衡精确与语义
+
+agenticLLM 引导的多轮推理检索复杂查询，自动生成多个子查询
+
+3.4 Agentic 多轮推理召回
+
+对于复杂查询，EverCore 支持 Agentic 检索模式——LLM 会分析查询并生成 2-3 个互补子查询：
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">用户问："我上周和老板讨论的项目进展如何？"</span><br><span class="line"></span><br><span class="line">LLM 分析后生成子查询：</span><br><span class="line"> 1. "项目进展讨论"</span><br><span class="line"> 2. "上周和老板的会议"</span><br><span class="line"> 3. "项目状态更新"</span><br><span class="line"></span><br><span class="line">三路并行检索 → RRF 融合 → 最终结果</span><br>
+
+四、技术栈与存储设计
+
+4.1 存储选型
+
+数据类型存储选型选型理由
+
+MemCell / Episode / ProfileMongoDB文档型存储，灵活 schema，适合嵌套记忆结构
+
+向量 embeddingMilvus高性能向量检索，支持混合检索
+
+关键词索引ElasticsearchBM25 成熟方案，支持复杂查询
+
+结果缓存Redis低延迟缓存，加速高频访问
+
+LLM 调用OpenAI / DeepInfra / vLLM多 provider 支持，可配置
+
+4.2 依赖注入与生命周期管理
+
+EverCore 的 Core Framework 提供了依赖注入容器，所有服务通过 DI 统一管理：
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line"><span class="comment"># 伪代码示例：DI 容器使用方式</span></span><br><span class="line"><span class="keyword">from</span> core.di <span class="keyword">import</span> get_bean_by_type</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">MemoryManager</span>:</span><br><span class="line"> <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line"> <span class="variable language_">self</span>.llm_provider = get_bean_by_type(LLMProvider)</span><br><span class="line"> <span class="variable language_">self</span>.vector_store = get_bean_by_type(VectorStore)</span><br><span class="line"> <span class="variable language_">self</span>.cache = get_bean_by_type(Redis)</span><br><span class="line"></span><br><span class="line"> <span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">search</span>(<span class="params">self, query: <span class="built_in">str</span>, user_id: <span class="built_in">str</span></span>):</span><br><span class="line"> <span class="comment"># 使用注入的组件</span></span><br><span class="line"> embedding = <span class="keyword">await</span> <span class="variable language_">self</span>.llm_provider.embed(query)</span><br><span class="line"> cached = <span class="keyword">await</span> <span class="variable language_">self</span>.cache.get(query)</span><br><span class="line"> <span class="keyword">if</span> cached:</span><br><span class="line"> <span class="keyword">return</span> cached</span><br><span class="line"> results = <span class="keyword">await</span> <span class="variable language_">self</span>.vector_store.search(embedding)</span><br><span class="line"> <span class="keyword">await</span> <span class="variable language_">self</span>.cache.<span class="built_in">set</span>(query, results, ttl=<span class="number">300</span>)</span><br><span class="line"> <span class="keyword">return</span> results</span><br>
+
+这种设计使得单元测试和组件替换非常方便——只需 mock DI 容器中的 bean。
+
+五、与同类项目对比
+
+维度EverCoreMem0Letta
+
+记忆抽象多层（MemCell→Episode→Profile→Foresight）单一 memory store记忆 + SQLite 持久化
+
+检索方式BM25 + Vector + RRF + Agentic纯向量检索相似性搜索
+
+边界检测LLM 语义边界检测 + 硬限制无无
+
+Agent 场景原生支持 AgentCase / AgentSkill通用的 memory APIServer + DB 分离架构
+
+基准测试LoCoMo 92.3%无公开基准无
+
+多语言中英文独立 prompt英文为主英文
+
+核心设计差异：
+
+Mem0 将记忆视为”通用 KV store”，通过简单的 add / search API 操作记忆，缺乏多层次抽象
+
+Letta 采用 Server + Database 分离架构，更像一个”记忆数据库服务”
+
+EverCore 的设计哲学是记忆即认知系统——通过 MemCell 边界检测 + 多层提取 + RRF 融合，让记忆能够”被理解”而非仅”被存储”
+
+六、优缺点分析
+
+优点说明
+
+架构清晰六层分层，职责明确，易于理解和扩展
+
+记忆抽象完整从原子（MemCell）到宏观（Profile）的多层抽象体系
+
+可溯源推理MemCell 保留 evidence，检索结果有据可查，减少幻觉
+
+检索策略灵活支持 4 种检索模式，可根据场景选择
+
+Benchmark 驱动有 LoCoMo 等基准测试验证效果
+
+中文友好支持中英文独立 prompt 和对话数据
+
+缺点 / 挑战说明
+
+依赖较多需要 MongoDB + Milvus + Elasticsearch + Redis，部署复杂度高
+
+LLM 调用成本MemCell 提取依赖 LLM，边界检测和摘要生成有延迟和成本
+
+冷启动问题新用户初期记忆少时，Profile 难以建立
+
+水平扩展当前架构以单服务为主，分布式扩展需额外设计
+
+学习曲线多层记忆类型和检索策略对新手有一定门槛
+
+七、快速上手
+
+7.1 环境准备
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line"><span class="comment"># 克隆项目</span></span><br><span class="line">git <span class="built_in">clone</span> https://github.com/EverMind-AI/EverOS.git</span><br><span class="line"><span class="built_in">cd</span> EverOS/methods/EverCore</span><br><span class="line"></span><br><span class="line"><span class="comment"># 使用 Docker 启动依赖服务</span></span><br><span class="line">docker compose up -d</span><br><span class="line"></span><br><span class="line"><span class="comment"># 安装依赖</span></span><br><span class="line">uv <span class="built_in">sync</span></span><br>
+
+7.2 启动服务
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line"><span class="comment"># 启动 API 服务器（默认端口 1995）</span></span><br><span class="line">uv run python src/run.py --port 1995</span><br>
+
+7.3 简单示例：存储和检索记忆
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line"><span class="string">"""simple_demo.py - EverCore 最简使用示例"""</span></span><br><span class="line"><span class="keyword">import</span> asyncio</span><br><span class="line"><span class="keyword">from</span> demo.utils <span class="keyword">import</span> SimpleMemoryManager</span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">main</span>():</span><br><span class="line"> memory = SimpleMemoryManager()</span><br><span class="line"></span><br><span class="line"> <span class="comment"># 步骤1: 存储对话</span></span><br><span class="line"> <span class="keyword">await</span> memory.store(<span class="string">"I love playing soccer, often go to the field on weekends"</span>)</span><br><span class="line"> <span class="keyword">await</span> asyncio.sleep(<span class="number">2</span>)</span><br><span class="line"> <span class="keyword">await</span> memory.store(<span class="string">"I love Barcelona the most, Messi is my idol"</span>)</span><br><span class="line"> <span class="keyword">await</span> asyncio.sleep(<span class="number">2</span>)</span><br><span class="line"> <span class="keyword">await</span> memory.store(<span class="string">"I also enjoy watching basketball, NBA is my favorite"</span>)</span><br><span class="line"></span><br><span class="line"> <span class="comment"># 步骤2: 等待索引构建</span></span><br><span class="line"> <span class="keyword">await</span> memory.wait_for_index(seconds=<span class="number">10</span>)</span><br><span class="line"></span><br><span class="line"> <span class="comment"># 步骤3: 查询记忆</span></span><br><span class="line"> <span class="built_in">print</span>(<span class="string">"\n💬 Query: What sports does the user like?"</span>)</span><br><span class="line"> <span class="keyword">await</span> memory.search(<span class="string">"What sports does the user like?"</span>)</span><br><span class="line"></span><br><span class="line"> <span class="built_in">print</span>(<span class="string">"\n💬 Query: What is the user's favorite team?"</span>)</span><br><span class="line"> <span class="keyword">await</span> memory.search(<span class="string">"What is the user's favorite team?"</span>)</span><br><span class="line"></span><br><span class="line">asyncio.run(main())</span><br>
+
+运行：
+
+<span class="line">1</span><br><span class="line">uv run python src/bootstrap.py demo/simple_demo.py</span><br>
+
+7.4 API 调用示例
+
+<span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line"><span class="keyword">import</span> requests</span><br><span class="line"></span><br><span class="line">BASE_URL = <span class="string">"http://localhost:1995"</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 存储对话记忆</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">store_memory</span>():</span><br><span class="line"> resp = requests.post(</span><br><span class="line"> <span class="string">f"<span class="subst">{BASE_URL}</span>/api/v0/memories"</span>,</span><br><span class="line"> json={</span><br><span class="line"> <span class="string">"user_id"</span>: <span class="string">"user_001"</span>,</span><br><span class="line"> <span class="string">"messages"</span>: [</span><br><span class="line"> {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"我最近在学习 Python 编程"</span>},</span><br><span class="line"> {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: <span class="string">"Python 很适合入门，推荐从官方教程开始"</span>}</span><br><span class="line"> ]</span><br><span class="line"> }</span><br><span class="line"> )</span><br><span class="line"> <span class="keyword">return</span> resp.json()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 检索记忆</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">search_memory</span>(<span class="params">query: <span class="built_in">str</span>, user_id: <span class="built_in">str</span></span>):</span><br><span class="line"> resp = requests.post(</span><br><span class="line"> <span class="string">f"<span class="subst">{BASE_URL}</span>/api/v1/memories/search"</span>,</span><br><span class="line"> json={</span><br><span class="line"> <span class="string">"query"</span>: query,</span><br><span class="line"> <span class="string">"user_id"</span>: user_id,</span><br><span class="line"> <span class="string">"retrieve_method"</span>: <span class="string">"hybrid"</span>,</span><br><span class="line"> <span class="string">"top_k"</span>: <span class="number">5</span></span><br><span class="line"> }</span><br><span class="line"> )</span><br><span class="line"> <span class="keyword">return</span> resp.json()</span><br>
+
+八、总结与趋势
+
+EverCore 是当前开源社区中对 Agent 记忆基础设施思考最深入的项目之一。它的核心贡献在于：
+
+MemCell 抽象：将对话记忆原子化，保留证据，让记忆”可理解、可溯源”
+
+多层记忆体系：不只有向量检索，而是构建 Episode / Profile / Foresight 的层级结构
+
+认知循环设计：记忆构建 ↔ 记忆感知形成闭环，让 Agent 能够真正基于历史理解当前任务
+
+未来趋势观察：
+
+记忆压缩与遗忘机制：随着对话历史增长，如何高效压缩和选择性遗忘将成为关键
+
+跨 Agent 记忆共享：多 Agent 协作场景下的共享记忆层目前支持（Team 模式），但还有很大优化空间
+
+基准测试生态：LoCoMo 等记忆基准的建立，将推动整个 Agent Memory 领域的效果评估标准化
+
+如果你正在构建需要长期记忆的 AI Agent，EverCore 是一个非常值得研究的学习案例——它展示了如何将”记忆”从简单的 KV 存储，升级为一个结构化的认知系统。
+
+参考链接：
+
+GitHub：EverMind-AI/EverOS
+
+官网：evermind.ai
+
+文档：docs.evermind.ai
+
+0%

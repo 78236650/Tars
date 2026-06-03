@@ -33,6 +33,21 @@ class SessionRepo:
     def _get_conn(self):
         return self._cm.get_conn()
 
+    def _has_column(self, table: str, column: str) -> bool:
+        """Check if a column exists — dialect-aware (Postgres vs SQLite)."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        if self._cm.dialect == "postgres":
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = %s AND column_name = %s",
+                (table, column),
+            )
+            return cursor.fetchone() is not None
+        # SQLite
+        cols = {r[1] for r in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
+        return column in cols
+
     def create_session(
         self,
         user_id: str = "default",
@@ -71,8 +86,7 @@ class SessionRepo:
         resolved_user_id = self._resolve_user_id(user_id)
         conn = self._get_conn()
         cursor = conn.cursor()
-        cols = {r[1] for r in cursor.execute("PRAGMA table_info(sessions)").fetchall()}
-        if "metadata_json" in cols:
+        if self._has_column("sessions", "metadata_json"):
             cursor.execute(
                 """
                 SELECT id, agent_id, user_id, tenant_id, title, created_at, updated_at, summary, metadata_json
@@ -149,16 +163,24 @@ class SessionRepo:
         )
         conn.commit()
 
-    def add_message(self, session_id: str, role: str, content: str) -> Message:
+    def add_message(self, session_id: str, role: str, content: str, metadata: Optional[dict] = None) -> Message:
         message_id = str(uuid.uuid4())
         now = get_local_now()
 
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO messages VALUES (?, ?, ?, ?, ?)",
-            (message_id, session_id, role, content, now)
-        )
+        # 检查是否有 metadata_json 列
+        if self._has_column("messages", "metadata_json"):
+            metadata_json_str = json.dumps(metadata, ensure_ascii=False) if metadata else None
+            cursor.execute(
+                "INSERT INTO messages (id, session_id, role, content, timestamp, metadata_json) VALUES (?, ?, ?, ?, ?, ?)",
+                (message_id, session_id, role, content, now, metadata_json_str),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
+                (message_id, session_id, role, content, now),
+            )
 
         cursor.execute(
             "UPDATE sessions SET updated_at = ? WHERE id = ?",
@@ -166,24 +188,38 @@ class SessionRepo:
         )
         conn.commit()
 
-        return Message(id=message_id, session_id=session_id, role=role, content=content, timestamp=now)
+        return Message(id=message_id, session_id=session_id, role=role, content=content, timestamp=now, metadata_json=metadata)
 
     def get_messages(self, session_id: str) -> List[Message]:
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp",
-            (session_id,)
-        )
+        # 检查是否有 metadata_json 列
+        if self._has_column("messages", "metadata_json"):
+            cursor.execute(
+                "SELECT id, session_id, role, content, timestamp, metadata_json FROM messages WHERE session_id = ? ORDER BY timestamp",
+                (session_id,)
+            )
+        else:
+            cursor.execute(
+                "SELECT id, session_id, role, content, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp",
+                (session_id,)
+            )
 
         messages = []
         for row in cursor.fetchall():
+            meta = None
+            if len(row) > 5 and row[5]:
+                try:
+                    meta = json.loads(row[5])
+                except json.JSONDecodeError:
+                    meta = {}
             messages.append(Message(
                 id=row[0],
                 session_id=row[1],
                 role=row[2],
                 content=row[3],
-                timestamp=_parse_db_datetime(row[4])
+                timestamp=_parse_db_datetime(row[4]),
+                metadata_json=meta
             ))
 
         return messages

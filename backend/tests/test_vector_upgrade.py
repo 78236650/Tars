@@ -12,12 +12,15 @@ def _make_indexer(chunk_count=3):
 
 
 def test_delete_document_calls_vector_store_delete():
+    from tars.org import ORG_ID
+
     indexer, vector_store, db = _make_indexer(chunk_count=3)
-    result = indexer.delete_document("doc1", "col1", "default")
+    vector_store.is_available = True
+    result = indexer.delete_document("doc1", "col1", ORG_ID)
     assert result is True
     vector_store.delete.assert_called_once_with(
-        ids=["doc1_chunk_0", "doc1_chunk_1", "doc1_chunk_2"],
-        tenant_id="default",
+        where={"doc_id": "doc1"},
+        tenant_id=ORG_ID,
         collection_name="knowledge_col1",
     )
 
@@ -30,6 +33,7 @@ def test_delete_document_removes_db_record():
 
 def test_delete_document_no_chunks_skips_vector_delete():
     indexer, vector_store, db = _make_indexer(chunk_count=0)
+    vector_store.is_available = False
     result = indexer.delete_document("doc1", "col1")
     assert result is True
     vector_store.delete.assert_not_called()
@@ -283,13 +287,19 @@ def _make_batch_app():
     return TestClient(app), db, indexer
 
 
-def test_batch_upload_two_files():
+def test_batch_upload_two_files(tmp_path):
+    from tars.database import Database
+
+    from tests.conftest import setup_knowledge_auth
+
+    auth_db = Database(str(tmp_path / "auth.db"))
+    headers, _user = setup_knowledge_auth(auth_db)
     client, db, indexer = _make_batch_app()
     files = [
         ("files", ("a.txt", io.BytesIO(b"content a"), "text/plain")),
         ("files", ("b.txt", io.BytesIO(b"content b"), "text/plain")),
     ]
-    resp = client.post("/api/knowledge/collections/coll1/batch", files=files)
+    resp = client.post("/api/knowledge/collections/coll1/batch", files=files, headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 2
@@ -297,7 +307,13 @@ def test_batch_upload_two_files():
     assert data["failed"] == []
 
 
-def test_batch_upload_partial_failure():
+def test_batch_upload_partial_failure(tmp_path):
+    from tars.database import Database
+
+    from tests.conftest import setup_knowledge_auth
+
+    auth_db = Database(str(tmp_path / "auth.db"))
+    headers, _user = setup_knowledge_auth(auth_db)
     client, db, indexer = _make_batch_app()
     indexer.index_file.side_effect = [
         {"chunk_count": 1, "status": "indexed"},
@@ -307,7 +323,7 @@ def test_batch_upload_partial_failure():
         ("files", ("ok.txt", io.BytesIO(b"good"), "text/plain")),
         ("files", ("bad.txt", io.BytesIO(b"bad"), "text/plain")),
     ]
-    resp = client.post("/api/knowledge/collections/coll1/batch", files=files)
+    resp = client.post("/api/knowledge/collections/coll1/batch", files=files, headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 2

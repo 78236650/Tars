@@ -47,7 +47,10 @@ async def test_save_does_not_publish_by_default(tmp_path):
     from tars.database import Database
     from tars.memory.manager import MemoryManager
 
+    from tests.conftest import setup_main_api_auth
+
     db = Database(db_path=str(tmp_path / "promo.db"))
+    auth_headers, _user = setup_main_api_auth(db)
     manager = MemoryManager(db=db, provider=None, tenant_id="default")
     app = FastAPI()
     app.include_router(router)
@@ -61,6 +64,7 @@ async def test_save_does_not_publish_by_default(tmp_path):
             "user_context": "show tables 报错",
             "publish_to_knowledge": False,
         },
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     body = resp.json()

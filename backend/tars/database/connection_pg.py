@@ -32,7 +32,8 @@ def init_schema_postgres(conn) -> None:
             title TEXT,
             created_at TIMESTAMP,
             updated_at TIMESTAMP,
-            summary TEXT
+            summary TEXT,
+            metadata_json TEXT
         )
         """,
     )
@@ -46,10 +47,15 @@ def init_schema_postgres(conn) -> None:
             role TEXT,
             content TEXT,
             timestamp TIMESTAMP,
+            metadata_json TEXT,
             FOREIGN KEY (session_id) REFERENCES sessions(id)
         )
         """,
     )
+
+    # v5.0.1: add metadata_json to existing tables (DeepSeek thinking mode)
+    _exec(cursor, "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS metadata_json TEXT")
+    _exec(cursor, "ALTER TABLE messages ADD COLUMN IF NOT EXISTS metadata_json TEXT")
 
     _exec(
         cursor,
@@ -525,6 +531,21 @@ def init_schema_postgres(conn) -> None:
     _exec(
         cursor,
         """
+        CREATE TABLE IF NOT EXISTS relations (
+            tenant_id   TEXT NOT NULL,
+            from_entity TEXT NOT NULL,
+            to_entity   TEXT NOT NULL,
+            predicate   TEXT NOT NULL,
+            confidence  DOUBLE PRECISION DEFAULT 0.7,
+            created_at  TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, from_entity, to_entity, predicate)
+        )
+        """,
+    )
+
+    _exec(
+        cursor,
+        """
         CREATE TABLE IF NOT EXISTS entity_aliases (
             entity_id TEXT NOT NULL,
             alias TEXT NOT NULL,
@@ -788,6 +809,175 @@ def init_schema_postgres(conn) -> None:
     _exec(
         cursor,
         """
+        CREATE TABLE IF NOT EXISTS bi_datasources (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            db_type TEXT NOT NULL,
+            connection_url TEXT NOT NULL,
+            readonly INTEGER DEFAULT 1,
+            schema_snapshot TEXT DEFAULT '{}',
+            schema_annotations TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            connection_config_json TEXT DEFAULT '{}'
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS insight_profile_runs (
+            id TEXT PRIMARY KEY,
+            datasource_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            capability_version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            budget_json TEXT NOT NULL,
+            progress_json TEXT NOT NULL DEFAULT '{}',
+            insight_snapshot_json TEXT,
+            knowledge_doc_id TEXT,
+            error TEXT,
+            started_at TEXT,
+            finished_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS insight_metrics (
+            id TEXT PRIMARY KEY,
+            datasource_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            metric_key TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            definition TEXT NOT NULL,
+            sql_template TEXT DEFAULT '',
+            tables_json TEXT DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'draft',
+            source TEXT NOT NULL DEFAULT 'profile',
+            confidence DOUBLE PRECISION DEFAULT 0.0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            superseded_by TEXT
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        "CREATE INDEX IF NOT EXISTS idx_insight_metrics_ds ON insight_metrics(datasource_id, tenant_id)",
+    )
+    _exec(
+        cursor,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_insight_metrics_key_ver
+        ON insight_metrics(datasource_id, tenant_id, metric_key, version)
+        """,
+    )
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS insight_question_log (
+            id TEXT PRIMARY KEY,
+            datasource_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            question_embedding BYTEA,
+            metric_key TEXT,
+            sql TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            feedback INTEGER,
+            caliber_tier TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS skills_v3 (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            source TEXT NOT NULL,
+            dir_path TEXT NOT NULL,
+            has_pdca INTEGER DEFAULT 0,
+            has_scripts INTEGER DEFAULT 0,
+            permissions TEXT DEFAULT '[]',
+            granted_permissions TEXT DEFAULT '[]',
+            installed_at TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            scope TEXT DEFAULT 'org'
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            goal TEXT NOT NULL,
+            workspace_path TEXT NOT NULL,
+            workspace_source TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            current_step INTEGER DEFAULT 0,
+            total_steps INTEGER DEFAULT 0,
+            artifacts TEXT,
+            output_summary TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            error_message TEXT,
+            skill_id TEXT,
+            pdca_ref TEXT
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS task_steps (
+            task_id TEXT NOT NULL,
+            step_order INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            tool TEXT,
+            arguments TEXT,
+            verify_type TEXT,
+            verify_expected TEXT,
+            verify_msg TEXT,
+            expected_artifacts TEXT,
+            PRIMARY KEY (task_id, step_order)
+        )
+        """,
+    )
+
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS insight_metric_adoptions (
+            id TEXT PRIMARY KEY,
+            metric_id TEXT NOT NULL,
+            proposed_by TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reviewer_id TEXT,
+            review_note TEXT,
+            created_at TEXT NOT NULL,
+            reviewed_at TEXT
+        )
+        """,
+    )
+
+    _exec(
+        cursor,
+        """
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             username TEXT NOT NULL,
@@ -800,6 +990,38 @@ def init_schema_postgres(conn) -> None:
             role_template_id TEXT DEFAULT 'standard'
         )
         """,
+    )
+
+    _exec(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS agent_cases (
+            case_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            user_id TEXT NOT NULL DEFAULT 'default',
+            session_id TEXT,
+            task_description TEXT NOT NULL,
+            task_intent TEXT DEFAULT '',
+            tools_used TEXT DEFAULT '[]',
+            tool_results TEXT DEFAULT '[]',
+            skill_id TEXT,
+            subagent TEXT,
+            success INTEGER NOT NULL DEFAULT 1,
+            feedback_score REAL DEFAULT 0.0,
+            distilled INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        "CREATE INDEX IF NOT EXISTS idx_agent_cases_tenant "
+        "ON agent_cases(tenant_id, created_at DESC)",
+    )
+    _exec(
+        cursor,
+        "CREATE INDEX IF NOT EXISTS idx_agent_cases_distilled "
+        "ON agent_cases(tenant_id, distilled, success)",
     )
 
     _ = org_tenant_id()

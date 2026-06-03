@@ -37,6 +37,7 @@ class Message:
     role: str  # user, assistant, tool, system
     content: str
     timestamp: datetime = None
+    metadata_json: Optional[dict] = None  # 用于存储 reasoning_content 等扩展信息
 
 
 @dataclass

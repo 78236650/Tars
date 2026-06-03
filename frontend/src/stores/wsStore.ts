@@ -1,6 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { ACCESS_TOKEN_STORAGE_KEY } from '@/stores/auth'
 import { resolveWebSocketUrl } from '@/utils/websocket'
+
+function hasWsCredentials(): boolean {
+  return Boolean(
+    localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+      || localStorage.getItem('apiKey'),
+  )
+}
 
 export interface WsEventHandler {
   onMessage?: (data: any) => void
@@ -32,6 +40,7 @@ export const useWsStore = defineStore('ws', () => {
 
   const connect = () => {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) return
+    if (!hasWsCredentials()) return
 
     ws.value = new WebSocket(resolveWebSocketUrl())
 
@@ -90,7 +99,7 @@ export const useWsStore = defineStore('ws', () => {
       isConnected.value = false
       isGenerating.value = false
       ws.value = null
-      // 自动重连
+      if (!hasWsCredentials()) return
       reconnectTimer.value = setTimeout(connect, 3000)
     }
 

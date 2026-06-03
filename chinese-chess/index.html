@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中国象棋</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>中国象棋</h1>
+        <div class="game-info">
+            <div id="turn-info">红方走棋</div>
+            <button id="reset-btn">重新开始</button>
+        </div>
+        <div class="board-container">
+            <canvas id="chess-board" width="540" height="600"></canvas>
+        </div>
+        <div id="message"></div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>

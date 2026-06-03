@@ -32,11 +32,12 @@ def orders_shop_needs_forge() -> OrdersShopCase:
     return seed(workflow_state="needs_forge")
 
 
-def _qa_engine_factory(db: Database, route_fn=None) -> MetricQaEngine:
+def _qa_engine_factory(db: Database, route_fn=None, **kwargs) -> MetricQaEngine:
     return MetricQaEngine(
         db,
         route_fn=route_fn or route_hit_gmv,
         sql_executor=mock_sql_executor,
+        knowledge_bridge=kwargs.get("knowledge_bridge"),
     )
 
 
@@ -63,7 +64,7 @@ def insight_api_client(orders_shop_case: OrdersShopCase) -> Tuple[TestClient, Or
 
     engine_patch = patch(
         "tars.insight.api.router.MetricQaEngine",
-        side_effect=lambda db: _qa_engine_factory(db),
+        side_effect=lambda db, **kwargs: _qa_engine_factory(db, **kwargs),
     )
     with engine_patch:
         with TestClient(app) as client:

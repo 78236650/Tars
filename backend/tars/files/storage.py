@@ -15,7 +15,7 @@ from .models import FileRecord
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 TEXT_EXTENSIONS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".yaml", ".yml",
                    ".html", ".css", ".xml", ".csv", ".log", ".sh", ".toml", ".ini"}
-DOC_EXTENSIONS = {".pdf", ".docx", ".xlsx"}
+DOC_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx"}
 
 FILE_RETENTION_SECONDS = 24 * 3600  # 24 hours
 
@@ -45,6 +45,8 @@ class FileStorage:
             return "document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         if ext == ".xlsx":
             return "document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if ext == ".pptx":
+            return "document", "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         if ext == ".csv":
             return "document", "text/csv"
         if ext in TEXT_EXTENSIONS:
@@ -52,7 +54,7 @@ class FileStorage:
 
         return "document", "application/octet-stream"
 
-    async def save(self, filename: str, content: bytes) -> FileRecord:
+    async def save(self, filename: str, content: bytes, user_id: str = "default") -> FileRecord:
         """保存文件，返回 FileRecord"""
         file_id = f"f_{uuid.uuid4().hex[:12]}"
         file_type, mime_type = self._detect_type(filename)
@@ -73,6 +75,7 @@ class FileStorage:
             size=len(content),
             path=str(file_path),
             created_at=datetime.now(),
+            user_id=user_id,
         )
         self._records[file_id] = record
         return record

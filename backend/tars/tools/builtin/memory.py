@@ -1,6 +1,8 @@
 """记忆管理工具"""
 from typing import Any, Dict, Optional
 
+from tars.org import ORG_ID
+
 from ..base import BaseTool, ToolResult
 
 
@@ -34,6 +36,8 @@ class MemoryTool(BaseTool):
         query = kwargs.get("query")
         memory_id = kwargs.get("memory_id")
         limit = kwargs.get("limit", 10)
+        tenant_id = kwargs.get("tenant_id") or ORG_ID
+        user_id = kwargs.get("user_id")
 
         if not self.db:
             return ToolResult(success=False, output="", error="数据库未初始化")
@@ -42,21 +46,30 @@ class MemoryTool(BaseTool):
             if action == "add":
                 if not content:
                     return ToolResult(success=False, output="", error="请提供记忆内容")
-                from ..base import ToolResult
-                mem = self.db.add_memory(content, category)
+                mem = self.db.add_memory(
+                    content,
+                    category,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    scope="private",
+                )
                 return ToolResult(success=True, output=f"记忆已保存 (ID: {mem.id})", metadata={"memory_id": mem.id})
 
             elif action == "search":
                 if not query:
                     return ToolResult(success=False, output="", error="请提供搜索关键词")
-                memories = self.db.search_memories(query, limit)
+                memories = self.db.search_memories(
+                    query, limit, tenant_id=tenant_id, user_id=user_id
+                )
                 lines = [f"找到 {len(memories)} 条相关记忆:"]
                 for m in memories:
                     lines.append(f"  [{m.category}] {m.content}")
                 return ToolResult(success=True, output="\n".join(lines), metadata={"count": len(memories)})
 
             elif action == "list":
-                memories = self.db.get_recent_memories(limit)
+                memories = self.db.get_recent_memories(
+                    limit, tenant_id=tenant_id, user_id=user_id
+                )
                 lines = [f"最近 {len(memories)} 条记忆:"]
                 for m in memories:
                     lines.append(f"  [{m.category}] {m.content}")

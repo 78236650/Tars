@@ -7,10 +7,11 @@ from .sandbox import WorkspaceSandbox
 
 
 class TenantWorkspaceManager:
-    def __init__(self, base_dir: str = "~/.tars/workspaces"):
+    def __init__(self, base_dir: str = "~/.tars/workspaces", extra_allowed_dirs: list[str] = None):
         self.base_dir = Path(base_dir).expanduser().resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         (self.base_dir / "_shared").mkdir(exist_ok=True)
+        self._extra_dirs = [str(Path(d).resolve()) for d in (extra_allowed_dirs or []) if Path(d).exists()]
 
     def get_workspace(self, tenant_id: str) -> Path:
         self._validate(tenant_id)
@@ -31,6 +32,7 @@ class TenantWorkspaceManager:
         dirs = [str(self.get_workspace(tenant_id)), str(self.base_dir / "_shared")]
         if role == "admin":
             dirs.append(str(self.base_dir))
+        dirs.extend(self._extra_dirs)
         return dirs
 
     def _validate(self, tenant_id: str):
@@ -42,7 +44,7 @@ class TenantWorkspaceManager:
 tenant_workspace_manager: TenantWorkspaceManager | None = None
 
 
-def init_tenant_workspace(base_dir: str = "~/.tars/workspaces") -> TenantWorkspaceManager:
+def init_tenant_workspace(base_dir: str = "~/.tars/workspaces", extra_allowed_dirs: list[str] = None) -> TenantWorkspaceManager:
     global tenant_workspace_manager
-    tenant_workspace_manager = TenantWorkspaceManager(base_dir)
+    tenant_workspace_manager = TenantWorkspaceManager(base_dir, extra_allowed_dirs=extra_allowed_dirs)
     return tenant_workspace_manager

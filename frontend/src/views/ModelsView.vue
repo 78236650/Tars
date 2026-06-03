@@ -19,6 +19,7 @@ const manualModelsText = ref('')
 const addForm = ref({ name: '', base_url: '', api_key: '' })
 const editForm = ref({ name: '', base_url: '', api_key: '', modelsText: '' })
 const busyEndpointId = ref<string | null>(null)
+const testingEndpointId = ref<string | null>(null)
 
 // v4.0.0: Provider 列表
 const providers = ref<ProviderInfo[]>([])
@@ -202,6 +203,22 @@ const fetchModels = async (id: string) => {
     busyEndpointId.value = null
   }
 }
+
+const testEndpointConnection = async (id: string) => {
+  testingEndpointId.value = id
+  try {
+    const res = await settingsStore.testEndpoint(id)
+    if (res.success) {
+      toast.success(t('modelsPage.testOk'))
+    } else {
+      toast.error(t('modelsPage.testFail', { msg: res.message }))
+    }
+  } catch (e) {
+    toast.error(formatApiError(e))
+  } finally {
+    testingEndpointId.value = null
+  }
+}
 </script>
 
 <template>
@@ -268,6 +285,13 @@ const fetchModels = async (id: string) => {
                       <span v-if="!ep.enabled" class="ml-2 text-xs text-stone-500">({{ t('common.disabled') }})</span>
                     </h4>
                     <div class="flex items-center gap-2">
+                      <button
+                        @click="testEndpointConnection(ep.id)"
+                        :disabled="testingEndpointId === ep.id"
+                        class="text-xs text-amber-400 hover:text-amber-300 transition disabled:opacity-50"
+                      >
+                        {{ testingEndpointId === ep.id ? t('modelsPage.testingEndpoint') : t('modelsPage.testEndpoint') }}
+                      </button>
                       <button
                         @click="fetchModels(ep.id)"
                         :disabled="busyEndpointId === ep.id"

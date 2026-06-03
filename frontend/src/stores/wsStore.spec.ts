@@ -19,10 +19,12 @@ describe('wsStore stop generation', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.stubGlobal('WebSocket', MockWebSocket)
+    localStorage.setItem('apiKey', 'test-api-key')
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    localStorage.clear()
   })
 
   it('stopGeneration sends stop_generation control message', () => {

@@ -61,7 +61,10 @@ def test_get_profile_not_found_returns_minimal(knowledge_client):
     )
     conn.commit()
 
-    resp = client.get(f"/api/knowledge/collections/{coll_id}/documents/d-none/profile")
+    resp = client.get(
+        f"/api/knowledge/collections/{coll_id}/documents/d-none/profile",
+        headers=_headers,
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["profile_ready"] is False
@@ -90,7 +93,10 @@ def test_profile_crud_via_store(knowledge_client):
     )
     save_profile(db, profile, tenant_id=ORG_ID, collection_id=coll_id)
 
-    resp = client.get(f"/api/knowledge/collections/{coll_id}/documents/d1/profile")
+    resp = client.get(
+        f"/api/knowledge/collections/{coll_id}/documents/d1/profile",
+        headers=_headers,
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["title"] == "制度"
@@ -164,6 +170,9 @@ def test_document_status_endpoint(knowledge_client):
     )
     conn.commit()
 
-    resp = client.get(f"/api/knowledge/collections/{coll_id}/documents/d2/status")
+    resp = client.get(
+        f"/api/knowledge/collections/{coll_id}/documents/d2/status",
+        headers=_headers,
+    )
     assert resp.status_code == 200
     assert resp.json()["status"] == "enriching"

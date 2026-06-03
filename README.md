@@ -1,4 +1,4 @@
-# TARS AI Agent v5.0.0
+# TARS AI Agent v5.0.1
 
 面向港航企业内网的 **AI Agent 平台**：**单组织多用户协作**（组织共享池 + 个人会话私有）、JWT、Postgres、技能生态、知识库 + **Wiki**、记忆图谱、BI / 鉴数（InsightForge）、会议助手、港航作业调度、Admin 与审计。
 

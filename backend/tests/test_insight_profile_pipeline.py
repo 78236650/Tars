@@ -11,84 +11,15 @@ from tars.insight.relation_inferencer import RelationInferencer
 from tars.insight.role_classifier import RoleClassifier
 from tars.insight.stats_collector import StatsCollector
 from tars.insight.store import InsightMetricStore, InsightProfileRunStore
+from tars.org import ORG_ID
+
+_TENANT = ORG_ID
 
 
 @pytest.fixture
 def bi_sqlite_db(tmp_path):
-    db_path = tmp_path / "insight_bi.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        """
-        CREATE TABLE bi_datasources (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            db_type TEXT NOT NULL,
-            connection_url TEXT NOT NULL,
-            readonly INTEGER DEFAULT 1,
-            schema_snapshot TEXT DEFAULT '{}',
-            schema_annotations TEXT DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE insight_profile_runs (
-            id TEXT PRIMARY KEY,
-            datasource_id TEXT NOT NULL,
-            tenant_id TEXT NOT NULL,
-            capability_version TEXT NOT NULL,
-            status TEXT NOT NULL,
-            budget_json TEXT NOT NULL,
-            progress_json TEXT NOT NULL DEFAULT '{}',
-            insight_snapshot_json TEXT,
-            knowledge_doc_id TEXT,
-            error TEXT,
-            started_at TEXT,
-            finished_at TEXT,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE insight_metrics (
-            id TEXT PRIMARY KEY,
-            datasource_id TEXT NOT NULL,
-            tenant_id TEXT NOT NULL,
-            metric_key TEXT NOT NULL,
-            display_name TEXT NOT NULL,
-            definition TEXT NOT NULL,
-            sql_template TEXT DEFAULT '',
-            tables_json TEXT DEFAULT '[]',
-            status TEXT NOT NULL DEFAULT 'draft',
-            source TEXT NOT NULL DEFAULT 'profile',
-            confidence REAL DEFAULT 0.0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE(datasource_id, tenant_id, metric_key)
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE document_collections (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-
-    db = Database(str(db_path))
-    return db
+    """Full init_schema (bi + insight INS-2); avoid partial manual DDL without version column."""
+    return Database(str(tmp_path / "insight_bi.db"))
 
 
 @pytest.fixture
@@ -104,7 +35,7 @@ def sample_datasource(bi_sqlite_db):
   analytics.close()
 
   ds = store.create(
-      tenant_id="default",
+      tenant_id=_TENANT,
       name="test-orders",
       db_type="sqlite",
       connection_url="sqlite:///:memory:",
@@ -126,7 +57,7 @@ def file_datasource(bi_sqlite_db, tmp_path):
 
     store = DataSourceStore(bi_sqlite_db)
     return store.create(
-        tenant_id="default",
+        tenant_id=_TENANT,
         name="file-orders",
         db_type="sqlite",
         connection_url=f"sqlite:///{analytics_path}",
@@ -169,7 +100,7 @@ async def test_profile_pipeline_e2e(file_datasource, bi_sqlite_db):
     from tars.insight.knowledge_publisher import KnowledgePublisher
 
     ds_store = DataSourceStore(bi_sqlite_db)
-    ds = ds_store.get(file_datasource.id, "default")
+    ds = ds_store.get(file_datasource.id, _TENANT)
     pipeline = ProfilePipeline(knowledge_publisher=KnowledgePublisher(bi_sqlite_db, None))
     result = await pipeline.run(ds)
     assert result["success"] is True
@@ -188,24 +119,24 @@ async def test_job_runner_updates_datasource(file_datasource, bi_sqlite_db):
 
     ds_store = DataSourceStore(bi_sqlite_db)
     run_store = InsightProfileRunStore(bi_sqlite_db)
-    run = run_store.create(file_datasource.id, "default", "INS-2.1.0", {})
+    run = run_store.create(file_datasource.id, _TENANT, "INS-2.1.0", {})
     runner = InsightJobRunner(bi_sqlite_db)
 
     with patch(
         "tars.insight.profile_pipeline.get_default_llm_provider",
         return_value=None,
     ), patch.object(KnowledgePublisher, "publish", return_value="doc-test"):
-        await runner.start_profile(run.id, file_datasource.id, "default")
+        await runner.start_profile(run.id, file_datasource.id, _TENANT)
 
-    finished = run_store.get(run.id, "default")
+    finished = run_store.get(run.id, _TENANT)
     assert finished.status == "completed"
-    ds = ds_store.get(file_datasource.id, "default")
+    ds = ds_store.get(file_datasource.id, _TENANT)
     assert "insight" in (ds.schema_snapshot or {})
     assert "orders" in (ds.schema_annotations or {})
 
     metric_store = InsightMetricStore(bi_sqlite_db)
     # metrics may be empty without LLM
-    assert metric_store.list_by_datasource(file_datasource.id, "default") is not None
+    assert metric_store.list_by_datasource(file_datasource.id, _TENANT) is not None
 
 
 @pytest.fixture
@@ -215,7 +146,7 @@ def multi_table_datasource(bi_sqlite_db, tmp_path):
     db_file = tmp_path / "multi.db"
     url = build_sqlite(db_file, n_tables=5, n_columns=6, n_rows=20)
     store = DataSourceStore(bi_sqlite_db)
-    return store.create("default", "multi-table", "sqlite", url)
+    return store.create(_TENANT, "multi-table", "sqlite", url)
 
 
 @pytest.mark.anyio
@@ -257,13 +188,13 @@ async def test_job_runner_incremental_second_run(file_datasource, bi_sqlite_db):
         "tars.insight.profile_pipeline.get_default_llm_provider",
         return_value=None,
     ), patch.object(KnowledgePublisher, "publish", return_value="doc-test"):
-        run1 = run_store.create(file_datasource.id, "default", "INS-2.1.0", {})
-        await runner.start_profile(run1.id, file_datasource.id, "default")
-        assert run_store.get(run1.id, "default").status == "completed"
+        run1 = run_store.create(file_datasource.id, _TENANT, "INS-2.1.0", {})
+        await runner.start_profile(run1.id, file_datasource.id, _TENANT)
+        assert run_store.get(run1.id, _TENANT).status == "completed"
 
-        run2 = run_store.create(file_datasource.id, "default", "INS-2.1.0", {})
-        await runner.start_profile(run2.id, file_datasource.id, "default")
-        finished = run_store.get(run2.id, "default")
+        run2 = run_store.create(file_datasource.id, _TENANT, "INS-2.1.0", {})
+        await runner.start_profile(run2.id, file_datasource.id, _TENANT)
+        finished = run_store.get(run2.id, _TENANT)
         assert finished.status == "completed"
         snap = finished.insight_snapshot_json or {}
         assert snap.get("profile_run_type") == "incremental"

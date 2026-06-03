@@ -14,19 +14,37 @@ const emit = defineEmits<{
 
 const edges = computed(() => [...props.outgoing, ...props.incoming])
 
+const NODE_R = 18
+const CENTER_R = 24
+
 const layout = computed(() => {
-  const cx = 160
-  const cy = 72
-  const radius = 48
   const items = edges.value
-  if (!items.length) return { cx, cy, center: props.centerLabel, nodes: [] as Array<{ x: number; y: number; label: string; id: string; predicate: string }> }
+  const count = items.length
+  const radius = count <= 1 ? 0 : Math.max(56, Math.min(96, 40 + count * 9))
+  const pad = NODE_R + 12
+  const width = Math.max(280, (radius + CENTER_R + pad) * 2 + 48)
+  const height = Math.max(160, (radius + CENTER_R + pad) * 2 + 40)
+  const cx = width / 2
+  const cy = height / 2
+
+  if (!count) {
+    return { width, height, cx, cy, center: props.centerLabel, nodes: [] as Array<{
+      x: number
+      y: number
+      label: string
+      id: string
+      predicate: string
+    }> }
+  }
 
   return {
+    width,
+    height,
     cx,
     cy,
     center: props.centerLabel,
     nodes: items.map((edge, i) => {
-      const angle = (Math.PI * 2 * i) / items.length - Math.PI / 2
+      const angle = (Math.PI * 2 * i) / count - Math.PI / 2
       return {
         x: cx + radius * Math.cos(angle),
         y: cy + radius * Math.sin(angle),
@@ -37,15 +55,19 @@ const layout = computed(() => {
     }),
   }
 })
+
+const truncate = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text
 </script>
 
 <template>
   <svg
     v-if="edges.length"
-    viewBox="0 0 320 144"
-    class="mt-3 w-full max-w-sm text-amber-200/90"
+    :viewBox="`0 0 ${layout.width} ${layout.height}`"
+    class="mt-3 w-full text-amber-200/90"
+    preserveAspectRatio="xMidYMid meet"
     role="img"
-    aria-hidden="true"
+    :aria-label="layout.center"
   >
     <line
       v-for="(node, i) in layout.nodes"
@@ -61,7 +83,7 @@ const layout = computed(() => {
     <circle
       :cx="layout.cx"
       :cy="layout.cy"
-      r="22"
+      :r="CENTER_R"
       class="fill-amber-500/20 stroke-amber-400/50"
       stroke-width="1"
     />
@@ -69,9 +91,9 @@ const layout = computed(() => {
       :x="layout.cx"
       :y="layout.cy + 4"
       text-anchor="middle"
-      class="fill-stone-100 text-[9px]"
+      class="fill-stone-100 text-[10px]"
     >
-      {{ layout.center.length > 10 ? layout.center.slice(0, 9) + '…' : layout.center }}
+      {{ truncate(layout.center, 14) }}
     </text>
     <g
       v-for="(node, i) in layout.nodes"
@@ -79,10 +101,11 @@ const layout = computed(() => {
       class="cursor-pointer"
       @click="emit('focus-entity', node.id)"
     >
+      <title>{{ node.label }} — {{ node.predicate }}</title>
       <circle
         :cx="node.x"
         :cy="node.y"
-        r="16"
+        :r="NODE_R"
         class="fill-stone-800 stroke-amber-300/40 hover:fill-amber-500/20"
         stroke-width="1"
       />
@@ -90,9 +113,9 @@ const layout = computed(() => {
         :x="node.x"
         :y="node.y + 3"
         text-anchor="middle"
-        class="fill-stone-200 text-[8px] pointer-events-none"
+        class="fill-stone-200 text-[9px] pointer-events-none"
       >
-        {{ node.label.length > 8 ? node.label.slice(0, 7) + '…' : node.label }}
+        {{ truncate(node.label, 10) }}
       </text>
     </g>
   </svg>

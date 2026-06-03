@@ -20,6 +20,7 @@ import WarningBanner from '@/components/chat/WarningBanner.vue'
 import ApprovalDialog from '@/components/chat/ApprovalDialog.vue'
 import PlanReviewDialog from '@/components/chat/PlanReviewDialog.vue'
 import HandoffDialog from '@/components/chat/HandoffDialog.vue'
+import SessionArtifactsDialog from '@/components/chat/SessionArtifactsDialog.vue'
 
 defineOptions({ name: 'ChatView' })
 
@@ -51,6 +52,7 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const citationOpen = ref(false)
 const citationDocId = ref('')
 const citationTitleHint = ref('')
+const artifactsOpen = ref(false)
 
 const autoResize = () => {
   const el = inputRef.value
@@ -355,8 +357,19 @@ const onInsightClarify = async (payload: {
           <span class="h-2 w-2 rounded-full" :class="wsStore.isConnected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
           <span class="text-xs text-stone-400">{{ wsStore.isConnected ? t('chat.connected') : t('chat.disconnected') }}</span>
         </div>
+        <button
+          v-if="chatStore.currentSessionId"
+          type="button"
+          class="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full border border-amber-100/10 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-stone-300 transition hover:border-amber-300/25 hover:text-amber-100"
+          :title="t('chat.artifacts.title')"
+          @click="artifactsOpen = true"
+        >
+          <BaseIcon icon="lucide:package" :size="14" />
+          {{ t('chat.artifacts.button') }}
+        </button>
         <span
-          class="ml-auto max-w-[min(240px,40%)] truncate rounded-full border border-amber-100/10 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-stone-300"
+          class="max-w-[min(240px,40%)] truncate rounded-full border border-amber-100/10 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-stone-300"
+          :class="chatStore.currentSessionId ? '' : 'ml-auto'"
           :title="settingsStore.currentModel || t('chat.notSelectedModel')"
         >
           {{ settingsStore.currentModel || t('chat.notSelectedModel') }}
@@ -389,6 +402,12 @@ const onInsightClarify = async (payload: {
         :doc-id="citationDocId"
         :title-hint="citationTitleHint"
         @close="closeCitation"
+      />
+
+      <SessionArtifactsDialog
+        :open="artifactsOpen"
+        :session-id="chatStore.currentSessionId"
+        @close="artifactsOpen = false"
       />
 
       <QueueStatus />

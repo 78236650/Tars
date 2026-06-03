@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..org import ORG_ID
 from .core_memory import BLOCK_NAMES, BLOCK_TITLES, CoreMemoryManager
 from .entity_id import compute_entity_id
 
@@ -116,10 +117,18 @@ def _memory_leaf(memory, co_entities: List[str]) -> Dict[str, Any]:
 
 
 class EntityTreeBuilder:
-    def __init__(self, db, tenant_id: str = "default", max_per_bucket: int = 30):
+    def __init__(self, db, tenant_id: str = ORG_ID, max_per_bucket: int = 30):
         self.db = db
         self.tenant_id = tenant_id
         self.max_per_bucket = max(1, max_per_bucket)
+
+    @staticmethod
+    def _viewer_user_id() -> Optional[str]:
+        try:
+            from tars.context import get_current_user_id
+            return get_current_user_id()
+        except RuntimeError:
+            return None
 
     @staticmethod
     def _count_tree_nodes(nodes: List[Dict[str, Any]]) -> int:
@@ -135,7 +144,7 @@ class EntityTreeBuilder:
         return total
 
     def build(self, *, include_core: bool = True, include_orphan: bool = True) -> Dict[str, Any]:
-        memories = self.db.list_memories_for_tree(tenant_id=self.tenant_id)
+        memories = self.db.list_memories_for_tree(tenant_id=self.tenant_id, user_id=self._viewer_user_id())
         entity_labels = self._load_entity_labels(memories)
         registered = set(entity_labels.keys())
 
@@ -208,7 +217,7 @@ class EntityTreeBuilder:
         }
 
     def build_provenance(self) -> Dict[str, Any]:
-        memories = self.db.list_memories_for_tree(tenant_id=self.tenant_id)
+        memories = self.db.list_memories_for_tree(tenant_id=self.tenant_id, user_id=self._viewer_user_id())
         memory_by_id = {m.id: m for m in memories}
         compressed = [m for m in memories if (m.memory_type or "") == "compressed"]
         compressed.sort(
@@ -497,7 +506,9 @@ class EntityTreeBuilder:
 
     def build_graph(self, max_edges: int = 800) -> Dict[str, Any]:
         """Tenant-scoped entity relation graph for force-directed UI."""
-        memories = self.db.list_memories_for_tree(self.tenant_id, limit=5000)
+        memories = self.db.list_memories_for_tree(
+            self.tenant_id, limit=5000, user_id=self._viewer_user_id()
+        )
         entity_index: Dict[str, Dict[str, Any]] = defaultdict(
             lambda: {"memory_count": 0, "type": "concept", "label": ""}
         )

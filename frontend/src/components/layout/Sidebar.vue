@@ -109,6 +109,7 @@ const navItems = [
   { name: 'nav.knowledge', icon: 'lucide:book-open', path: '/knowledge' },
   { name: 'nav.meeting', icon: 'lucide:mic', path: '/meeting' },
   { name: 'nav.orchestration', icon: 'lucide:git-branch', path: '/orchestration' },
+  { name: 'nav.presales', icon: 'lucide:briefcase', path: '/presales' },
   { name: 'nav.admin', icon: 'lucide:shield', path: '/admin', adminOnly: true },
   { name: 'nav.settings', icon: 'lucide:settings', path: '/settings' }
 ]
@@ -120,6 +121,7 @@ const moduleRouteMap: Record<string, string> = {
   knowledge: '/knowledge',
   meeting: '/meeting',
   orchestration: '/orchestration',
+  presales: '/presales',
 }
 
 const visibleNavItems = computed(() =>

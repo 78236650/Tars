@@ -162,25 +162,31 @@ class TestPromptSkillsInjection:
 
 class TestSkillAPIIntegration:
     @pytest.fixture
-    def client(self):
+    def client(self, tmp_path):
         from fastapi.testclient import TestClient
         from fastapi import FastAPI
         from tars.api.skills import router
+        from tars.database import Database
         from tars.skills import skill_registry
         from tars.tools.registry import ToolRegistry
         from tars.skills.loader import SkillLoader
+
+        from tests.conftest import setup_main_api_auth
 
         # 加载默认技能
         skill_registry.clear()
         loader = SkillLoader(skills_dir=str(SKILLS_DIR), tool_registry=ToolRegistry(), skill_registry=skill_registry)
         loader.load_all()
 
+        db = Database(str(tmp_path / "skills.db"))
+        auth_headers, _user = setup_main_api_auth(db)
         app = FastAPI()
         app.include_router(router)
-        return TestClient(app)
+        return TestClient(app), auth_headers
 
     def test_list_default_skills(self, client):
-        resp = client.get("/api/skills/")
+        test_client, headers = client
+        resp = test_client.get("/api/skills/", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
         skill_ids = [s["id"] for s in data["skills"]]
@@ -188,7 +194,8 @@ class TestSkillAPIIntegration:
             assert expected_id in skill_ids, f"技能 {expected_id} 未返回"
 
     def test_get_skill_detail_includes_prompt(self, client):
-        resp = client.get("/api/skills/code_assistant")
+        test_client, headers = client
+        resp = test_client.get("/api/skills/code_assistant", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
@@ -199,16 +206,17 @@ class TestSkillAPIIntegration:
         assert "代码质量" in skill["prompt_template"]
 
     def test_disable_then_enable(self, client):
-        resp1 = client.put("/api/skills/translator/disable")
+        test_client, headers = client
+        resp1 = test_client.put("/api/skills/translator/disable", headers=headers)
         assert resp1.status_code == 200
 
-        resp2 = client.get("/api/skills/translator")
+        resp2 = test_client.get("/api/skills/translator", headers=headers)
         assert resp2.json()["skill"]["enabled"] is False
 
-        resp3 = client.put("/api/skills/translator/enable")
+        resp3 = test_client.put("/api/skills/translator/enable", headers=headers)
         assert resp3.status_code == 200
 
-        resp4 = client.get("/api/skills/translator")
+        resp4 = test_client.get("/api/skills/translator", headers=headers)
         assert resp4.json()["skill"]["enabled"] is True
 
 

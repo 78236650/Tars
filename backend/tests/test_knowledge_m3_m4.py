@@ -133,6 +133,9 @@ def test_reindex_estimate_api(tmp_path):
 
     from tars.api.knowledge import init_knowledge_api, router as knowledge_router
     from tars.database import Database
+    from tars.org import ORG_ID
+
+    from tests.conftest import setup_knowledge_auth
 
     db = Database(str(tmp_path / "kb.db"))
     conn = db._get_conn()
@@ -140,7 +143,7 @@ def test_reindex_estimate_api(tmp_path):
     cur.execute(
         "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?)",
-        ("c1", "default", "t", "", "2026-05-24", "2026-05-24"),
+        ("c1", ORG_ID, "t", "", "2026-05-24", "2026-05-24"),
     )
     for i in range(3):
         cur.execute(
@@ -153,9 +156,14 @@ def test_reindex_estimate_api(tmp_path):
     app = FastAPI()
     app.include_router(knowledge_router)
     init_knowledge_api(db, vector_store=None, embedding_provider=None)
+    auth_headers, _user = setup_knowledge_auth(db)
 
     with TestClient(app) as client:
-        resp = client.post("/api/knowledge/collections/c1/reindex/estimate", json={})
+        resp = client.post(
+            "/api/knowledge/collections/c1/reindex/estimate",
+            json={},
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["doc_count"] == 3

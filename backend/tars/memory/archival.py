@@ -3,6 +3,7 @@ from typing import Optional
 
 from .deduplicator import MemoryDeduplicator
 from .embeddings import EmbeddingProvider, serialize_vector
+from ..org import ORG_ID
 from ..vectorstore.scope import memory_chroma_metadata
 
 
@@ -13,7 +14,7 @@ class ArchivalManager:
         self,
         db,
         embedding_provider: Optional[EmbeddingProvider] = None,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         vector_store=None,
     ):
         self.db = db

@@ -83,7 +83,8 @@ def _recover_stale_transcriptions(max_age_minutes: int = 180) -> None:
     if _db is None:
         return
     try:
-        conn = _db._get_conn()
+        # Use connection manager directly — safe access pattern used across codebase
+        conn = _db._cm.get_conn()
         cursor = conn.cursor()
         cutoff = datetime.now(timezone(timedelta(hours=8))) - timedelta(minutes=max_age_minutes)
         cutoff_iso = cutoff.isoformat()
@@ -443,15 +444,22 @@ async def upload_audio(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存文件失败: {e}")
 
-    # 创建数据库记录
-    transcription = _db.create_transcription(
-        user_id=user_id,
-        file_path=str(file_path),
-        file_name=safe_name,
-        file_size=len(content),
-        language=asr_language or "auto",
-        model_used=_default_asr_model(),
-    )
+    # 创建数据库记录；失败时清理已写入的磁盘文件
+    try:
+        transcription = _db.create_transcription(
+            user_id=user_id,
+            file_path=str(file_path),
+            file_name=safe_name,
+            file_size=len(content),
+            language=asr_language or "auto",
+            model_used=_default_asr_model(),
+        )
+    except Exception:
+        try:
+            os.unlink(file_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail="创建转录记录失败")
 
     _schedule_transcription(transcription.id, str(file_path), language)
 

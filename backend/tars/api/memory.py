@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ..database import Database
@@ -116,6 +116,12 @@ def _apply_admin_view_user(principal: Principal, user_id: str) -> None:
         set_request_context(target, ORG_ID)
 
 
+def _resolve_tree_tenant(principal: Principal, user_id: str = "") -> str:
+    """Resolve org tree scope; admin may pass user_id to view another user's memories."""
+    _apply_admin_view_user(principal, user_id)
+    return ORG_ID
+
+
 def _memory_to_dict(memory) -> Dict[str, Any]:
     entity_refs = []
     for ref in (memory.entity_refs or []):
@@ -184,7 +190,7 @@ class PromoteToKnowledgeRequest(BaseModel):
 @router.get("/stats")
 def get_memory_stats(principal: Principal = Depends(require_authenticated_user)):
     db = _require_db()
-    stats = db.get_memory_stats(tenant_id=ORG_ID)
+    stats = db.get_memory_stats(tenant_id=ORG_ID, user_id=_viewer_user_id())
     if config.compressor_enabled:
         compressor = _require_compressor()
         status = compressor.status()
@@ -491,13 +497,20 @@ def get_memory_tree_relations(
 @router.get("/export")
 async def export_memories(
     user_id: str = "",
+    format: str = Query("json", description="Export format: 'json' or 'markdown'"),
     principal: Principal = Depends(require_authenticated_user),
 ):
-    """Export org memories as JSON (admin may pass user_id for future filtering)."""
+    """Export org memories as JSON or Markdown."""
     db = _require_db()
     requested = (user_id or principal.user_id).strip()
     if not principal.is_admin and requested != principal.user_id:
         raise HTTPException(status_code=403, detail="无权导出其他用户记忆")
+
+    if format == "markdown":
+        manager = _manager_with_provider()
+        md = manager.export_markdown()
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     items, total = db.list_all_memories(page=1, page_size=5000, tenant_id=ORG_ID)
     return {
@@ -516,6 +529,26 @@ async def export_memories(
             for m in items
         ],
     }
+
+
+class MemoryImportRequest(BaseModel):
+    markdown: str = Field(..., description="Markdown text to import")
+
+
+@router.post("/import")
+async def import_memories(
+    payload: MemoryImportRequest,
+    principal: Principal = Depends(require_authenticated_user),
+):
+    """Import memories from a Markdown document.
+
+    Parses `## 长期记忆` section with `- [category] content` bullets.
+    """
+    if not principal.is_admin:
+        raise HTTPException(status_code=403, detail="仅管理员可导入记忆")
+    manager = _manager_with_provider()
+    result = manager.import_markdown(payload.markdown)
+    return {"success": True, **result}
 
 
 @router.get("/{memory_id}")

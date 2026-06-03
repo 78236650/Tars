@@ -1,9 +1,10 @@
 """TARS API - 工具管理路由"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..tools import registry as tool_registry
+from ._auth import require_authenticated_user, require_admin, Principal
 
 router = APIRouter(prefix="/api/tools", tags=["工具管理"])
 
@@ -22,7 +23,9 @@ class ToolExecuteRequest(BaseModel):
 
 
 @router.get("/")
-async def list_tools():
+async def list_tools(
+    principal: Principal = Depends(require_authenticated_user),
+):
     """列出所有已注册工具"""
     tools = tool_registry.list_all()
     return {
@@ -43,7 +46,10 @@ async def list_tools():
 
 
 @router.get("/{tool_id}")
-async def get_tool_detail(tool_id: str):
+async def get_tool_detail(
+    tool_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     """获取工具详情"""
     tool = tool_registry.get(tool_id)
     if not tool:
@@ -61,7 +67,10 @@ async def get_tool_detail(tool_id: str):
 
 
 @router.put("/{tool_id}/status")
-async def update_tool_status(tool_id: str, request: ToolStatusUpdate):
+async def update_tool_status(
+    tool_id: str, request: ToolStatusUpdate,
+    principal: Principal = Depends(require_admin),
+):
     """启用/禁用工具"""
     tool = tool_registry.get(tool_id)
     if not tool:
@@ -71,7 +80,10 @@ async def update_tool_status(tool_id: str, request: ToolStatusUpdate):
 
 
 @router.put("/{tool_id}/config")
-async def update_tool_config(tool_id: str, request: ToolConfigUpdate):
+async def update_tool_config(
+    tool_id: str, request: ToolConfigUpdate,
+    principal: Principal = Depends(require_admin),
+):
     """更新工具配置"""
     tool = tool_registry.get(tool_id)
     if not tool:
@@ -80,7 +92,10 @@ async def update_tool_config(tool_id: str, request: ToolConfigUpdate):
 
 
 @router.post("/execute")
-async def execute_tool(request: ToolExecuteRequest):
+async def execute_tool(
+    request: ToolExecuteRequest,
+    principal: Principal = Depends(require_admin),
+):
     """手动执行工具（调试用）"""
     tool = tool_registry.get(request.tool_name)
     if not tool:

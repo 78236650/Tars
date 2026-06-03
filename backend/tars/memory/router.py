@@ -2,6 +2,7 @@
 import json
 from typing import List, Dict, Any, Optional
 
+from tars.org import ORG_ID
 from tars.memory.decay import decay_score, hours_since
 from tars.memory.deduplicator import cosine_similarity
 from tars.memory.embeddings import EmbeddingProvider, deserialize_vector
@@ -12,7 +13,7 @@ from tars.memory.entity_id import compute_entity_id
 class MemoryRouter:
     """四路并行 + 融合打分 + 降级切换"""
 
-    def __init__(self, db, embedding_provider: Optional[EmbeddingProvider] = None, tenant_id: str = "default"):
+    def __init__(self, db, embedding_provider: Optional[EmbeddingProvider] = None, tenant_id: str = ORG_ID):
         self.db = db
         self.ep = embedding_provider
         self.tenant_id = tenant_id

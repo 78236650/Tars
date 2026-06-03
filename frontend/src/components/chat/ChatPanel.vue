@@ -147,7 +147,13 @@ const formatAssistantContent = (msg: ChatMessage, idx: number) =>
 
 const buildMessageCopyText = (msg: ChatMessage) => {
   const parts: string[] = []
-  if (msg.content?.trim()) parts.push(msg.content.trim())
+
+  if (msg.thinking?.steps?.length) {
+    const steps = msg.thinking.steps
+      .map((step) => `- ${step.title}${step.detail ? `: ${step.detail}` : ''}`)
+      .join('\n')
+    parts.push(`${t('chat.processingSteps')}\n${steps}`)
+  }
 
   if (msg.toolCalls?.length) {
     for (const tc of msg.toolCalls) {
@@ -156,15 +162,10 @@ const buildMessageCopyText = (msg: ChatMessage) => {
     }
   }
 
+  if (msg.content?.trim()) parts.push(msg.content.trim())
+
   if (msg.biChart?.data_summary?.trim()) {
     parts.push(msg.biChart.data_summary.trim())
-  }
-
-  if (msg.thinking?.steps?.length) {
-    const steps = msg.thinking.steps
-      .map((step) => `- ${step.title}${step.detail ? `: ${step.detail}` : ''}`)
-      .join('\n')
-    parts.push(`${t('chat.processingSteps')}\n${steps}`)
   }
 
   return parts.join('\n\n')
@@ -317,39 +318,44 @@ onMounted(() => {
             <!-- 任务卡片 -->
             <TaskCard v-if="msg.role === 'task' && msg.task" :task="msg.task" class="max-w-[95%]" />
 
-            <!-- TARS 卡片 -->
+            <!-- TARS 卡片：处理步骤 → 工具调用 → 正文（与流式事件顺序一致） -->
             <div v-else-if="msg.role === 'assistant' || msg.role === 'system'" class="max-w-[95%]">
-              <div
-                v-if="msg.content"
-                class="markdown-body text-sm text-slate-300 leading-relaxed"
-                :class="{ 'markdown-body--streaming': isStreamingAssistant(msg, idx) }"
-                v-html="formatAssistantContent(msg, idx)"
-              />
+              <!-- v2.6.1: 处理步骤面板 — 活跃时强制展开，置于正文上方 -->
+              <div v-if="msg.thinking && msg.thinking.steps.length > 0" class="mb-3">
+                <div
+                  class="thinking-panel"
+                  :class="{ 'cursor-pointer': !msg.thinking.isActive }"
+                  @click="msg.thinking.isActive ? null : toggleThinking(msg.id)"
+                >
+                  <div class="thinking-header">
+                    <BaseIcon :icon="msg.thinking.isActive || isThinkingExpanded(msg.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" />
+                    <BaseIcon
+                      :icon="msg.thinking.isActive ? 'lucide:loader-circle' : 'lucide:list-checks'"
+                      :size="14"
+                      :class="{ 'animate-spin': msg.thinking.isActive }"
+                    />
+                    <span>{{ msg.thinking.isActive ? t('chat.processing') : t('chat.processingSteps') }}</span>
+                    <span class="step-count">({{ msg.thinking.steps.length }})</span>
+                  </div>
 
-              <div v-if="msg.insightMetricAnswer && msg.insightDatasourceId" class="mt-3">
-                <MetricAnswerCard
-                  :answer="msg.insightMetricAnswer"
-                  :datasource-id="msg.insightDatasourceId"
-                  @clarify="(p) => emit('insightClarify', { ...p, datasourceId: msg.insightDatasourceId! })"
-                />
-              </div>
-
-              <!-- BI 图表渲染 -->
-              <div v-if="msg.biChart" class="mt-3">
-                <div class="text-xs text-stone-500 mb-2 flex items-center gap-1">
-                  <BaseIcon icon="lucide:bar-chart-3" :size="14" />
-                  <span>{{ msg.biChart.title || t('chat.chartFallback') }}</span>
+                  <div v-if="msg.thinking.isActive || isThinkingExpanded(msg.id)" class="thinking-steps">
+                    <div
+                      v-for="step in msg.thinking.steps"
+                      :key="step.id"
+                      class="step-item"
+                    >
+                      <span class="step-icon">{{ step.step }}</span>
+                      <div class="step-text">
+                        <span class="step-title">{{ step.title }}</span>
+                        <span v-if="step.detail" class="step-detail">{{ step.detail }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <ChartRenderer
-                  :chart-type="msg.biChart.chart_type"
-                  :echarts-option="msg.biChart.echarts_option"
-                  :title="msg.biChart.title"
-                />
-                <div v-if="msg.biChart.data_summary" class="text-xs text-stone-500 mt-2">{{ msg.biChart.data_summary }}</div>
               </div>
 
               <!-- 工具调用 -->
-              <div v-if="msg.toolCalls?.length" class="mt-3 space-y-1.5">
+              <div v-if="msg.toolCalls?.length" class="mb-3 space-y-1.5">
                 <div v-for="tc in msg.toolCalls" :key="tc.id || tc.tool" class="bg-stone-800/70 border border-amber-100/10 rounded-lg overflow-hidden">
                   <button @click="toggleToolCard(tc.id || tc.tool)" class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-stone-700/60 transition-colors">
                     <BaseIcon icon="lucide:chevron-right" :size="12" class="transition-transform" :class="collapsedTools.has(tc.id || tc.tool) ? '' : 'rotate-90'" />
@@ -378,34 +384,33 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- v2.6.1: 处理步骤面板 — 活跃时强制展开 -->
-              <div v-if="msg.thinking && msg.thinking.steps.length > 0" class="mt-3">
-                <div
-                  class="thinking-panel"
-                  :class="{ 'cursor-pointer': !msg.thinking.isActive }"
-                  @click="msg.thinking.isActive ? null : toggleThinking(msg.id)"
-                >
-                  <div class="thinking-header">
-                    <BaseIcon :icon="msg.thinking.isActive || isThinkingExpanded(msg.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'" :size="12" />
-                    <BaseIcon icon="lucide:loader-circle" :size="14" class="animate-spin" />
-                    <span>{{ msg.thinking.isActive ? t('chat.processing') : t('chat.processingSteps') }}</span>
-                    <span class="step-count">({{ msg.thinking.steps.length }})</span>
-                  </div>
+              <div
+                v-if="msg.content"
+                class="markdown-body text-sm text-slate-300 leading-relaxed"
+                :class="{ 'markdown-body--streaming': isStreamingAssistant(msg, idx) }"
+                v-html="formatAssistantContent(msg, idx)"
+              />
 
-                  <div v-if="msg.thinking.isActive || isThinkingExpanded(msg.id)" class="thinking-steps">
-                    <div
-                      v-for="step in msg.thinking.steps"
-                      :key="step.id"
-                      class="step-item"
-                    >
-                      <span class="step-icon">{{ step.step }}</span>
-                      <div class="step-text">
-                        <span class="step-title">{{ step.title }}</span>
-                        <span v-if="step.detail" class="step-detail">{{ step.detail }}</span>
-                      </div>
-                    </div>
-                  </div>
+              <div v-if="msg.insightMetricAnswer && msg.insightDatasourceId" class="mt-3">
+                <MetricAnswerCard
+                  :answer="msg.insightMetricAnswer"
+                  :datasource-id="msg.insightDatasourceId"
+                  @clarify="(p) => emit('insightClarify', { ...p, datasourceId: msg.insightDatasourceId! })"
+                />
+              </div>
+
+              <!-- BI 图表渲染 -->
+              <div v-if="msg.biChart" class="mt-3">
+                <div class="text-xs text-stone-500 mb-2 flex items-center gap-1">
+                  <BaseIcon icon="lucide:bar-chart-3" :size="14" />
+                  <span>{{ msg.biChart.title || t('chat.chartFallback') }}</span>
                 </div>
+                <ChartRenderer
+                  :chart-type="msg.biChart.chart_type"
+                  :echarts-option="msg.biChart.echarts_option"
+                  :title="msg.biChart.title"
+                />
+                <div v-if="msg.biChart.data_summary" class="text-xs text-stone-500 mt-2">{{ msg.biChart.data_summary }}</div>
               </div>
 
               <div v-if="msg.role === 'assistant' && canCopyMessage(msg)" class="mt-2 flex items-center gap-1">

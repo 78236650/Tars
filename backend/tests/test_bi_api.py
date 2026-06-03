@@ -28,23 +28,23 @@ def sample_sqlite_url():
 
 
 @pytest.fixture
-def bi_client():
-    from tars.main import app, user_store
+def bi_client(tmp_path, monkeypatch):
+    from tars.api._auth import init_auth
+    from tars.database import UserStore
+    import tars.main as main
 
-    admin = None
-    for u in user_store.get_all_users():
-        if u.role == UserRole.ADMIN:
-            admin = u
-            break
-    if not admin:
-        name = f"bi_admin_{uuid.uuid4().hex[:6]}"
-        admin = user_store.create_user(
-            username=name,
-            email=f"{name}@test.local",
-            role=UserRole.ADMIN,
-        )
+    test_db = Database(str(tmp_path / "bi_api.db"))
+    test_store = UserStore(test_db)
+    name = f"bi_admin_{uuid.uuid4().hex[:6]}"
+    admin = test_store.create_user(
+        username=name,
+        email=f"{name}@test.local",
+        role=UserRole.ADMIN,
+    )
+    monkeypatch.setattr(main, "user_store", test_store)
+    init_auth(test_store)
 
-    client = TestClient(app)
+    client = TestClient(main.app)
     headers = {"X-API-Key": admin.api_key}
     return client, headers, admin
 

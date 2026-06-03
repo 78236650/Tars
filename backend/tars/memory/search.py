@@ -4,6 +4,7 @@ from typing import List, Optional
 from .deduplicator import cosine_similarity
 from .embeddings import EmbeddingProvider, deserialize_vector
 from .decay import decay_score, hours_since
+from ..org import ORG_ID
 from ..vectorstore.scope import memory_visibility_filter
 
 
@@ -28,7 +29,7 @@ class HybridSearch:
         self,
         db,
         embedding_provider: EmbeddingProvider = None,
-        tenant_id: str = "default",
+        tenant_id: str = ORG_ID,
         vector_store=None,
         reranker=None,
     ):

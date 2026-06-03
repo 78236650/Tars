@@ -503,9 +503,9 @@ defineExpose({ refresh: refreshAll })
 
     <div
       v-if="viewMode === 'graph'"
-      class="grid min-h-[420px] grid-cols-1 gap-4 lg:grid-cols-5"
+      class="grid min-h-[480px] grid-cols-1 gap-4 lg:grid-cols-5"
     >
-      <div class="lg:col-span-3">
+      <div class="flex min-h-[480px] min-w-0 flex-col lg:col-span-3">
         <MemoryEntityForceGraph
           :nodes="graphData?.nodes ?? []"
           :edges="graphData?.edges ?? []"
@@ -515,7 +515,7 @@ defineExpose({ refresh: refreshAll })
         />
       </div>
       <div
-        class="min-h-[280px] rounded-2xl border border-amber-100/10 bg-surface-1/82 p-5 lg:col-span-2"
+        class="min-h-[280px] min-w-0 overflow-y-auto rounded-2xl border border-amber-100/10 bg-surface-1/82 p-5 lg:col-span-2"
       >
         <template v-if="!selectedId || selectedKind !== 'entity'">
           <p class="text-sm text-stone-400">{{ t('memory.tree.selectHint') }}</p>

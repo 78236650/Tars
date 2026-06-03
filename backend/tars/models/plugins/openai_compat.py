@@ -17,10 +17,13 @@ def _normalize_openai_response(data: dict, default_model: str) -> dict:
     message = choices[0].get("message", {})
     content = message.get("content", "") or ""
     tool_calls = message.get("tool_calls")
+    reasoning_content = message.get("reasoning_content")  # DeepSeek 推理模型的推理过程
 
     result = {"content": content, "model": data.get("model", default_model)}
     if tool_calls:
         result["tool_calls"] = tool_calls
+    if reasoning_content:
+        result["reasoning_content"] = reasoning_content
     return result
 
 
@@ -96,6 +99,9 @@ class OpenAICompatProvider(ProviderBase):
                     tc_copy["function"] = func
                     normalized_calls.append(tc_copy)
                 msg_dict["tool_calls"] = normalized_calls
+            # DeepSeek 推理模型要求将 reasoning_content 传回 API
+            if msg.reasoning_content:
+                msg_dict["reasoning_content"] = msg.reasoning_content
             formatted_messages.append(msg_dict)
 
         payload = {

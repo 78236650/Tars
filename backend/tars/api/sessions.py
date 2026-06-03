@@ -1,10 +1,15 @@
 """Sessions REST API"""
+import json
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..api._auth import Principal, require_authenticated_user
 from ..database import Database
 from ..org import ORG_ID
+from ..orchestration.artifacts_collector import ArtifactsCollector
+from ..orchestration.workspace_resolver import resolve_workspace_path
 from ..security.audit import safe_audit, client_ip_from_request
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -126,3 +131,108 @@ def update_session_title(
     if not ok:
         raise HTTPException(404, "Session not found")
     return {"success": True, "title": payload.title}
+
+
+def _artifact_directory(relative_path: str) -> str:
+    parent = Path(relative_path).parent
+    if str(parent) == ".":
+        return "/"
+    return str(parent)
+
+
+def _list_workspace_artifacts(workspace_path: str) -> list[dict]:
+    root = Path(workspace_path)
+    if not root.exists():
+        return []
+    items: list[dict] = []
+    for file_path in sorted(root.rglob("*")):
+        if not file_path.is_file() or ArtifactsCollector._is_excluded(file_path):
+            continue
+        rel = str(file_path.relative_to(root))
+        items.append({
+            "path": rel,
+            "directory": _artifact_directory(rel),
+            "name": file_path.name,
+            "source": "workspace",
+        })
+    return items
+
+
+@router.get("/{session_id}/artifacts")
+def get_session_artifacts(
+    session_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
+    if not _db:
+        raise HTTPException(500, "DB not initialized")
+    if not _db.get_session(session_id, tenant_id=ORG_ID, user_id=principal.user_id):
+        raise HTTPException(404, "Session not found")
+
+    workspace_path, workspace_source = resolve_workspace_path(session_id)
+    workspace_files = _list_workspace_artifacts(workspace_path)
+
+    conn = _db._get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, title, goal, workspace_path, status, artifacts, output_summary "
+        "FROM tasks WHERE session_id = ? ORDER BY created_at DESC",
+        (session_id,),
+    )
+
+    tasks: list[dict] = []
+    seen_paths: set[str] = set()
+    items: list[dict] = []
+
+    for row in cur.fetchall():
+        raw_artifacts = json.loads(row[5]) if row[5] else []
+        artifacts = raw_artifacts if isinstance(raw_artifacts, list) else []
+        task_workspace = row[3] or workspace_path
+        task = {
+            "id": row[0],
+            "title": row[1],
+            "goal": row[2],
+            "workspace_path": task_workspace,
+            "status": row[4],
+            "artifacts": artifacts,
+            "output_summary": row[6],
+        }
+        tasks.append(task)
+        for art in artifacts:
+            if not isinstance(art, str) or not art.strip():
+                continue
+            rel = art.strip()
+            if rel in seen_paths:
+                continue
+            seen_paths.add(rel)
+            items.append({
+                "path": rel,
+                "directory": _artifact_directory(rel),
+                "name": Path(rel).name,
+                "source": "task",
+                "task_id": row[0],
+                "task_title": row[1],
+                "workspace_path": task_workspace,
+            })
+
+    for file_item in workspace_files:
+        if file_item["path"] in seen_paths:
+            continue
+        seen_paths.add(file_item["path"])
+        items.append({
+            **file_item,
+            "workspace_path": workspace_path,
+        })
+
+    items.sort(key=lambda x: (x.get("directory", ""), x.get("path", "")))
+
+    return {
+        "success": True,
+        "data": {
+            "session_id": session_id,
+            "workspace_path": workspace_path,
+            "workspace_source": workspace_source,
+            "tasks": tasks,
+            "items": items,
+            "total": len(items),
+        },
+    }

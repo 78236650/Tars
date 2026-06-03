@@ -96,12 +96,38 @@ def transcribe(
         text = rich_transcription_postprocess(raw_text)
         to_simplified = str(cfg.get("output_script", "simplified")).lower() == "simplified"
         text = normalize_transcript_text(text.strip(), to_simplified=to_simplified)
+
+        # Extract segments: try timestamp-based split first, then sentence-split
+        segments = []
+        raw_timestamps = res[0].get("timestamp") if res else None
+        if raw_timestamps and isinstance(raw_timestamps, list):
+            # timestamp = [[start_ms, end_ms], ...] per text token
+            sentences = res[0].get("sentence_info", []) if res else []
+            if sentences:
+                for si in sentences:
+                    seg_text = si.get("text", "").strip()
+                    if seg_text:
+                        seg_text = normalize_transcript_text(seg_text, to_simplified=to_simplified)
+                        segments.append({
+                            "start": si.get("start", 0) / 1000.0,
+                            "end": si.get("end", 0) / 1000.0,
+                            "text": seg_text,
+                        })
+        if not segments and text:
+            # Fallback: sentence-level split (no timestamps, but better than one giant block)
+            import re
+            sentences_raw = re.split(r"[。！？\n;；]", text)
+            for s in sentences_raw:
+                s = s.strip()
+                if s:
+                    segments.append({"text": s})
+
         return {
             "success": True,
             "text": text,
             "language": _map_language(language) if language else "auto",
             "duration": None,
-            "segments": [{"text": text}] if text else [],
+            "segments": segments if segments else ([{"text": text}] if text else []),
             "model": "sensevoice-small",
             "backend": "sensevoice",
         }

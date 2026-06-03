@@ -75,6 +75,34 @@ def test_list_collection_targets_org_pool_only(db):
     assert targets == [("coll-org", ORG_ID)]
 
 
+def test_list_collections_includes_legacy_user_tenant(kb_client):
+    client, db, headers_a, headers_b, user_a, user_b = kb_client
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    now = datetime.now(timezone(timedelta(hours=8))).isoformat()
+    cursor.execute(
+        "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("coll-a-legacy", user_a.id, "User A Legacy", "", now, now),
+    )
+    cursor.execute(
+        "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("coll-b-legacy", user_b.id, "User B Legacy", "", now, now),
+    )
+    conn.commit()
+
+    listed_a = client.get("/api/knowledge/collections", headers=headers_a)
+    ids_a = {c["id"] for c in listed_a.json()["collections"]}
+    assert "coll-a-legacy" in ids_a
+    assert "coll-b-legacy" not in ids_a
+
+    listed_b = client.get("/api/knowledge/collections", headers=headers_b)
+    ids_b = {c["id"] for c in listed_b.json()["collections"]}
+    assert "coll-b-legacy" in ids_b
+    assert "coll-a-legacy" not in ids_b
+
+
 def test_user_a_creates_collection_user_b_lists(kb_client):
     client, db, headers_a, headers_b, _, _ = kb_client
 

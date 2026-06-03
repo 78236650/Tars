@@ -11,7 +11,7 @@ class ModuleRegistry:
     """Reads config/modules.yaml and exposes enable/disable checks."""
 
     CORE_MODULES = ("auth", "chat", "memory", "skills", "tools", "knowledge")
-    OPTIONAL_MODULES = ("bi", "meeting", "admin", "cron", "insight", "orchestration")
+    OPTIONAL_MODULES = ("bi", "meeting", "admin", "cron", "insight", "orchestration", "presales")
 
     def __init__(self):
         self._modules: dict[str, bool] = {}

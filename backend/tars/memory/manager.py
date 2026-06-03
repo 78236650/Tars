@@ -216,6 +216,102 @@ class MemoryManager:
     def search_memories(self, query: str, limit: int = 5):
         return self.search.search(query, limit)
 
+    # ------------------------------------------------------------------
+    # Markdown import/export
+    # ------------------------------------------------------------------
+    def export_markdown(self) -> str:
+        """Serialize all memories (core + archival) into structured Markdown."""
+        from datetime import datetime, timezone, timedelta
+
+        lines = [
+            "# TARS Memory Export",
+            f"<!-- exported: {datetime.now(timezone(timedelta(hours=8))).isoformat()} -->",
+            f"<!-- tenant: {self.tenant_id} -->",
+            "",
+        ]
+
+        core_render = self.core.render_for_prompt()
+        if core_render.strip():
+            lines.append(core_render.strip())
+            lines.append("")
+
+        items, _total = self.db.list_all_memories(
+            page=1, page_size=5000, tenant_id=self.tenant_id
+        )
+        if items:
+            lines.append("## 长期记忆")
+            lines.append("")
+            for mem in items:
+                created = (
+                    mem.created_at.isoformat() if hasattr(mem.created_at, "isoformat")
+                    else str(mem.created_at) if mem.created_at else ""
+                )
+                imp = getattr(mem, "importance", 0)
+                category = getattr(mem, "category", "fact")
+                content = (mem.content or "").replace("\n", " ")
+                lines.append(
+                    f"- [{category}] {content} "
+                    f"<!-- importance:{imp:.2f} created:{created} id:{mem.id} -->"
+                )
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def import_markdown(self, markdown_text: str) -> dict:
+        """Parse Markdown and insert archival memories.
+
+        Recognizes `## 长期记忆` section with `- [category] content` bullets.
+        Returns {"imported": int, "skipped": int}.
+        """
+        import re
+
+        imported = 0
+        skipped = 0
+
+        section_match = re.search(
+            r"^##\s+长期记忆\s*\n(.*?)(?=\n##|\Z)",
+            markdown_text,
+            re.DOTALL | re.MULTILINE,
+        )
+        if not section_match:
+            return {"imported": 0, "skipped": 0, "reason": "no 长期记忆 section found"}
+
+        section = section_match.group(1)
+        bullet_re = re.compile(
+            r"^-\s*\[(\w+)\]\s+(.+?)\s*(<!--.*?-->)?\s*$",
+            re.MULTILINE,
+        )
+        for m in bullet_re.finditer(section):
+            category = m.group(1).strip()
+            content = m.group(2).strip()
+            annotation = m.group(3) or ""
+
+            if len(content) < 3:
+                skipped += 1
+                continue
+
+            importance = 0.5
+            imp_match = re.search(r"importance:([\d.]+)", annotation)
+            if imp_match:
+                try:
+                    importance = float(imp_match.group(1))
+                except ValueError:
+                    pass
+
+            allowed = {"fact", "preference", "decision", "domain_knowledge"}
+            if category not in allowed:
+                category = "fact"
+
+            try:
+                self.archival.insert(
+                    content, category, importance=importance, source="markdown_import"
+                )
+                imported += 1
+            except Exception:
+                skipped += 1
+
+        return {"imported": imported, "skipped": skipped}
+
     def cleanup(self) -> dict:
         """执行遗忘清理：衰减 + 删除过期记忆。返回清理统计。"""
         decayed = self.db.decay_importance()

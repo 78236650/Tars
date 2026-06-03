@@ -155,7 +155,7 @@ def assign_user_role(
     if not t:
         raise HTTPException(status_code=404, detail="角色模板不存在")
     from ..gateway.permission import UserRole
-    role_map = {"admin": UserRole.ADMIN, "readonly": UserRole.GUEST}
+    role_map = {"admin": UserRole.ADMIN, "readonly": UserRole.GUEST, "presales_manager": UserRole.USER}
     user_role = role_map.get(body.role_template_id, UserRole.USER)
     _user_store.update_user(user_id, role=user_role, role_template_id=body.role_template_id)
     from ..org import ORG_ID
@@ -188,4 +188,4 @@ def _role_to_template(role) -> str:
     if role is None:
         return "standard"
     role_val = role.value if hasattr(role, "value") else str(role)
-    return {"admin": "admin", "user": "standard", "guest": "readonly"}.get(role_val, "standard")
+    return {"admin": "admin", "user": "standard", "guest": "readonly", "presales_manager": "presales_manager"}.get(role_val, "standard")

@@ -31,6 +31,43 @@ class OllamaProvider(ProviderBase):
     def client(self):
         return self._pool.client
 
+    @staticmethod
+    def _build_options(
+        *,
+        temperature: float,
+        max_tokens: int | None,
+        with_tools: bool,
+    ) -> dict:
+        opts: dict = {"temperature": temperature}
+        num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "16384"))
+        opts["num_ctx"] = num_ctx
+        if max_tokens:
+            opts["num_predict"] = max_tokens
+        elif with_tools:
+            opts["num_predict"] = int(os.getenv("OLLAMA_NUM_PREDICT_TOOLS", "4096"))
+        return opts
+
+    @staticmethod
+    def _sanitize_tool_calls(tool_calls: list) -> list:
+        """Ollama/Qwen 有时在 function 里带 index 字段，回传前需剔除。"""
+        cleaned = []
+        for tc in tool_calls:
+            tc_copy = dict(tc)
+            func = dict(tc_copy.get("function", {}) or {})
+            func.pop("index", None)
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args) if args else {}
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+            elif isinstance(args, dict):
+                args = {k: v for k, v in args.items() if k != "index"}
+            func["arguments"] = args
+            tc_copy["function"] = func
+            cleaned.append(tc_copy)
+        return cleaned
+
     async def chat(
         self,
         messages: List[ChatMessage],
@@ -51,33 +88,22 @@ class OllamaProvider(ProviderBase):
             if msg.tool_call_id:
                 m["tool_call_id"] = msg.tool_call_id
             if msg.tool_calls:
-                normalized_calls = []
-                for tc in msg.tool_calls:
-                    tc_copy = dict(tc)
-                    func = dict(tc_copy.get("function", {}))
-                    args = func.get("arguments", {})
-                    if isinstance(args, str):
-                        try:
-                            args = json.loads(args) if args else {}
-                        except (json.JSONDecodeError, TypeError):
-                            args = {}
-                    func["arguments"] = args
-                    tc_copy["function"] = func
-                    normalized_calls.append(tc_copy)
-                m["tool_calls"] = normalized_calls
+                m["tool_calls"] = self._sanitize_tool_calls(msg.tool_calls)
             if msg.images:
                 m["images"] = msg.images
             formatted_messages.append(m)
 
+        with_tools = bool(tools)
         payload = {
             "model": target_model,
             "messages": formatted_messages,
             "stream": stream,
-            "options": {"temperature": temperature},
+            "options": self._build_options(
+                temperature=temperature,
+                max_tokens=max_tokens,
+                with_tools=with_tools,
+            ),
         }
-
-        if max_tokens:
-            payload["options"]["num_predict"] = max_tokens
 
         if response_format:
             if response_format.get("type") == "json_schema" and response_format.get("schema"):
@@ -88,6 +114,10 @@ class OllamaProvider(ProviderBase):
         if tools:
             payload["tools"] = tools
             payload["stream"] = False
+            # Qwen3/Gemma4 等 thinking 模型默认会占满 token 在推理上，易导致 tool_calls 为空
+            payload["think"] = False
+        elif os.getenv("OLLAMA_THINK", "").strip().lower() in ("0", "false", "no"):
+            payload["think"] = False
 
         if not payload["stream"]:
             response = await self.client.post(url, json=payload)
@@ -100,8 +130,8 @@ class OllamaProvider(ProviderBase):
 
             if tool_calls:
                 normalized = []
-                for tc in tool_calls:
-                    func = tc.get("function", {})
+                for tc in self._sanitize_tool_calls(tool_calls):
+                    func = tc.get("function", {}) or {}
                     args = func.get("arguments", {})
                     if isinstance(args, dict):
                         args = json.dumps(args, ensure_ascii=False)

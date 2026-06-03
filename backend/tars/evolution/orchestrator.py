@@ -5,6 +5,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from .apply_engine import ApplyEngine, PromptDiffTooLarge
+from .case_distiller import CaseDistiller
 from .config import get_evolution_config
 from .eval_runner import EvalRunner
 from .feedback_collector import FeedbackCollector
@@ -24,6 +25,7 @@ class EvolutionOrchestrator:
         subagent_optimizer,
         prompt_tuner,
         evaluator,
+        case_distiller: CaseDistiller | None = None,
         min_events: int = 20,
         confidence_threshold: float = 0.05,
     ):
@@ -35,6 +37,7 @@ class EvolutionOrchestrator:
         self.prompt_tuner = prompt_tuner
         self.evaluator = evaluator
         self.skill_optimizer = SkillOptimizer(db)
+        self.case_distiller = case_distiller
         self.eval_runner = EvalRunner()
         self.min_events = min_events
         self.confidence_threshold = confidence_threshold
@@ -190,5 +193,13 @@ class EvolutionOrchestrator:
             if rolled:
                 results["rolled_back"] = rolled
                 logger.warning("Evolution eval gate rollback batch_id=%s count=%s", batch_id, len(rolled))
+
+        # Self-Evolving Skills: distill cases into new skills
+        if self.case_distiller:
+            try:
+                distill_result = self.case_distiller.run(tenant_id=tenant_id)
+                results["case_distillation"] = distill_result
+            except Exception as exc:
+                logger.exception("case distillation failed: %s", exc)
 
         return results

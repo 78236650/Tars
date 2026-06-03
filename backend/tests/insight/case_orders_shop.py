@@ -17,9 +17,10 @@ from tars.database.bi_store import DataSourceStore
 from tars.insight.store import InsightProfileRunStore
 from tars.insight.workflow_service import InsightWorkflowService
 
-TENANT = "insight-case-tenant"
-DS_NAME = "case_orders_shop"
 USER_ID = "case-user-1"
+# Per-user BI/Insight scope key (stored in legacy tenant_id columns).
+TENANT = USER_ID
+DS_NAME = "case_orders_shop"
 
 
 @dataclass

@@ -24,6 +24,8 @@ from tars.wiki.events import WikiEventHandler
 from tars.wiki.router import WikiRagRouter
 from tars.wiki.store import WikiStore
 
+from tests.conftest import setup_knowledge_auth
+
 
 class _FakeEmbedding:
     def encode(self, texts):
@@ -78,9 +80,14 @@ def test_upload_routes_small_md_to_wiki(wiki_stack, tmp_path):
     app.include_router(knowledge_router)
     init_knowledge_api(db, vector_store=None, embedding_provider=_FakeEmbedding())
     init_wiki_upload_routing(handler, wiki_router=wiki_router)
+    auth_headers, _user = setup_knowledge_auth(db)
     client = TestClient(app)
 
-    coll = client.post("/api/knowledge/collections", json={"name": "test-coll"})
+    coll = client.post(
+        "/api/knowledge/collections",
+        json={"name": "test-coll"},
+        headers=auth_headers,
+    )
     assert coll.status_code == 200
     coll_id = coll.json()["collection"]["id"]
 
@@ -89,6 +96,7 @@ def test_upload_routes_small_md_to_wiki(wiki_stack, tmp_path):
         f"/api/knowledge/collections/{coll_id}/documents",
         files={"file": ("周例会纪要.md", io.BytesIO(content), "text/markdown")},
         params={"target": "auto"},
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     body = resp.json()

@@ -33,11 +33,21 @@ class IngestSettings:
 
 
 @dataclass
+class CaseDistillationSettings:
+    enabled: bool = True
+    min_cases_per_cluster: int = 5
+    max_skills_per_run: int = 3
+    max_cases_per_skill: int = 30
+    approval_required: bool = True
+
+
+@dataclass
 class EvolutionConfig:
     eval_gate: EvalGateSettings = field(default_factory=EvalGateSettings)
     prompt_writeback: PromptWritebackSettings = field(default_factory=PromptWritebackSettings)
     insight_burst: InsightBurstSettings = field(default_factory=InsightBurstSettings)
     ingest: IngestSettings = field(default_factory=IngestSettings)
+    case_distillation: CaseDistillationSettings = field(default_factory=CaseDistillationSettings)
 
 
 def _config_path() -> Path:
@@ -56,6 +66,7 @@ def load_evolution_config(path: str | Path | None = None) -> EvolutionConfig:
     prompt = raw.get("prompt_writeback") or {}
     burst = raw.get("insight_burst") or {}
     ingest = raw.get("ingest") or {}
+    distillation = raw.get("case_distillation") or {}
 
     return EvolutionConfig(
         eval_gate=EvalGateSettings(
@@ -73,6 +84,13 @@ def load_evolution_config(path: str | Path | None = None) -> EvolutionConfig:
             save_state_every_n_turns=int(ingest.get("save_state_every_n_turns", 5)),
             save_state_min_interval_seconds=int(ingest.get("save_state_min_interval_seconds", 5)),
             optimize_async=bool(ingest.get("optimize_async", True)),
+        ),
+        case_distillation=CaseDistillationSettings(
+            enabled=bool(distillation.get("enabled", True)),
+            min_cases_per_cluster=int(distillation.get("min_cases_per_cluster", 5)),
+            max_skills_per_run=int(distillation.get("max_skills_per_run", 3)),
+            max_cases_per_skill=int(distillation.get("max_cases_per_skill", 30)),
+            approval_required=bool(distillation.get("approval_required", True)),
         ),
     )
 

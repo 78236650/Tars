@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from tars.knowledge.collection_scope import tenant_in_sql
 from tars.org import ORG_ID
 
 BROWSE_CHUNK_TYPES = frozenset({"doc_summary", "section_summary", "key_fact"})
@@ -116,32 +117,36 @@ def list_collection_targets(
     db,
     tenant_id: str | None = None,
     collection_id: Optional[str] = None,
+    tenant_ids: Optional[List[str]] = None,
     include_shared_default: bool = True,
 ) -> List[Tuple[str, str]]:
     """
-    Return (collection_id, org_id) pairs for search within the org knowledge pool.
-    Vectors are stored under org scope in Chroma (``knowledge_{id}_{ORG_ID}``).
+    Return (collection_id, tenant_id) pairs for search.
+    Default ``tenant_id=ORG_ID`` limits to the org pool; pass ``tenant_ids`` for UI scope.
     """
     del include_shared_default
-    org_id = tenant_id or ORG_ID
+    if tenant_ids is not None:
+        ids = list(dict.fromkeys(t for t in tenant_ids if t))
+    else:
+        ids = [tenant_id or ORG_ID]
+
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    ph, vals = tenant_in_sql(ids)
 
     if collection_id:
-        conn = db._get_conn()
-        cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, tenant_id FROM document_collections WHERE id = ? AND tenant_id = ?",
-            (collection_id, org_id),
+            f"SELECT id, tenant_id FROM document_collections WHERE id = ? AND tenant_id IN ({ph})",
+            (collection_id, *vals),
         )
         row = cursor.fetchone()
         if not row:
             return []
         return [(row[0], row[1])]
 
-    conn = db._get_conn()
-    cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, tenant_id FROM document_collections WHERE tenant_id = ?",
-        (org_id,),
+        f"SELECT id, tenant_id FROM document_collections WHERE tenant_id IN ({ph})",
+        vals,
     )
     return [(coll_id, owner) for coll_id, owner in cursor.fetchall()]
 
@@ -176,6 +181,7 @@ def search_knowledge(
     retriever,
     query: str,
     tenant_id: str | None = None,
+    tenant_ids: Optional[List[str]] = None,
     collection_id: Optional[str] = None,
     top_k: int = 5,
     mode: str = "chat",
@@ -191,7 +197,10 @@ def search_knowledge(
         return "", []
 
     org_id = tenant_id or ORG_ID
-    targets = list_collection_targets(db, org_id, collection_id=collection_id)
+    if tenant_ids is not None:
+        targets = list_collection_targets(db, tenant_ids=tenant_ids, collection_id=collection_id)
+    else:
+        targets = list_collection_targets(db, tenant_id=org_id, collection_id=collection_id)
     if not targets:
         return "（当前账号下暂无知识库文档）", []
 

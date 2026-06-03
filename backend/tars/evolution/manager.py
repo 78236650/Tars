@@ -16,6 +16,8 @@ from .evaluator import (
 )
 from .optimizer import PersonalityOptimizer, SubAgentOptimizer
 from .prompt_tuner import PromptTuner
+from .case_capture import CaseCapture
+from .case_distiller import CaseDistiller
 
 
 class EvolutionManager:
@@ -34,6 +36,8 @@ class EvolutionManager:
         self._feedback_collector = None
         self._apply_engine = None
         self._orchestrator = None
+        self._case_capture = None
+        self._case_distiller = None
         if db is not None:
             from .feedback_collector import FeedbackCollector
             from .apply_engine import ApplyEngine
@@ -41,6 +45,8 @@ class EvolutionManager:
 
             self._feedback_collector = FeedbackCollector(db)
             self._apply_engine = ApplyEngine(db)
+            self._case_capture = CaseCapture(db)
+            self._case_distiller = CaseDistiller(db, self._case_capture)
             self._orchestrator = EvolutionOrchestrator(
                 db,
                 feedback_collector=self._feedback_collector,
@@ -49,7 +55,10 @@ class EvolutionManager:
                 subagent_optimizer=self.subagent_optimizer,
                 prompt_tuner=self.prompt_tuner,
                 evaluator=self.evaluator,
+                case_distiller=self._case_distiller,
             )
+        else:
+            self._case_capture = CaseCapture(db) if db else None
         
         self._enabled = True
         self._auto_optimize = True
@@ -188,6 +197,24 @@ class EvolutionManager:
                 "user_id": user_id,
             },
         )
+
+        # Self-Evolving Skills: capture agent trajectory as a Case
+        if self._case_capture:
+            try:
+                self._case_capture.record_turn(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    session_id=session_id,
+                    query=query,
+                    tools_used=tools_used,
+                    tool_results=tool_results,
+                    skill_id=skill_id,
+                    subagent=subagent,
+                    success=True,
+                )
+            except Exception as exc:
+                print(f"[Evolution] case_capture.record_turn failed: {exc}")
+
         return evaluation
 
     @property

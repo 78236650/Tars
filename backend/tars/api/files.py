@@ -1,8 +1,9 @@
 """TARS API - 文件上传路由"""
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import Any, Dict
 
 from ..files import FileStorage
+from ._auth import require_authenticated_user, Principal
 
 router = APIRouter(prefix="/api/files", tags=["文件管理"])
 
@@ -18,7 +19,10 @@ def init_file_storage(storage: FileStorage):
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    principal: Principal = Depends(require_authenticated_user),
+):
     """上传文件"""
     if not _storage:
         raise HTTPException(status_code=503, detail="文件存储未初始化")
@@ -35,7 +39,7 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="文件名不能为空")
 
     try:
-        record = await _storage.save(file.filename, content)
+        record = await _storage.save(file.filename, content, user_id=principal.user_id)
         preview = _storage.generate_preview(record)
     except Exception as e:
         import traceback
@@ -56,7 +60,10 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @router.get("/{file_id}")
-async def get_file_info(file_id: str):
+async def get_file_info(
+    file_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     """获取文件信息"""
     if not _storage:
         raise HTTPException(status_code=503, detail="文件存储未初始化")
@@ -64,15 +71,26 @@ async def get_file_info(file_id: str):
     record = _storage.get(file_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"文件 '{file_id}' 不存在")
+    if record.user_id != principal.user_id and not principal.is_admin:
+        raise HTTPException(status_code=403, detail="无权访问此文件")
 
     return {"success": True, "file": record.to_dict()}
 
 
 @router.delete("/{file_id}")
-async def delete_file(file_id: str):
+async def delete_file(
+    file_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
     """删除文件"""
     if not _storage:
         raise HTTPException(status_code=503, detail="文件存储未初始化")
+
+    record = _storage.get(file_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"文件 '{file_id}' 不存在")
+    if record.user_id != principal.user_id and not principal.is_admin:
+        raise HTTPException(status_code=403, detail="无权删除此文件")
 
     if _storage.delete(file_id):
         return {"success": True, "message": "文件已删除"}

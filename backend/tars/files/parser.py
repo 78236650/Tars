@@ -29,6 +29,8 @@ class FileParser:
             return await self.parse_docx(path)
         if ext == ".xlsx":
             return await self.parse_excel(path)
+        if ext == ".pptx":
+            return await self.parse_pptx(path)
 
         return ParsedContent(type="text", text=f"[不支持的文件格式: {ext}]")
 
@@ -115,6 +117,44 @@ class FileParser:
             return ParsedContent(type="text", text="\n".join(lines))
         except Exception as e:
             return ParsedContent(type="text", text=f"[Excel 解析失败: {e}]")
+
+    async def parse_pptx(self, path: Path) -> ParsedContent:
+        """PPTX 提取全部文本（每张幻灯片作为一个段落）"""
+        try:
+            from pptx import Presentation
+            prs = Presentation(str(path))
+            slides_text = []
+            total_len = 0
+            for slide in prs.slides:
+                slide_parts = []
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for para in shape.text_frame.paragraphs:
+                            t = para.text.strip()
+                            if t:
+                                slide_parts.append(t)
+                    if shape.has_table:
+                        table = shape.table
+                        for row in table.rows:
+                            cells = [cell.text.strip() for cell in row.cells]
+                            slide_parts.append(" | ".join(cells))
+                if slide_parts:
+                    slide_block = "\n".join(slide_parts)
+                    if total_len + len(slide_block) > MAX_TEXT_LENGTH:
+                        slides_text.append(slide_block[:MAX_TEXT_LENGTH - total_len])
+                        return ParsedContent(
+                            type="text",
+                            text="\n\n--- 幻灯片 ---\n".join(slides_text),
+                            truncated=True,
+                        )
+                    slides_text.append(slide_block)
+                    total_len += len(slide_block)
+            return ParsedContent(
+                type="text",
+                text="\n\n--- 幻灯片 ---\n".join(slides_text) if slides_text else "[PPTX 文件为空]",
+            )
+        except Exception as e:
+            return ParsedContent(type="text", text=f"[PPTX 解析失败: {e}]")
 
     def _try_ocr(self, path: Path) -> Optional[str]:
         """尝试 OCR，失败则返回 None"""

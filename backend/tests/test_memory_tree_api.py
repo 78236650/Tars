@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from tars.org import ORG_ID
 from tars.memory.entity_id import compute_entity_id
 from tars.memory.tree_builder import (
     EntityTreeBuilder,
@@ -32,7 +33,13 @@ def _seed_memory(
     entity_refs=None,
     compressed_from=None,
 ):
-    memory = db.add_memory(content=content, category=category, importance=importance)
+    memory = db.add_memory(
+        content=content,
+        category=category,
+        importance=importance,
+        tenant_id=ORG_ID,
+        user_id="tree-user",
+    )
     conn = db._get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -54,24 +61,32 @@ def _seed_memory(
 
 
 @pytest.fixture
-def client_and_db(tmp_path):
+def client_and_db(tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     from tars.api.memory import init_memory_api, router
     from tars.api._auth import Principal, require_authenticated_user
+    from tars.config.memory import config as memory_config
     from tars.database import Database
     from tars.memory.manager import MemoryManager
 
+    monkeypatch.setattr(memory_config, "tree_builder_enabled", True)
     db = Database(db_path=str(tmp_path / "tree.db"))
     manager = MemoryManager(db, provider=StubLLMProvider())
     app = FastAPI()
 
-    # Override auth to return a default principal for tests
+    from tars.context import set_request_context
+
     async def _fake_auth():
+        set_request_context("tree-user", ORG_ID)
         return Principal(
-            user_id="default", role="admin", role_template_id="admin",
-            tenant_id="default", is_admin=True, api_key="test-key",
+            user_id="tree-user",
+            role="admin",
+            role_template_id="admin",
+            tenant_id=ORG_ID,
+            is_admin=True,
+            api_key="test-key",
         )
     app.dependency_overrides[require_authenticated_user] = _fake_auth
 
@@ -96,7 +111,7 @@ class TestNormalizeEntityRef:
 class TestEntityTreeBuilder:
     def test_empty_tenant_has_core_only(self, client_and_db):
         _client, db = client_and_db
-        builder = EntityTreeBuilder(db, tenant_id="default")
+        builder = EntityTreeBuilder(db, tenant_id=ORG_ID)
         result = builder.build(include_orphan=False)
         assert result["stats"]["memory_count"] == 0
         assert any(n["id"] == "__core__" for n in result["nodes"])
@@ -119,7 +134,7 @@ class TestEntityTreeBuilder:
             memory_type="longterm",
             entity_refs=[tars_id],
         )
-        result = EntityTreeBuilder(db).build()
+        result = EntityTreeBuilder(db, tenant_id=ORG_ID).build()
         assert result["stats"]["entity_count"] == 2
         person_group = next(n for n in result["nodes"] if n["id"] == "__type:person")
         alice = next(c for c in person_group["children"] if c["id"] == alice_id)
@@ -131,7 +146,7 @@ class TestEntityTreeBuilder:
     def test_orphan_bucket(self, client_and_db):
         _client, db = client_and_db
         _seed_memory(db, content="无实体记忆", entity_refs=[])
-        result = EntityTreeBuilder(db).build()
+        result = EntityTreeBuilder(db, tenant_id=ORG_ID).build()
         assert result["stats"]["orphan_count"] == 1
         assert any(n["id"] == "__orphan__" for n in result["nodes"])
 
@@ -146,7 +161,7 @@ class TestEntityTreeBuilder:
                 memory_type="longterm",
                 entity_refs=[eid],
             )
-        result = EntityTreeBuilder(db, max_per_bucket=30).build()
+        result = EntityTreeBuilder(db, tenant_id=ORG_ID, max_per_bucket=30).build()
         person_group = next(n for n in result["nodes"] if n["id"] == "__type:person")
         bob = person_group["children"][0]
         longterm = next(c for c in bob["children"] if c["meta"]["bucket"] == "longterm")
@@ -171,9 +186,15 @@ class TestMemoryTreeAPI:
         from tars.api._auth import Principal
         from tars.api.memory import _resolve_tree_tenant
 
+        from tars.org import ORG_ID
+
         non_admin = Principal(
-            user_id="alice", role="user", role_template_id="standard",
-            tenant_id="alice", is_admin=False, api_key="k",
+            user_id="alice",
+            role="user",
+            role_template_id="standard",
+            tenant_id=ORG_ID,
+            is_admin=False,
+            api_key="k",
         )
         with pytest.raises(_HTTPException) as exc:
             _resolve_tree_tenant(non_admin, "other")
@@ -232,6 +253,8 @@ class TestMemoryTreeAPI:
         assert any("xyzzy" in (it.get("label") or "").lower() for it in items)
 
     def test_tree_graph(self, client_and_db):
+        from tars.org import ORG_ID
+
         client, db = client_and_db
         from_a = compute_entity_id("person", "GraphA")
         to_b = compute_entity_id("project", "GraphB")
@@ -246,10 +269,10 @@ class TestMemoryTreeAPI:
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT OR REPLACE INTO relations(from_entity, to_entity, predicate, confidence, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO relations(tenant_id, from_entity, to_entity, predicate, confidence, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (from_a, to_b, "works_on", 0.85, "2026-05-19T00:00:00+08:00"),
+            (ORG_ID, from_a, to_b, "works_on", 0.85, "2026-05-19T00:00:00+08:00"),
         )
         conn.commit()
         resp = client.get("/api/memory/tree/graph")
@@ -261,6 +284,8 @@ class TestMemoryTreeAPI:
         assert from_a in ids and to_b in ids
 
     def test_tree_relations(self, client_and_db):
+        from tars.org import ORG_ID
+
         client, db = client_and_db
         from_a = compute_entity_id("person", "A")
         to_b = compute_entity_id("project", "B")
@@ -268,10 +293,10 @@ class TestMemoryTreeAPI:
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT OR REPLACE INTO relations(from_entity, to_entity, predicate, confidence, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO relations(tenant_id, from_entity, to_entity, predicate, confidence, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (from_a, to_b, "works_on", 0.9, "2026-05-19T00:00:00+08:00"),
+            (ORG_ID, from_a, to_b, "works_on", 0.9, "2026-05-19T00:00:00+08:00"),
         )
         conn.commit()
         resp = client.get("/api/memory/tree/relations", params={"entity_id": from_a})

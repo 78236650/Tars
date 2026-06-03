@@ -450,6 +450,35 @@ export interface ChatHistoryMessage {
   timestamp: string
 }
 
+export interface SessionArtifactItem {
+  path: string
+  directory: string
+  name: string
+  source: string
+  task_id?: string
+  task_title?: string
+  workspace_path?: string
+}
+
+export interface SessionArtifactTask {
+  id: string
+  title: string
+  goal: string
+  workspace_path: string
+  status: string
+  artifacts: string[]
+  output_summary?: string | null
+}
+
+export interface SessionArtifactsData {
+  session_id: string
+  workspace_path: string
+  workspace_source: string
+  tasks: SessionArtifactTask[]
+  items: SessionArtifactItem[]
+  total: number
+}
+
 export interface ReminderSummaryLog {
   step: string
   status: string

@@ -138,20 +138,24 @@ def audit_client(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from tars.api.audit import router as audit_router, init_audit_api
 
+    from tests.conftest import setup_admin_auth, setup_main_api_auth
+
     db = Database(str(tmp_path / "audit_api.db"))
     init_audit_api(db)
+    admin_headers, _admin = setup_admin_auth(db)
+    user_headers, _user = setup_main_api_auth(db)
     app = FastAPI()
     app.include_router(audit_router)
-    return TestClient(app), db
+    return TestClient(app), db, admin_headers, user_headers
 
 
 class TestAuditApi:
     def test_admin_can_list_all_tenants(self, audit_client):
-        client, db = audit_client
+        client, db, admin_headers, _user_headers = audit_client
         db.add_audit_log("permission_denied", "tool", tenant_id="user-a", user_id="u1", resource_id="shell")
         db.add_audit_log("permission_denied", "tool", tenant_id="user-b", user_id="u2", resource_id="weather")
 
-        resp = client.get("/api/audit/logs", headers={"X-User-Role": "admin"})
+        resp = client.get("/api/audit/logs", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 2
@@ -161,18 +165,18 @@ class TestAuditApi:
         assert data["items"][0]["ip_address"] == ""
 
     def test_non_admin_forbidden(self, audit_client):
-        client, _ = audit_client
-        resp = client.get("/api/audit/logs", headers={"X-User-Role": "user"})
+        client, _, _admin_headers, user_headers = audit_client
+        resp = client.get("/api/audit/logs", headers=user_headers)
         assert resp.status_code == 403
 
     def test_filter_by_tenant_id(self, audit_client):
-        client, db = audit_client
+        client, db, admin_headers, _user_headers = audit_client
         db.add_audit_log("tool_call:success", "tool", tenant_id="tenant-a", user_id="u1", resource_id="a")
         db.add_audit_log("tool_call:success", "tool", tenant_id="tenant-b", user_id="u2", resource_id="b")
 
         resp = client.get(
             "/api/audit/logs",
-            headers={"X-User-Role": "admin"},
+            headers=admin_headers,
             params={"tenant_id": "tenant-a"},
         )
         assert resp.status_code == 200

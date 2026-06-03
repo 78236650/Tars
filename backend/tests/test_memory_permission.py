@@ -1,5 +1,6 @@
 """Tests for TARS memory permission — Phase 1 Task 6."""
 import pytest
+from tars.org import ORG_ID
 from tars.security.memory_permission import (
     MemoryPermission, MemoryScope, init_memory_permission,
 )
@@ -76,12 +77,12 @@ class TestMemoryPermission:
 
     def test_db_set_scope(self, db_with_scope):
         db = db_with_scope
-        db.set_memory_scope("mem-1", "shared", tenant_id="t1")
-        assert db.get_memory_scope("mem-1", tenant_id="t1") == "shared"
+        db.set_memory_scope("mem-1", "shared", tenant_id=ORG_ID)
+        assert db.get_memory_scope("mem-1", tenant_id=ORG_ID) == "shared"
 
     def test_db_scope_default_private(self, db_with_scope):
         db = db_with_scope
-        assert db.get_memory_scope("mem-1", tenant_id="t1") == "private"
+        assert db.get_memory_scope("mem-1", tenant_id=ORG_ID) == "private"
 
     def test_set_scope_admin_only(self, db_with_scope):
         from tars.security.memory_permission import memory_permission
@@ -93,7 +94,7 @@ class TestMemoryPermission:
         from tars.security.memory_permission import memory_permission
         ok, msg = memory_permission.set_scope("mem-1", "shared", "admin")
         assert ok, msg
-        assert db_with_scope.get_memory_scope("mem-1", tenant_id="t1") == "shared"
+        assert db_with_scope.get_memory_scope("mem-1", tenant_id=ORG_ID) == "shared"
 
     def test_set_scope_invalid_value(self, db_with_scope):
         from tars.security.memory_permission import memory_permission
@@ -114,11 +115,11 @@ def db_with_scope(tmp_path):
         content="Test memory content",
         category="fact",
         importance=0.8,
-        tenant_id="t1",
+        tenant_id=ORG_ID,
         scope="private",
     )
     # Get the just-inserted memory ID
-    mems, _ = db.list_recent_memories(page=1, page_size=1, tenant_id="t1")
+    mems, _ = db.list_all_memories(page=1, page_size=1, tenant_id=ORG_ID)
     # Patch the ID for testing
     if mems:
         conn = db._get_conn()

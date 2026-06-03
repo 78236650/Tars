@@ -19,7 +19,7 @@ except ImportError:
 
 
 NATIVE_TOOL_MODELS = [
-    "qwen3", "qwen2.5", "qwen2", "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long",
+    "qwen3", "qwen35", "qwen2.5", "qwen2", "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long",
     "llama3.1", "llama3.2", "llama3.3",
     "mistral", "mixtral", "command-r",
     "deepseek-chat", "deepseek-coder", "deepseek-v",
@@ -260,9 +260,13 @@ class ToolDispatcher:
     ) -> AsyncGenerator[str, None]:
         """带工具调用的对话，自动处理多轮工具调用循环。
         tools 参数可选，传入时覆盖默认的全部工具 schema。
-        max_rounds 为 None 时不限制轮次；传入正整数时可设上限。"""
+        max_rounds 为 None 时不限制轮次；传入正整数时可设上限。
+        注意：流结束后可通过 self.last_reasoning_content 获取 DeepSeek 推理模型的 reasoning_content。"""
         if self.provider is None:
             raise RuntimeError("ToolDispatcher 未设置 provider")
+
+        # 清空上次推理内容
+        self.last_reasoning_content = None
 
         tools_schemas = tools if tools is not None else self.registry.get_function_schemas()
         use_native = self.supports_native_tools(model_name) and tools_schemas
@@ -285,11 +289,22 @@ class ToolDispatcher:
                     working_messages, stream, response_format=response_format
                 )
 
+            # DeepSeek 推理模型：先提取 reasoning_content（无论是否有工具调用）
+            reasoning = self._extract_reasoning(response, use_native)
+
             tool_call = self._extract_tool_call(response, use_native)
 
             if not tool_call:
                 # 没有工具调用，输出最终文本
                 text = self._extract_text(response, use_native)
+                if reasoning:
+                    self.last_reasoning_content = reasoning
+                    if working_messages and working_messages[-1].get("role") == "user":
+                        working_messages.append({
+                            "role": "assistant",
+                            "content": text or "",
+                            "reasoning_content": reasoning,
+                        })
                 if text:
                     yield text
                     return
@@ -350,7 +365,7 @@ class ToolDispatcher:
             if use_native:
                 import uuid as _uuid
                 call_id = f"call_{_uuid.uuid4().hex[:12]}"
-                working_messages.append({
+                assistant_msg = {
                     "role": "assistant",
                     "content": None,
                     "tool_calls": [{
@@ -358,16 +373,24 @@ class ToolDispatcher:
                         "type": "function",
                         "function": {"name": tool_name, "arguments": arguments},
                     }],
-                })
+                }
+                # DeepSeek 推理模型：工具调用回合也要传回 reasoning_content
+                if reasoning:
+                    self.last_reasoning_content = reasoning
+                    assistant_msg["reasoning_content"] = reasoning
+                working_messages.append(assistant_msg)
                 working_messages.append({
                     "role": "tool",
                     "tool_call_id": call_id,
                     "content": result.output if result.success else (result.error or "执行失败"),
                 })
             else:
+                # DeepSeek 推理模型：非 native 工具调用也保存 reasoning_content
+                if reasoning:
+                    self.last_reasoning_content = reasoning
                 tool_msg = f"工具 `{tool_name}` 执行结果:\n{result.output if result.success else result.error}"
                 working_messages.append({"role": "assistant", "content": f'```json\n{{"tool_call": {{"name": "{tool_name}", "arguments": {json.dumps(arguments, ensure_ascii=False)}}}}}\n```'})
-                working_messages.append({"role": "user", "content": f"[系统] {tool_msg}\n\n请根据工具结果回答用户的问题。"})
+                working_messages.append({"role": "user", "content": f"[系统] {tool_msg}\n\n请根据工具结果回答用户的消息。"})
 
         if max_rounds is not None:
             yield "[工具调用轮次已达上限]"
@@ -412,6 +435,7 @@ class ToolDispatcher:
                 content=content,
                 tool_call_id=m.get("tool_call_id"),
                 tool_calls=m.get("tool_calls"),
+                reasoning_content=m.get("reasoning_content"),  # DeepSeek 推理模型要求传回
             ))
 
         response = await self.provider.chat(
@@ -434,7 +458,11 @@ class ToolDispatcher:
             content = m.get("content")
             if content is None:
                 content = ""
-            chat_messages.append(ChatMessage(role=m["role"], content=content))
+            chat_messages.append(ChatMessage(
+                role=m["role"],
+                content=content,
+                reasoning_content=m.get("reasoning_content"),  # DeepSeek 推理模型要求传回
+            ))
 
         response = await self.provider.chat(
             chat_messages,
@@ -471,16 +499,18 @@ class ToolDispatcher:
             tool_calls = response.get("tool_calls")
             if tool_calls:
                 tc = tool_calls[0]
-                func = tc.get("function", {})
+                func = tc.get("function", {}) or {}
                 name = func.get("name", "")
                 raw_args = func.get("arguments", "{}")
                 if isinstance(raw_args, dict):
-                    args = raw_args
+                    args = {k: v for k, v in raw_args.items() if k != "index"}
                 else:
                     try:
                         args = json.loads(raw_args)
                     except (json.JSONDecodeError, TypeError):
                         args = {}
+                if not name:
+                    return None
                 return (name, args)
 
         # Prompt fallback: 从文本中解析 JSON
@@ -509,6 +539,18 @@ class ToolDispatcher:
             return getattr(response, "content", "") or ""
 
         return ""
+
+    def _extract_reasoning(self, response: Any, native: bool) -> Optional[str]:
+        """从响应中提取 reasoning_content（DeepSeek 推理模型）"""
+        if isinstance(response, dict):
+            # OpenAI 格式
+            choices = response.get("choices", [])
+            if choices:
+                message = choices[0].get("message", {})
+                return message.get("reasoning_content")
+            # 简化格式
+            return response.get("reasoning_content")
+        return None
 
     def _parse_tool_call_from_text(self, text: str) -> Optional[Tuple[str, Dict]]:
         """从文本中解析 JSON 格式的工具调用"""

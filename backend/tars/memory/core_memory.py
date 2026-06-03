@@ -51,15 +51,24 @@ class CoreMemoryManager:
             return ""
         conn = self.db._get_conn()
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT content FROM core_memory_blocks
-            WHERE name = ? AND tenant_id = ? AND user_id = ?
-            """,
-            (block, self.tenant_id, self._user_id()),
-        )
-        row = cur.fetchone()
-        return row[0] if row else ""
+        uid = self._user_id()
+        for tenant_id, user_key in (
+            (self.tenant_id, uid),
+            (uid, "default"),  # legacy: tenant_id held user scope key
+            (ORG_ID, "default"),
+            (ORG_ID, uid),
+        ):
+            cur.execute(
+                """
+                SELECT content FROM core_memory_blocks
+                WHERE name = ? AND tenant_id = ? AND user_id = ?
+                """,
+                (block, tenant_id, user_key),
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0]
+        return ""
 
     def get_all(self) -> Dict[str, str]:
         return {name: self.get(name) for name in BLOCK_NAMES}

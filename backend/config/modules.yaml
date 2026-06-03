@@ -40,6 +40,10 @@ modules:
       enabled: true
       description: "多 Agent 调度任务（编排记忆可视）"
       routes: ["/api/orchestration"]
+    presales:
+      enabled: true
+      description: "售前管理 — 需求调研、方案撰写、历史资料库、汇报PPT"
+      routes: ["/api/presales"]
 
 # v4.3.2 Superpowers integration
 skill_routing:
