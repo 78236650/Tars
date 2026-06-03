@@ -37,6 +37,24 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    volumes:
+      - ./searxng/core-config/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng/
+    networks:
+      - internal
+    environment:
+      SEARXNG_BIND_ADDRESS: "0.0.0.0"
+      SEARXNG_PORT: "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/search?q=test&format=json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
   backend:
     build:
       context: ..
@@ -54,6 +72,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://tars:tars@postgres:5432/tars}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+      - SEARXNG_URL=http://searxng:8080
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -63,6 +82,8 @@ services:
       postgres:
         condition: service_healthy
       chromadb:
+        condition: service_healthy
+      searxng:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -94,3 +115,4 @@ volumes:
   tars-data:
   tars-pg-data:
   tars-chroma-data:
+  searxng-cache:
