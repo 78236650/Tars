@@ -37,7 +37,12 @@
 
       <!-- 原音频播放 -->
       <div v-if="transcription.has_audio || audioUrl || audioLoading" class="section audio-section">
-        <h3 class="section-title"><BaseIcon icon="lucide:volume-2" :size="16" /> {{ t('meeting.originalAudio') }}</h3>
+        <div class="audio-header">
+          <h3 class="section-title"><BaseIcon icon="lucide:volume-2" :size="16" /> {{ t('meeting.originalAudio') }}</h3>
+          <a v-if="audioUrl" :href="audioUrl" download class="audio-download-btn" :title="t('meeting.downloadAudio')">
+            <BaseIcon icon="lucide:download" :size="16" />
+          </a>
+        </div>
         <p v-if="audioLoading" class="audio-hint">{{ t('meeting.audioLoading') }}</p>
         <audio
           v-else-if="audioUrl"
@@ -874,6 +879,32 @@ function formatDate(iso: string | null): string {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(245, 158, 11, 0.12);
   border-radius: 8px;
+}
+
+.audio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.audio-download-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #a8a29e;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.audio-download-btn:hover {
+  background: rgba(217, 119, 6, 0.15);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: #fbbf24;
 }
 
 .audio-player {
