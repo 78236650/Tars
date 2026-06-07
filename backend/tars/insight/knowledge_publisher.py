@@ -144,14 +144,6 @@ class KnowledgePublisher:
             tenant_id=tenant_id,
         )
         if isinstance(result, dict) and result.get("status") in ("indexed", "no_chunks", "empty"):
-            if metric_ids:
-                from ..knowledge.sqlite_store import set_document_metadata
-
-                set_document_metadata(
-                    self.db,
-                    doc_id,
-                    {"metric_ids": metric_ids, "datasource_id": datasource_id},
-                )
             return doc_id
         logger.warning(
             "[InsightForge] knowledge indexing failed for ds=%s: %s", datasource_id, result

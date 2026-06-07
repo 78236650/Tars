@@ -7,7 +7,6 @@ from typing import Any
 
 from tars.database.models import get_local_now
 from tars.database.sql_dialect import insert_upsert
-from tars.knowledge.schema import org_tenant_id
 
 
 def _exec(cursor, sql: str, params: tuple[Any, ...] | None = None) -> None:
@@ -1023,7 +1022,5 @@ def init_schema_postgres(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_agent_cases_distilled "
         "ON agent_cases(tenant_id, distilled, success)",
     )
-
-    _ = org_tenant_id()
 
     conn.commit()

@@ -919,8 +919,6 @@ class ConnectionManager:
 
         run_insight_ins2_migrations(cursor)
 
-        from tars.knowledge.schema import ensure_knowledge_schema_on_conn
-
-        ensure_knowledge_schema_on_conn(conn)
+        # knowledge schema tables preserved in-place, module removed
 
         conn.commit()

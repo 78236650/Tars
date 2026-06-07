@@ -55,7 +55,7 @@ class WikiCompiler:
             index=index,
             pages=", ".join(pages) if pages else "(空)",
             source_label=source_label,
-            source_text=source_text[:3000],
+            source_text=source_text[:12000],
         )
 
         raw = await self.llm_provider(prompt)

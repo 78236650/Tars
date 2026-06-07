@@ -59,7 +59,6 @@ from tars.api.invoke import router as invoke_router, init_invoke_api
 from tars.api.bi import router as bi_router, init_bi_api
 from tars.insight.api import router as insight_router
 from tars.insight.api.router import init_insight_api
-from tars.api.knowledge import router as knowledge_router, init_knowledge_api, init_wiki_upload_routing
 from tars.api.wiki import create_wiki_router
 from tars.api.meeting import router as meeting_router, init_meeting_api
 from tars.api.memory import router as memory_router, init_memory_api, set_memory_provider_resolver
@@ -278,6 +277,7 @@ from tars.wiki.router import WikiRagRouter
 from tars.tools.builtin.wiki_read import WikiReadTool
 from tars.tools.builtin.wiki_write import WikiWriteTool
 from tars.tools.builtin.wiki_search import WikiSearchTool
+from tars.tools.builtin.wiki_search import WikiSearchTool
 
 _wiki_data_dir = Path(__file__).resolve().parent.parent / "data" / "wiki"
 wiki_store = WikiStore(wiki_dir=_wiki_data_dir)
@@ -296,6 +296,7 @@ def _init_wiki_after_agent() -> None:
     wiki_event_handler = WikiEventHandler(compiler=wiki_compiler)
     tool_registry.register(WikiReadTool(store=wiki_store))
     tool_registry.register(WikiWriteTool(store=wiki_store))
+    tool_registry.register(WikiSearchTool(store=wiki_store))
     tool_registry.register(WikiSearchTool(store=wiki_store))
     app.include_router(create_wiki_router(wiki_store), prefix="/api/wiki")
     if module_registry.is_enabled("meeting"):
@@ -421,8 +422,6 @@ if module_registry.is_enabled("insight"):
         app.include_router(insight_router)
     else:
         print(f"[Startup] InsightForge 未加载: {msg}")
-if module_registry.is_enabled("knowledge"):
-    app.include_router(knowledge_router)
 if module_registry.is_enabled("meeting"):
     app.include_router(meeting_router)
 if module_registry.is_enabled("orchestration"):
@@ -439,21 +438,12 @@ else:
     print("[Startup] BI 分析台模块已禁用 (config/modules.yaml → bi.enabled)")
 if module_registry.is_enabled("insight") and module_registry.check_dependencies("insight")[0]:
     _insight_indexer = None
-    if module_registry.is_enabled("knowledge"):
-        try:
-            from tars.knowledge.indexer import KnowledgeIndexer
-
-            _insight_indexer = KnowledgeIndexer(vector_store, embedding_provider, db=db)
-        except Exception as _e:
-            print(f"[Startup] InsightForge knowledge indexer unavailable: {_e}")
-    init_insight_api(db, knowledge_indexer=_insight_indexer, feedback_collector=evolution_manager.feedback_collector)
+    init_insight_api(db, knowledge_indexer=None, feedback_collector=evolution_manager.feedback_collector)
     from tars.insight.version import INS_VERSION
     print(f"[Startup] InsightForge 鉴数已启用 ({INS_VERSION})")
 elif module_registry.is_enabled("insight"):
-    print("[Startup] InsightForge 已配置但依赖未满足 (需要 bi + knowledge)")
-if module_registry.is_enabled("knowledge"):
-    from tars.knowledge.config import load_knowledge_config
-    init_knowledge_api(db, vector_store, embedding_provider, knowledge_config=load_knowledge_config())
+    print("[Startup] InsightForge 已配置但依赖未满足 (需要 bi)")
+
 if module_registry.is_enabled("meeting"):
     init_meeting_api(db, meeting_tool, vector_store, embedding_provider)
 else:
