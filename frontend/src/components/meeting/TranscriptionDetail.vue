@@ -850,12 +850,12 @@ function formatDate(iso: string | null): string {
   font-size: 14px;
   line-height: 1.8;
   color: #a8a29e;
-  white-space: pre-wrap;
   background: rgba(255,255,255,0.03);
   border-radius: 8px;
   padding: 16px;
   max-height: 400px;
   overflow-y: auto;
+  word-break: break-word;
 }
 
 .error-box {

@@ -115,7 +115,12 @@ def transcribe(
             texts.append(seg_text)
             segment_list.append({"start": seg.start, "end": seg.end, "text": seg_text})
 
-        raw_joined = "\n".join(texts).strip()
+        # 智能拼接：连续段落不强制换行，段落间加空格
+        raw_joined = "".join(
+            (t if (t.endswith("。") or t.endswith("！") or t.endswith("？") or t.endswith(".") or t.endswith("!") or t.endswith("?"))
+             else t + " ")
+            for t in texts
+        ).strip()
         cleaned = filter_whisper_hallucinations(raw_joined, initial_prompt=prompt)
         to_simplified = str(cfg.get("output_script", "simplified")).lower() == "simplified"
         full_text = normalize_transcript_text(cleaned, to_simplified=to_simplified)

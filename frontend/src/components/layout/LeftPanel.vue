@@ -207,7 +207,7 @@ const openReminderNotifications = async () => {
       </span>
       <span class="text-[10px] text-stone-400 truncate">{{ authStore.user?.username || '' }}</span>
       <button
-        @click="authStore.logout(); router.push('/login')"
+        @click="authStore.logout()"
         class="ml-auto text-stone-500 hover:text-red-400 transition-colors p-0.5 rounded hover:bg-red-500/10 flex-shrink-0"
         :title="t('sidebar.logout')"
       >

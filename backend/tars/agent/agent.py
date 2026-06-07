@@ -996,7 +996,7 @@ class AgentV2:
 
     READONLY_TOOLS = {
         "weather", "file", "file_list", "memory", "web_search", "web_fetch",
-        "knowledge_search", "read_wiki", "write_wiki",
+        "wiki_search", "read_wiki", "write_wiki",
     }
 
     def _is_readonly_mode(self) -> bool:

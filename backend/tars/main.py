@@ -79,7 +79,7 @@ from tars.cron import CronRuntime
 # 初始化应用
 app = FastAPI(
     title="PortMeta Agent",
-    version="5.0.3",
+    version="5.0.4",
     description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 
@@ -109,7 +109,7 @@ _StarletteRequest.form = _patched_form
 # ── Health check (no auth, before middleware) ────────────────────────
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "5.0.3"}
+    return {"status": "ok", "version": "5.0.4"}
 
 # 初始化组件
 db = Database()
@@ -270,12 +270,6 @@ tenant_context_cache = TenantContextCache(max_size=100)
 for tool in memory_manager.get_tools():
     tool_registry.register(tool)
 
-# 注册知识库搜索工具
-from tars.tools.builtin.knowledge_search import KnowledgeSearchTool
-from tars.knowledge.retriever import KnowledgeRetriever
-knowledge_retriever = KnowledgeRetriever(vector_store, embedding_provider)
-tool_registry.register(KnowledgeSearchTool(retriever=knowledge_retriever, db=db))
-
 # ========= Wiki 系统 =========
 from tars.wiki.store import WikiStore
 from tars.wiki.compiler import WikiCompiler
@@ -283,6 +277,7 @@ from tars.wiki.events import WikiEventHandler
 from tars.wiki.router import WikiRagRouter
 from tars.tools.builtin.wiki_read import WikiReadTool
 from tars.tools.builtin.wiki_write import WikiWriteTool
+from tars.tools.builtin.wiki_search import WikiSearchTool
 
 _wiki_data_dir = Path(__file__).resolve().parent.parent / "data" / "wiki"
 wiki_store = WikiStore(wiki_dir=_wiki_data_dir)
@@ -301,9 +296,8 @@ def _init_wiki_after_agent() -> None:
     wiki_event_handler = WikiEventHandler(compiler=wiki_compiler)
     tool_registry.register(WikiReadTool(store=wiki_store))
     tool_registry.register(WikiWriteTool(store=wiki_store))
+    tool_registry.register(WikiSearchTool(store=wiki_store))
     app.include_router(create_wiki_router(wiki_store), prefix="/api/wiki")
-    if module_registry.is_enabled("knowledge"):
-        init_wiki_upload_routing(wiki_event_handler, wiki_router=wiki_router)
     if module_registry.is_enabled("meeting"):
         from tars.api.meeting import set_meeting_wiki_handler
         set_meeting_wiki_handler(wiki_event_handler)
@@ -330,7 +324,7 @@ agent = AgentV2(
     file_storage=file_storage, file_parser=file_parser,
     memory_manager=memory_manager,
     task_executor=task_executor,
-    knowledge_retriever=knowledge_retriever,
+    # knowledge_retriever removed — use wiki_search instead
     evolution_manager=evolution_manager,
     wiki_store=wiki_store,
 )

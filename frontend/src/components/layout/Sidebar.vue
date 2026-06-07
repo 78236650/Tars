@@ -257,7 +257,7 @@ const groupedSessions = computed(() => {
           <span class="text-xs text-stone-400 truncate">{{ authStore.user?.username || '' }}</span>
         </div>
         <button
-          @click="authStore.logout(); router.push('/login')"
+          @click="authStore.logout()"
           class="text-[10px] text-stone-500 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10 flex-shrink-0"
           :title="t('sidebar.logout')"
         >

@@ -13,6 +13,25 @@ interface VersionSection {
 
 const versions: VersionSection[] = [
   {
+    version: 'v5.0.4',
+    subtitle: 'Wiki 知识体系 + 模型升级',
+    releaseDateKey: 'settings.changelog.v504ReleaseDate',
+    features: [
+      'settings.changelog.v504.feature1',
+      'settings.changelog.v504.feature2',
+      'settings.changelog.v504.feature3',
+      'settings.changelog.v504.feature4',
+    ],
+    improvements: [
+      'settings.changelog.v504.improvement1',
+      'settings.changelog.v504.improvement2',
+      'settings.changelog.v504.improvement3',
+      'settings.changelog.v504.improvement4',
+      'settings.changelog.v504.improvement5',
+      'settings.changelog.v504.improvement6',
+    ],
+  },
+  {
     version: 'v4.3.2',
     subtitle: 'Superpowers Integration',
     releaseDateKey: 'settings.changelog.v432ReleaseDate',

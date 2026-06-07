@@ -29,7 +29,12 @@ def filter_whisper_hallucinations(text: str, *, initial_prompt: str = "") -> str
             continue
         lines.append(line)
         prev = line
-    return "\n".join(lines)
+    # 智能拼接：仅句末标点后保持自然停顿
+    return "".join(
+        (l if (l.endswith("。") or l.endswith("！") or l.endswith("？") or l.endswith(".") or l.endswith("!") or l.endswith("?"))
+         else l + " ")
+        for l in lines
+    )
 
 
 def normalize_transcript_text(text: str, *, to_simplified: bool = True) -> str:

@@ -81,6 +81,8 @@ export const useAuthStore = defineStore('auth', () => {
     clearAccessToken()
     clearApiKey()
     localStorage.removeItem('auth_user')
+    // 强制跳转到登录页
+    window.location.href = '/login'
   }
 
   const initAuth = async () => {

@@ -304,7 +304,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': '当前模型',
-    'sidebar.version': 'TARS v5.0.3',
+    'sidebar.version': 'TARS v5.0.4',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': '自定义模型',
     'sidebar.openrouter': 'OpenRouter',
@@ -871,6 +871,21 @@ export const messages: Record<string, Record<string, string>> = {
     'settings.changelog.improvement4': 'Provider API：GET /api/providers + POST /api/providers/{name}/test',
     'settings.changelog.improvement5': '模块 API：GET /api/modules 查看各模块启用状态',
     'settings.changelog.improvement6': '记忆权限：scope 字段 (private/shared) + 管理员跨租户管理',
+
+    // v5.0.4
+    'settings.changelog.v504ReleaseDate': '发布日期: 2026-06-07',
+    'settings.changelog.v504Title': 'v5.0.4 — Wiki 知识体系 + 模型配置升级',
+    'settings.changelog.v504.feature1': 'Wiki 升级：树状分类（会议纪要/鉴数知识/对话精华/文档上传）、全文搜索、Markdown 编辑与删除',
+    'settings.changelog.v504.feature2': '知识库迁移：移除内置 RAG 模块，文档 → Wiki 编译，会议审批 → Wiki 自动入库',
+    'settings.changelog.v504.feature3': '模型配置升级：新增 OpenAI 官方 / 自定义 Provider，协议选择、能力标记、参数级自定义',
+    'settings.changelog.v504.feature4': '数据库迁移：endpoints 表新增 13 列（protocol / capabilities / timeout / headers / extra_body）',
+    'settings.changelog.v504.improvement1': 'Agent 工具 34 个：新增 wiki_search，移除 knowledge_search',
+    'settings.changelog.v504.improvement2': '会议助手：摘要生成模型改为可配置，审核存入 Wiki 直接写入（不依赖 LLM 编译器）',
+    'settings.changelog.v504.improvement3': '审计日志：每天凌晨 3 点自动清理 90 天前记录',
+    'settings.changelog.v504.improvement4': '退出登录：修复退出后未跳转登录页的问题',
+    'settings.changelog.v504.improvement5': '作业调度：修复 orchestrate() 异常未捕获、adopt() 字符串双空格',
+    'settings.changelog.v504.improvement6': '多处 UI 优化：Wiki 树状导航、模型端点协议标签、会议列表日期命名',
+
     'settings.changelog.v410ReleaseDate': '发布日期: 2026-05-19',
     'settings.changelog.v410.feature1': 'SkillHub 三源目录：内置 / skills.sh / GitHub，一键安装与重装',
     'settings.changelog.v410.feature2': 'SkillRouter 按需注入：消息语义匹配技能，/skill list|find|off 命令',
@@ -1708,7 +1723,7 @@ export const messages: Record<string, Record<string, string>> = {
 
     // Sidebar
     'sidebar.currentModel': 'Current Model',
-    'sidebar.version': 'TARS v5.0.3',
+    'sidebar.version': 'TARS v5.0.4',
     'sidebar.ollama': 'Ollama',
     'sidebar.custom': 'Custom',
     'sidebar.openrouter': 'OpenRouter',
