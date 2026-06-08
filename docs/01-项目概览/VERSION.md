@@ -2,6 +2,16 @@
 
 > **单一真相源**：对外说明「当前是什么版本」以本文件为准；`changelog` / `release-notes` / 根 `README` 均引用此处。
 
+## 规划中（未发布）
+
+| 项 | 值 |
+|----|-----|
+| **v5.0.5** 「安全加固 + 企业级就绪」 | 文档就绪、代码待启动 |
+| 由来 | v5.0.4 企业级审计（49 agent，39 条确认问题）|
+| 文档入口 | [v5.0.5-README](./v5.0.5-README.md) · [设计](../superpowers/plans/2026-06-07-tars-v5.0.5-security-hardening-design.md) · [开发步骤](../03-实施计划/v5.0.5-development-steps.md) · [执行计划](../03-实施计划/v5.0.5-execution-plan.md) |
+
+> ⚠️ **SSOT 校准待办**：本文件标当前为 v5.0.3，但 `backend/tars/main.py` OpenAPI 已是 `5.0.4`（changelog 亦缺 v5.0.4 条目）。发版 v5.0.5 时需一并补齐 v5.0.4 记录并校准版本号。
+
 ## 当前（稳定版）
 
 | 项 | 值 |
