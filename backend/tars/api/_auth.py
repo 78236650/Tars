@@ -28,6 +28,7 @@ from fastapi import Depends, Header, HTTPException
 
 from ..gateway.jwt_auth import decode_access_token
 from ..org import ORG_ID
+from ..security.audit import safe_audit
 
 
 def _normalize_role(role: Any) -> str:
@@ -65,24 +66,64 @@ def _principal_from_jwt(
     try:
         claims = decode_access_token(token)
     except jwt.PyJWTError:
+        safe_audit(
+            lambda lg: lg.log_login(
+                success=False,
+                tenant_id=ORG_ID,
+                detail="jwt: invalid or expired token",
+            )
+        )
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     jti = claims.get("jti")
     if jti and auth_token_store is not None and auth_token_store.is_token_revoked(jti):
+        _uid = claims.get("sub") or "unknown"
+        safe_audit(
+            lambda lg: lg.log_login(
+                user_id=_uid,
+                success=False,
+                tenant_id=ORG_ID,
+                detail="jwt: token revoked",
+            )
+        )
         raise HTTPException(status_code=401, detail="Token revoked")
 
     user_id = claims.get("sub")
     if not user_id:
+        safe_audit(
+            lambda lg: lg.log_login(
+                success=False,
+                tenant_id=ORG_ID,
+                detail="jwt: missing subject claim",
+            )
+        )
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     user = user_store.get_user_by_id(user_id)
     if user is None:
+        safe_audit(
+            lambda lg: lg.log_login(
+                user_id=user_id,
+                success=False,
+                tenant_id=ORG_ID,
+                detail="jwt: user not found",
+            )
+        )
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     role_value = _normalize_role(getattr(user, "role", None))
     is_admin = _is_admin_role(getattr(user, "role", None))
 
     if role_header == "admin" and not is_admin:
+        safe_audit(
+            lambda lg: lg.log_permission_denied(
+                resource="X-User-Role:admin",
+                resource_type="auth",
+                tenant_id=ORG_ID,
+                user_id=user.id,
+                reason="non-admin user requested admin role header",
+            )
+        )
         raise HTTPException(
             status_code=403,
             detail="X-User-Role admin requires admin api key",
@@ -108,12 +149,28 @@ def _principal_from_api_key(
 
     user = user_store.get_user_by_api_key(api_key)
     if user is None:
+        safe_audit(
+            lambda lg: lg.log_login(
+                success=False,
+                tenant_id=ORG_ID,
+                detail="api_key: invalid key",
+            )
+        )
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     role_value = _normalize_role(getattr(user, "role", None))
     is_admin = _is_admin_role(getattr(user, "role", None))
 
     if role_header == "admin" and not is_admin:
+        safe_audit(
+            lambda lg: lg.log_permission_denied(
+                resource="X-User-Role:admin",
+                resource_type="auth",
+                tenant_id=ORG_ID,
+                user_id=user.id,
+                reason="non-admin user requested admin role header",
+            )
+        )
         raise HTTPException(
             status_code=403,
             detail="X-User-Role admin requires admin api key",
@@ -158,6 +215,13 @@ def resolve_authenticated_principal(
         return _principal_from_jwt(bearer, role_header, user_store, auth_token_store)
 
     if not api_key:
+        safe_audit(
+            lambda lg: lg.log_login(
+                success=False,
+                tenant_id=ORG_ID,
+                detail="missing authentication (no bearer / api key)",
+            )
+        )
         raise HTTPException(status_code=401, detail="Missing authentication")
 
     return _principal_from_api_key(api_key, role_header, user_store)
@@ -200,6 +264,15 @@ async def require_admin(
     principal: Principal = Depends(require_authenticated_user),
 ) -> Principal:
     if not principal.is_admin:
+        safe_audit(
+            lambda lg: lg.log_permission_denied(
+                resource="admin",
+                resource_type="auth",
+                tenant_id=principal.tenant_id,
+                user_id=principal.user_id,
+                reason="admin role required",
+            )
+        )
         raise HTTPException(status_code=403, detail="Admin role required")
     return principal
 
@@ -236,6 +309,15 @@ def require_module(module_name: str):
             if role_template_manager and not role_template_manager.can_access_module(
                 principal.role_template_id, module_name
             ):
+                safe_audit(
+                    lambda lg: lg.log_permission_denied(
+                        resource=module_name,
+                        resource_type="module",
+                        tenant_id=principal.tenant_id,
+                        user_id=principal.user_id,
+                        reason=f"role cannot access module {module_name}",
+                    )
+                )
                 raise HTTPException(
                     status_code=403,
                     detail=f"Role cannot access module {module_name}",

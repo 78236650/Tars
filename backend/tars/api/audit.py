@@ -41,11 +41,11 @@ def _format_resource(log) -> str:
 
 @router.get("/logs")
 def list_audit_logs(
-    action: str = Query(""),
-    action_group: str = Query(""),
-    user_id: str = Query(""),
-    resource_type: str = Query(""),
-    tenant_id: str = Query(""),
+    action: str = Query("", max_length=255),
+    action_group: str = Query("", max_length=64),
+    user_id: str = Query("", max_length=255),
+    resource_type: str = Query("", max_length=128),
+    tenant_id: str = Query("", max_length=255),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     principal: Principal = Depends(require_admin),

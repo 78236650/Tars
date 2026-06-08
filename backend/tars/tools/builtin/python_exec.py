@@ -3,9 +3,76 @@ import asyncio
 import os
 import sys
 import tempfile
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ..base import BaseTool, ToolResult
+
+
+# 注入到用户代码前的安全前导：覆写 open 校验绝对路径、拦截危险调用。
+_GUARD_PREAMBLE = '''# -*- coding: utf-8 -*-
+import builtins as _b
+import os as _os
+
+_ALLOWED_DIRS = {allowed_dirs!r}
+
+
+def _path_allowed(_p):
+    try:
+        _rp = _os.path.realpath(_os.fspath(_p))
+    except Exception:
+        return True
+    if not _os.path.isabs(str(_p)):
+        return True
+    for _base in _ALLOWED_DIRS:
+        try:
+            _rbase = _os.path.realpath(_base)
+        except Exception:
+            continue
+        if _rp == _rbase or _rp.startswith(_rbase + _os.sep):
+            return True
+    return False
+
+
+_orig_open = _b.open
+
+
+def _guarded_open(file, mode="r", *args, **kwargs):
+    if isinstance(file, (str, bytes, _os.PathLike)) and not _path_allowed(file):
+        raise PermissionError(
+            "禁止访问 workspace 外的绝对路径: %s" % (file,)
+        )
+    return _orig_open(file, mode, *args, **kwargs)
+
+
+_b.open = _guarded_open
+
+# 拦截可绕过 open 守卫的进程级调用
+def _blocked(*_a, **_k):
+    raise PermissionError("沙箱内禁止调用该函数（可能绕过路径限制）")
+
+
+_os.system = _blocked
+if hasattr(_os, "popen"):
+    _os.popen = _blocked
+
+# 危险 import 告警
+_orig_import = _b.__import__
+
+
+def _guarded_import(name, *args, **kwargs):
+    if name.split(".")[0] in ("subprocess",):
+        import sys as _sys
+        print(
+            "[sandbox warning] 已 import %s，注意：绕过沙箱路径限制的操作会被拒绝" % name,
+            file=_sys.stderr,
+        )
+    return _orig_import(name, *args, **kwargs)
+
+
+_b.__import__ = _guarded_import
+# ===== 用户代码开始 =====
+'''
+
 
 
 class PythonExecTool(BaseTool):
@@ -41,15 +108,27 @@ class PythonExecTool(BaseTool):
         timeout = kwargs.get("timeout", 30)
         _workspace_dir = kwargs.get("_workspace_dir", self.workspace_dir)
         _tmp_dir = kwargs.get("_tmp_dir", _workspace_dir)
+        _allowed_dirs = kwargs.get("_allowed_dirs")
 
         if not code:
             return ToolResult(success=False, output="", error="请提供 Python 代码")
+
+        # 计算受限的 allowed_dirs：默认 workspace + tmp + 显式 allowed_dirs。
+        allowed: List[str] = []
+        for d in (_allowed_dirs or []):
+            if d:
+                allowed.append(str(d))
+        for d in (_workspace_dir, _tmp_dir):
+            if d and str(d) not in allowed:
+                allowed.append(str(d))
+
+        guarded_code = _GUARD_PREAMBLE.format(allowed_dirs=allowed) + "\n" + code
 
         # 写临时文件避免 shell 转义
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False, dir=_tmp_dir, encoding="utf-8"
         ) as f:
-            f.write(code)
+            f.write(guarded_code)
             tmp_path = f.name
 
         try:

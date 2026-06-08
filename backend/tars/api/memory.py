@@ -147,11 +147,11 @@ def _memory_to_dict(memory) -> Dict[str, Any]:
 
 
 class UpdateCoreBlockRequest(BaseModel):
-    content: str = ""
+    content: str = Field(default="", max_length=10000)
 
 
 class UpdateMemoryRequest(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=100000)
 
 
 class PinRequest(BaseModel):
@@ -532,7 +532,7 @@ async def export_memories(
 
 
 class MemoryImportRequest(BaseModel):
-    markdown: str = Field(..., description="Markdown text to import")
+    markdown: str = Field(..., max_length=5 * 1024 * 1024, description="Markdown text to import")
 
 
 @router.post("/import")

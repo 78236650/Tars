@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
 from ..channels.base import Channel, ChannelMessage
+from ..gateway.rate_limit import RateLimiter
 from ..tenant.context import TenantContextCache
 
 
@@ -18,15 +19,25 @@ _tenant_cache: Optional[TenantContextCache] = None
 _memory_manager = None
 _user_store = None
 _pipeline_engine = None
+_rate_limiter: Optional[RateLimiter] = None
 
 
-def init_invoke_api(agent, tenant_cache: TenantContextCache, memory_manager, user_store=None, pipeline_engine=None) -> None:
-    global _agent, _tenant_cache, _memory_manager, _user_store, _pipeline_engine
+def init_invoke_api(
+    agent,
+    tenant_cache: TenantContextCache,
+    memory_manager,
+    user_store=None,
+    pipeline_engine=None,
+    rate_limiter: Optional[RateLimiter] = None,
+) -> None:
+    global _agent, _tenant_cache, _memory_manager, _user_store, _pipeline_engine, _rate_limiter
     _agent = agent
     _tenant_cache = tenant_cache
     _memory_manager = memory_manager
     _user_store = user_store
     _pipeline_engine = pipeline_engine
+    # 默认内存限流器（单进程部署）。RateLimiter 默认 30 req/min、500 req/hour，per-user 桶容量 10。
+    _rate_limiter = rate_limiter or RateLimiter()
 
 
 def _extract_api_key(authorization: Optional[str]) -> Optional[str]:
@@ -122,6 +133,13 @@ async def invoke(
         user = _user_store.get_user_by_api_key(api_key)
         if user is None:
             raise HTTPException(status_code=401, detail="无效的 API Key")
+
+    # 速率限制（内存令牌桶；单进程部署）。超限返回 429。
+    if _rate_limiter is not None:
+        rate_key = getattr(user, "id", None) or api_key or "anonymous"
+        allowed, reason = _rate_limiter.check_rate_limit(rate_key)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=reason)
 
     from ..org import ORG_ID
 

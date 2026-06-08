@@ -196,6 +196,8 @@ class ToolDispatcher:
             return result
 
         # v4.0.1: 注入 per-tenant workspace 路径
+        # v5.0.5(S3): 高危工具 fail-closed —— workspace 隔离不可用时拒绝执行
+        _high_risk_tools = ("shell", "python_exec", "file_write")
         try:
             from .tenant_workspace import tenant_workspace_manager
             if tenant_workspace_manager:
@@ -205,8 +207,23 @@ class ToolDispatcher:
                 context["_workspace_dir"] = str(tenant_workspace_manager.get_workspace(tenant_id))
                 context["_tmp_dir"] = str(tenant_workspace_manager.get_tmp_dir(tenant_id))
                 context["_allowed_dirs"] = tenant_workspace_manager.get_allowed_dirs(tenant_id, user_role)
-        except Exception:
-            pass
+            elif tool_name in _high_risk_tools:
+                result = ToolResult(
+                    success=False,
+                    output="",
+                    error="workspace 隔离不可用，已拒绝执行高危工具",
+                )
+                self._record_evolution_feedback(context, tool_name, False)
+                return result
+        except Exception as exc:
+            if tool_name in _high_risk_tools:
+                result = ToolResult(
+                    success=False,
+                    output="",
+                    error=f"workspace 隔离初始化失败，已拒绝执行高危工具: {exc}",
+                )
+                self._record_evolution_feedback(context, tool_name, False)
+                return result
 
         try:
             merged_arguments = dict(arguments)
@@ -392,8 +409,7 @@ class ToolDispatcher:
                 working_messages.append({"role": "assistant", "content": f'```json\n{{"tool_call": {{"name": "{tool_name}", "arguments": {json.dumps(arguments, ensure_ascii=False)}}}}}\n```'})
                 working_messages.append({"role": "user", "content": f"[系统] {tool_msg}\n\n请根据工具结果回答用户的消息。"})
 
-        if max_rounds is not None:
-            yield "[工具调用轮次已达上限]"
+        # 不限制工具调用轮次，由模型自主决定何时完成
 
     def _inject_tool_prompt(self, messages: List[Dict]) -> List[Dict]:
         """为不支持 function calling 的模型注入工具提示到 system prompt"""

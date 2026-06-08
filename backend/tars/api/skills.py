@@ -4,9 +4,12 @@ from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 
 from ..skills import skill_registry, SkillType
-from ._auth import Principal, require_authenticated_user
+from ._auth import Principal, require_admin, require_module
 
 router = APIRouter(prefix="/api/skills", tags=["技能管理"])
+
+_require_skills = require_module("skills")
+router.dependencies = [Depends(_require_skills)]
 
 _skill_loader = None
 _tool_registry = None
@@ -28,7 +31,7 @@ class CreatePromptSkillRequest(BaseModel):
 
 
 @router.get("/")
-async def list_skills(principal: Principal = Depends(require_authenticated_user)):
+async def list_skills(principal: Principal = Depends(_require_skills)):
     """列出当前用户可见的已安装技能（per-user skill scope key）。"""
     scope_key = principal.user_id
     skills = skill_registry.list_for_tenant(scope_key)
@@ -100,7 +103,7 @@ async def activate_skill(skill_id: str):
 @router.get("/{skill_id}")
 async def get_skill(
     skill_id: str,
-    principal: Principal = Depends(require_authenticated_user),
+    principal: Principal = Depends(_require_skills),
 ):
     """获取技能详情"""
     skill = skill_registry.get(skill_id, principal.user_id)
@@ -141,7 +144,10 @@ async def create_prompt_skill(request: CreatePromptSkillRequest):
 
 
 @router.delete("/{skill_id}")
-async def uninstall_skill(skill_id: str):
+async def uninstall_skill(
+    skill_id: str,
+    principal: Principal = Depends(require_admin),
+):
     """卸载技能"""
     skill = skill_registry.get(skill_id)
     if not skill:
@@ -151,7 +157,7 @@ async def uninstall_skill(skill_id: str):
 
 
 @router.post("/reload")
-async def reload_skills():
+async def reload_skills(principal: Principal = Depends(require_admin)):
     """重新加载所有技能"""
     if not _skill_loader:
         raise HTTPException(status_code=503, detail="SkillLoader 未初始化")

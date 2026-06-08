@@ -37,6 +37,10 @@ def get_jwt_secret() -> str:
         return secret
     if _is_production():
         raise RuntimeError("TARS_JWT_SECRET is required in production")
+    print(
+        "[JWT] WARNING: TARS_JWT_SECRET 未设置，使用仅供开发的回退密钥；"
+        "切勿在生产环境使用。"
+    )
     return _DEV_FALLBACK_SECRET
 
 

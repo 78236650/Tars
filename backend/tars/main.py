@@ -1,11 +1,13 @@
 from pathlib import Path
 import os
+import secrets
 
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Depends
+from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -23,6 +25,7 @@ from tars.channels.adapter import ConnectionManagerOutboundAdapter
 from tars.agent.agent import AgentV2
 from tars.database import Database, UserStore
 from tars.gateway.permission import PermissionManager, UserRole
+from tars.gateway.rate_limit import RateLimiter as RestRateLimiter
 from tars.evolution import EvolutionManager
 from tars.scheduler import init_scheduler, shutdown_scheduler, get_scheduler
 from tars.models.config import router as model_config_router
@@ -104,6 +107,19 @@ _original_form = _StarletteRequest.form
 async def _patched_form(self, *, max_files=1000, max_fields=1000, max_part_size=50*1024*1024, **kwargs):
     return await _original_form(self, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size, **kwargs)
 _StarletteRequest.form = _patched_form
+
+# 全局请求校验异常处理器：超长/格式错误的请求体或查询参数统一返回 422，
+# 避免 Pydantic 校验异常冒泡为 Uvicorn 502。
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": jsonable_encoder(exc.errors())},
+    )
 
 # ── Health check (no auth, before middleware) ────────────────────────
 @app.get("/health")
@@ -265,6 +281,14 @@ else:
 memory_manager = MemoryManager(db=db, embedding_provider=embedding_provider, vector_store=vector_store)
 tenant_context_cache = TenantContextCache(max_size=100)
 
+# 回填：让 MemoryTool 的 search 走 HybridSearch（语义+衰减+rerank）。
+try:
+    _mem_tool = tool_registry.get("memory")
+    if _mem_tool is not None:
+        _mem_tool.memory_manager = memory_manager
+except Exception as _e:
+    print(f"[Startup] MemoryTool 注入 memory_manager 失败: {_e}")
+
 # 注册 core memory 编辑工具（V3）
 for tool in memory_manager.get_tools():
     tool_registry.register(tool)
@@ -298,7 +322,7 @@ def _init_wiki_after_agent() -> None:
     tool_registry.register(WikiWriteTool(store=wiki_store))
     tool_registry.register(WikiSearchTool(store=wiki_store))
     tool_registry.register(WikiSearchTool(store=wiki_store))
-    app.include_router(create_wiki_router(wiki_store), prefix="/api/wiki")
+    app.include_router(create_wiki_router(wiki_store, db=db), prefix="/api/wiki")
     if module_registry.is_enabled("meeting"):
         from tars.api.meeting import set_meeting_wiki_handler
         set_meeting_wiki_handler(wiki_event_handler)
@@ -513,6 +537,7 @@ init_invoke_api(
     tenant_cache=tenant_context_cache,
     memory_manager=memory_manager,
     user_store=user_store,
+    rate_limiter=RestRateLimiter(),
     pipeline_engine=SkillPipelineEngine(
         pipeline_registry=pipeline_registry,
         skill_registry=skill_registry,
@@ -568,7 +593,18 @@ class UserListResponse(BaseModel):
 
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_EMAIL = "admin@tars.local"
-DEFAULT_ADMIN_PASSWORD = "Admin123!"
+
+
+def _resolve_initial_admin_password() -> tuple[str, bool]:
+    """解析首次初始化管理员密码。
+
+    优先读取 TARS_ADMIN_PASSWORD 环境变量；缺失时生成随机一次性密码。
+    返回 (password, generated)，generated 为 True 表示随机生成需打印到日志。
+    """
+    configured = os.environ.get("TARS_ADMIN_PASSWORD", "").strip()
+    if configured:
+        return configured, False
+    return secrets.token_urlsafe(16), True
 
 
 def _serialize_user(user) -> Dict[str, Any]:
@@ -614,16 +650,22 @@ def ensure_default_admin():
         )
         return None
 
+    admin_password, generated = _resolve_initial_admin_password()
     created_user = user_store.create_user(
         DEFAULT_ADMIN_USERNAME,
         DEFAULT_ADMIN_EMAIL,
         UserRole.ADMIN,
-        password=DEFAULT_ADMIN_PASSWORD,
+        password=admin_password,
     )
     print(
         "[Startup] 已创建默认管理员账号 "
         f"(username={DEFAULT_ADMIN_USERNAME}, email={DEFAULT_ADMIN_EMAIL})"
     )
+    if generated:
+        print(
+            "[Startup] 未设置 TARS_ADMIN_PASSWORD，已生成一次性随机管理员密码（请立即登录并修改）："
+            f"\n[Startup]   {admin_password}"
+        )
     return created_user
 
 @app.get("/api/users", response_model=UserListResponse)
