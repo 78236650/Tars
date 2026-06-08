@@ -940,3 +940,8 @@ class ConnectionManager:
         # knowledge schema tables preserved in-place, module removed
 
         conn.commit()
+
+        # v5.0.5/P4: ordered, versioned migrations on top of the idempotent base.
+        from tars.database.migrations import apply_migrations
+
+        apply_migrations(conn, dialect="sqlite")

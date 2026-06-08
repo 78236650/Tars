@@ -59,12 +59,49 @@ async def run_startup(db, tool_registry, skill_registry, memory_manager,
         )
 
 
-async def run_shutdown(shutdown_scheduler):
-    """执行所有关闭清理（被 main.py 的 @app.on_event("shutdown") 调用）。"""
-    await shutdown_scheduler()
+async def run_shutdown(shutdown_scheduler, connection_manager=None):
+    """执行所有关闭清理（被 main.py 的 @app.on_event("shutdown") 调用）。
 
-    from tars.meeting.asr.pool import shutdown_asr_pool
-    shutdown_asr_pool()
+    v5.0.5/P5 优雅关闭：每步独立 try/except + 整体超时，确保单步失败或卡住
+    不会阻塞进程退出。
+    """
+    import asyncio
+    import logging
 
-    from tars.models.connection_pool import close_connection_pool
-    await close_connection_pool()
+    logger = logging.getLogger("tars.lifespan")
+
+    async def _graceful():
+        # 1) 先断开所有 WebSocket（通知客户端"即将下线"，可重连到新实例）
+        if connection_manager is not None:
+            try:
+                closed = await connection_manager.disconnect_all()
+                logger.info("graceful shutdown: closed %s websocket(s)", closed)
+            except Exception:
+                logger.exception("disconnect_all failed during shutdown")
+
+        # 2) 停止调度器（不再触发新任务）
+        try:
+            await shutdown_scheduler()
+        except Exception:
+            logger.exception("shutdown_scheduler failed")
+
+        # 3) 关闭 ASR 池
+        try:
+            from tars.meeting.asr.pool import shutdown_asr_pool
+
+            shutdown_asr_pool()
+        except Exception:
+            logger.exception("shutdown_asr_pool failed")
+
+        # 4) 关闭出站 HTTP 连接池
+        try:
+            from tars.models.connection_pool import close_connection_pool
+
+            await close_connection_pool()
+        except Exception:
+            logger.exception("close_connection_pool failed")
+
+    try:
+        await asyncio.wait_for(_graceful(), timeout=30)
+    except asyncio.TimeoutError:
+        logger.warning("graceful shutdown exceeded 30s timeout; forcing exit")

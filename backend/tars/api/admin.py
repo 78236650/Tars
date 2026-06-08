@@ -162,3 +162,53 @@ def delete_shared_memory(
         )
     )
     return {"success": True}
+
+
+@router.get("/db/version")
+def get_schema_version(principal: Principal = Depends(require_admin)):
+    """Current applied schema version (v5.0.5/P4)."""
+    db = _require_db()
+    from ..database.migrations import current_version
+
+    return {"schema_version": current_version(db._get_conn())}
+
+
+@router.post("/db/backup")
+def trigger_db_backup(
+    http_request: Request,
+    keep: int = Query(7, ge=1, le=365),
+    principal: Principal = Depends(require_admin),
+):
+    """Trigger an on-demand database backup (v5.0.5/P4). Admin only.
+
+    Runs the same snapshot logic as scripts/backup_db.py; SQLite uses the online
+    backup API so it is safe while the app is running.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "backup_db.py"
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--keep", str(keep)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="备份超时")
+
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id="db_backup",
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
+            detail=f"keep={keep} rc={proc.returncode}",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
+
+    if proc.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"备份失败: {proc.stderr.strip()[:500]}")
+    return {"success": True, "output": proc.stdout.strip()}

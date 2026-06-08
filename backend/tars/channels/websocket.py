@@ -329,6 +329,26 @@ class ConnectionManager:
         for session_id in stale_sessions:
             self.unbind_session(session_id)
 
+    async def disconnect_all(self, code: int = 1001) -> int:
+        """Close every live WebSocket (v5.0.5/P5 graceful shutdown).
+
+        1001 = "going away". Best-effort: a socket that's already gone is
+        ignored. Returns the number of connections closed.
+        """
+        connection_ids = list(self.active_connections.keys())
+        closed = 0
+        for connection_id in connection_ids:
+            channel = self.active_connections.get(connection_id)
+            ws = getattr(channel, "websocket", None)
+            if ws is not None:
+                try:
+                    await ws.close(code=code)
+                    closed += 1
+                except Exception:
+                    pass
+            self.disconnect(connection_id)
+        return closed
+
     async def deliver_to_session(self, session_id: str, event: dict) -> bool:
         """Deliver directly to the bound WebSocket (bypasses ChannelRouter)."""
         connection_id = self.session_connections.get(session_id, session_id)

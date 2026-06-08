@@ -1046,3 +1046,8 @@ def init_schema_postgres(conn) -> None:
     )
 
     conn.commit()
+
+    # v5.0.5/P4: ordered, versioned migrations on top of the idempotent base.
+    from tars.database.migrations import apply_migrations
+
+    apply_migrations(conn, dialect="postgres")
