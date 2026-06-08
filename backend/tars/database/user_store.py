@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from dataclasses import dataclass
 from ..gateway.permission import UserRole
+from ..security.crypto import encrypt, decrypt, lookup_hash
 
 
 @dataclass
@@ -58,6 +59,12 @@ class UserStore:
             pass
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN role_template_id TEXT DEFAULT 'standard'")
+        except Exception:
+            pass
+        # v5.0.5/P6: deterministic hash of api_key for indexed lookups (the
+        # api_key column itself now stores an encrypted token).
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN api_key_hash TEXT")
         except Exception:
             pass
         
@@ -164,19 +171,24 @@ class UserStore:
         api_key = self._generate_api_key()
         now = datetime.now(timezone(timedelta(hours=8)))
         password_hash = self._hash_password(password) if password is not None else None
-        
+
+        # v5.0.5/P6: store api_key encrypted at rest; keep a deterministic hash
+        # for indexed lookups.
+        api_key_enc = encrypt(api_key)
+        api_key_h = lookup_hash(api_key)
+
         conn = self.db._get_conn()
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO users
-            (id, username, email, role, api_key, created_at, last_login, password_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (id, username, email, role, api_key, api_key_hash, created_at, last_login, password_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, username, email, role.value, api_key, now, None, password_hash)
+            (user_id, username, email, role.value, api_key_enc, api_key_h, now, None, password_hash)
         )
         conn.commit()
-        
+
         return User(
             id=user_id,
             username=username,
@@ -211,7 +223,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=row[4],
+                api_key=decrypt(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
@@ -219,19 +231,27 @@ class UserStore:
         return None
 
     def get_user_by_api_key(self, api_key: str) -> Optional[User]:
-        """通过 API Key 获取用户"""
+        """通过 API Key 获取用户
+
+        v5.0.5/P6: 优先按确定性哈希查找（api_key 列已加密存储）；回退到
+        明文匹配以兼容尚未迁移的历史行。
+        """
         conn = self.db._get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE api_key = ?", (api_key,))
+        cursor.execute("SELECT * FROM users WHERE api_key_hash = ?", (lookup_hash(api_key),))
         row = cursor.fetchone()
-        
+        if not row:
+            # 兼容历史明文行
+            cursor.execute("SELECT * FROM users WHERE api_key = ?", (api_key,))
+            row = cursor.fetchone()
+
         if row:
             return User(
                 id=row[0],
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=row[4],
+                api_key=decrypt(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
@@ -251,7 +271,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=row[4],
+                api_key=decrypt(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
@@ -271,7 +291,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=row[4],
+                api_key=decrypt(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
