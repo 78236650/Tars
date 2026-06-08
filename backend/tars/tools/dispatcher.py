@@ -225,6 +225,8 @@ class ToolDispatcher:
                 self._record_evolution_feedback(context, tool_name, False)
                 return result
 
+        import time as _time
+        _t0 = _time.perf_counter()
         try:
             merged_arguments = dict(arguments)
             for key, value in (context or {}).items():
@@ -243,6 +245,11 @@ class ToolDispatcher:
                     )
             except Exception:
                 pass
+            try:
+                from ..metrics import record_tool_execution
+                record_tool_execution(tool_name, result.success, _time.perf_counter() - _t0)
+            except Exception:
+                pass
             self._record_evolution_feedback(context, tool_name, result.success)
             return result
         except Exception as e:
@@ -257,6 +264,11 @@ class ToolDispatcher:
                         success=False,
                         client_ip=(context or {}).get("client_ip", ""),
                     )
+            except Exception:
+                pass
+            try:
+                from ..metrics import record_tool_execution
+                record_tool_execution(tool_name, False, _time.perf_counter() - _t0)
             except Exception:
                 pass
             result = ToolResult(success=False, output="", error=f"工具执行失败: {e}")

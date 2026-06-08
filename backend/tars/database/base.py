@@ -268,6 +268,9 @@ class Database:
     def list_provider_usage(self, *args, **kwargs):
         return self.memories.list_provider_usage(*args, **kwargs)
 
+    def aggregate_provider_usage(self, *args, **kwargs):
+        return self.memories.aggregate_provider_usage(*args, **kwargs)
+
     def _row_to_transcription(self, *args, **kwargs):
         return self.transcriptions._row_to_transcription(*args, **kwargs)
 

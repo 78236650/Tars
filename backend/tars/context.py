@@ -14,6 +14,16 @@ from .org import ORG_ID
 
 current_user_id: ContextVar[Optional[str]] = ContextVar("current_user_id", default=None)
 current_org_id: ContextVar[Optional[str]] = ContextVar("current_org_id", default=None)
+current_trace_id: ContextVar[Optional[str]] = ContextVar("current_trace_id", default=None)
+
+
+def get_current_trace_id() -> Optional[str]:
+    """Return the request-scoped trace id, or ``None`` outside a request."""
+    return current_trace_id.get()
+
+
+def set_trace_id(trace_id: str) -> None:
+    current_trace_id.set(trace_id)
 
 
 def get_current_user_id() -> str:

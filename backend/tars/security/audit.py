@@ -51,13 +51,25 @@ class AuditLogger:
     ):
         """Write one audit entry. Non-blocking — failures are logged to stderr."""
         try:
+            detail_str = str(detail)
+            # Tag the entry with the request trace id (v5.0.5/P2) so audit rows
+            # correlate with application logs. Stored inline in detail to avoid
+            # a schema change; harmless when no request context is active.
+            try:
+                from ..context import get_current_trace_id
+
+                trace_id = get_current_trace_id()
+                if trace_id:
+                    detail_str = f"[trace={trace_id}] {detail_str}"
+            except Exception:
+                pass
             self._db.add_audit_log(
                 action=action,
                 resource_type=resource_type,
                 tenant_id=tenant_id,
                 user_id=user_id,
                 resource_id=resource_id,
-                detail=str(detail)[:2000],
+                detail=detail_str[:2000],
                 client_ip=client_ip,
             )
         except Exception as exc:

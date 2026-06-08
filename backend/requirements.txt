@@ -12,6 +12,9 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 
+# Observability (v5.0.5 / P3)
+prometheus-client>=0.21.1
+
 # HTTP Client
 httpx>=0.26.0
 trafilatura>=1.6.0

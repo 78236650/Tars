@@ -1104,6 +1104,37 @@ class MemoryRepo:
             })
         return rows, total
 
+    def aggregate_provider_usage(
+        self,
+        tenant_id: str = "",
+    ) -> list[dict]:
+        """Aggregate token usage grouped by provider/model (v5.0.5/P3)."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        params: list = []
+        where = ""
+        if tenant_id:
+            where = " WHERE tenant_id = ?"
+            params.append(tenant_id)
+        cursor.execute(
+            "SELECT provider, model, COUNT(*) AS calls, "
+            "COALESCE(SUM(tokens_in), 0) AS tokens_in, "
+            "COALESCE(SUM(tokens_out), 0) AS tokens_out "
+            f"FROM provider_usage{where} "
+            "GROUP BY provider, model ORDER BY calls DESC",
+            params,
+        )
+        out = []
+        for row in cursor.fetchall():
+            out.append({
+                "provider": row[0],
+                "model": row[1],
+                "calls": row[2],
+                "tokens_in": row[3],
+                "tokens_out": row[4],
+            })
+        return out
+
     def insert_evolution_event(
         self,
         *,

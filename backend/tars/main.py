@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+from tars.logging_config import setup_logging
+
+setup_logging()
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Request, Depends
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
@@ -116,15 +120,52 @@ from fastapi.responses import JSONResponse
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    from tars.context import get_current_trace_id
+
     return JSONResponse(
         status_code=422,
-        content={"detail": jsonable_encoder(exc.errors())},
+        content={
+            "success": False,
+            "detail": jsonable_encoder(exc.errors()),
+            "error": {"code": 422, "message": "请求参数校验失败"},
+            "trace_id": get_current_trace_id(),
+        },
+    )
+
+
+# v5.0.5/P6: unified error envelope. `detail` is preserved for backward compat
+# (frontend reads response.detail); `success`/`error`/`trace_id` are additive.
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: _StarletteHTTPException):
+    from tars.context import get_current_trace_id
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "detail": exc.detail,
+            "error": {"code": exc.status_code, "message": str(exc.detail)},
+            "trace_id": get_current_trace_id(),
+        },
+        headers=getattr(exc, "headers", None),
     )
 
 # ── Health check (no auth, before middleware) ────────────────────────
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "5.0.4"}
+    return {"status": "ok", "version": "5.0.5"}
+
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus scrape endpoint (v5.0.5/P3)."""
+    from fastapi import Response as _Response
+    from tars.metrics import render_latest, CONTENT_TYPE_LATEST
+
+    return _Response(content=render_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # 初始化组件
 db = Database()
@@ -138,6 +179,17 @@ app.state.auth_token_store = auth_token_store
 from tars.middleware.user_context import UserContextMiddleware
 
 app.add_middleware(UserContextMiddleware)
+
+# TraceIDMiddleware added last → outermost layer → runs first, so trace_id is
+# available to UserContextMiddleware and all downstream handlers/logging.
+from tars.middleware.trace import TraceIDMiddleware
+
+app.add_middleware(TraceIDMiddleware)
+
+# Metrics middleware (v5.0.5/P3): records HTTP count + latency per route.
+from tars.metrics import MetricsMiddleware
+
+app.add_middleware(MetricsMiddleware)
 
 from tars.api._auth import init_auth, require_admin, require_authenticated_user, Principal
 from tars.context import get_current_org_id, require_current_user_id
@@ -1434,6 +1486,22 @@ async def get_provider_usage(
     return {"items": rows, "total": total}
 
 
+@app.get("/api/providers/usage/summary")
+async def get_provider_usage_summary(
+    principal: Principal = Depends(require_admin),
+):
+    """Aggregated token usage grouped by provider/model (v5.0.5/P3). Admin only."""
+    from tars.org import ORG_ID
+
+    summary = db.aggregate_provider_usage(tenant_id=ORG_ID)
+    totals = {
+        "calls": sum(r["calls"] for r in summary),
+        "tokens_in": sum(r["tokens_in"] for r in summary),
+        "tokens_out": sum(r["tokens_out"] for r in summary),
+    }
+    return {"items": summary, "totals": totals}
+
+
 @app.get("/api/providers")
 async def list_providers():
     """List registered provider types."""
@@ -1478,7 +1546,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """关闭事件（逻辑已抽到 lifespan.py）"""
-    await _lifespan.run_shutdown(shutdown_scheduler)
+    await _lifespan.run_shutdown(shutdown_scheduler, connection_manager=connection_manager)
 
 if __name__ == "__main__":
     # 初始化技能系统
