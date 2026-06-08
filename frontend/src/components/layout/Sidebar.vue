@@ -106,7 +106,7 @@ const navItems = [
   { name: 'nav.tools', icon: 'lucide:wrench', path: '/tools' },
   { name: 'nav.bi', icon: 'lucide:bar-chart-3', path: '/bi' },
   { name: 'nav.insight', icon: 'lucide:search', path: '/insight' },
-  { name: 'nav.knowledge', icon: 'lucide:book-open', path: '/knowledge' },
+  { name: 'nav.knowledge', icon: 'lucide:book-open', path: '/wiki' },
   { name: 'nav.meeting', icon: 'lucide:mic', path: '/meeting' },
   { name: 'nav.orchestration', icon: 'lucide:git-branch', path: '/orchestration' },
   { name: 'nav.presales', icon: 'lucide:briefcase', path: '/presales' },
@@ -118,7 +118,7 @@ const navItems = [
 const moduleRouteMap: Record<string, string> = {
   bi: '/bi',
   insight: '/insight',
-  knowledge: '/knowledge',
+  // wiki is always visible, not module-gated
   meeting: '/meeting',
   orchestration: '/orchestration',
   presales: '/presales',
@@ -130,6 +130,8 @@ const visibleNavItems = computed(() =>
     if ('adminOnly' in item && (item as any).adminOnly) {
       return authStore.user?.role === 'admin'
     }
+    // Wiki 始终显示
+    if (item.path === '/wiki') return true
     // 模块路由过滤
     const mod = Object.entries(moduleRouteMap).find(([, path]) => item.path === path)
     if (!mod) return true // 核心路由始终显示

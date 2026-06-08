@@ -5,7 +5,6 @@ import type { InsightMetricAnswer } from '@/api'
 import { insightApi } from '@/api'
 import { useToast } from '@/composables/useToast'
 import BaseIcon from '@/components/common/BaseIcon.vue'
-import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
 
 const props = defineProps<{
   answer: InsightMetricAnswer

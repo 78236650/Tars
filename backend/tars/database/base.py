@@ -17,6 +17,7 @@ from tars.database.repositories.session_repo import SessionRepo
 from tars.database.repositories.memory_repo import MemoryRepo
 from tars.database.repositories.cron_repo import CronRepo
 from tars.database.repositories.trans_repo import TranscriptionRepo
+from tars.database.repositories.wiki_repo import WikiRepo
 from tars.database.auth_token_store import AuthTokenStore
 
 
@@ -30,6 +31,7 @@ class Database:
         self.memories = MemoryRepo(self._cm)
         self.crons = CronRepo(self._cm)
         self.transcriptions = TranscriptionRepo(self._cm)
+        self.wiki_pages = WikiRepo(self._cm)
         self.auth_tokens = AuthTokenStore(self)
 
     def _get_conn(self):
@@ -298,6 +300,15 @@ class Database:
 
     def is_auth_token_revoked(self, jti: str) -> bool:
         return self.auth_tokens.is_token_revoked(jti)
+
+    def upsert_wiki_page(self, *args, **kwargs):
+        return self.wiki_pages.upsert_wiki_page(*args, **kwargs)
+
+    def get_wiki_page_meta(self, *args, **kwargs):
+        return self.wiki_pages.get_wiki_page_meta(*args, **kwargs)
+
+    def find_pages_by_memory_id(self, *args, **kwargs):
+        return self.wiki_pages.find_pages_by_memory_id(*args, **kwargs)
 
     def execute(self, sql: str, params: tuple = ()) -> None:
         conn = self._get_conn()

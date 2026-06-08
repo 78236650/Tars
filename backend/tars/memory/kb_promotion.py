@@ -45,7 +45,7 @@ def _bullet_lines(items: List[Dict[str, Any]]) -> str:
         category = item.get("category") or "fact"
         content = str(item.get("content") or "").strip()
         if content:
-            lines.append(f"{idx}. [{category}] {content}")
+            lines.append(f"{idx}. {content}")
     return "\n".join(lines)
 
 
@@ -99,7 +99,7 @@ def synthesize_note_markdown(
         content = str(item.get("content") or "").strip()
         category = item.get("category") or "fact"
         if content:
-            parts.append(f"- [{category}] {content}")
+            parts.append(f"- {content}")
     return "\n".join(parts)
 
 

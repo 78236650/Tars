@@ -296,6 +296,28 @@ def init_schema_postgres(conn) -> None:
     _exec(
         cursor,
         """
+        CREATE TABLE IF NOT EXISTS wiki_pages (
+            page_name TEXT NOT NULL,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            title TEXT,
+            summary TEXT,
+            source_memory_ids TEXT,
+            source_type TEXT NOT NULL DEFAULT 'manual',
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP,
+            PRIMARY KEY (tenant_id, page_name)
+        )
+        """,
+    )
+    _exec(
+        cursor,
+        "CREATE INDEX IF NOT EXISTS idx_wiki_pages_tenant_memory "
+        "ON wiki_pages(tenant_id, source_memory_ids)",
+    )
+
+    _exec(
+        cursor,
+        """
         CREATE TABLE IF NOT EXISTS kb_chunks (
             id TEXT PRIMARY KEY,
             doc_id TEXT NOT NULL,

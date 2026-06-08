@@ -93,7 +93,7 @@ const navItems = [
   { name: 'nav.tools', icon: 'tools', path: '/tools' },
   { name: 'nav.bi', icon: 'bar-chart', path: '/bi', subtitle: 'nav.bi.subtitle' },
   { name: 'nav.insight', icon: 'search', path: '/insight', subtitle: 'nav.insight.subtitle' },
-  { name: 'nav.knowledge', icon: 'book', path: '/knowledge' },
+  { name: 'nav.knowledge', icon: 'book', path: '/wiki' },
   { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
   { name: 'nav.orchestration', icon: 'git-branch', path: '/orchestration' },
   { name: 'nav.presales', icon: 'briefcase', path: '/presales' },
@@ -104,7 +104,7 @@ const navItems = [
 const moduleRouteMap: Record<string, string> = {
   bi: '/bi',
   insight: '/insight',
-  knowledge: '/knowledge',
+  // wiki is always visible
   meeting: '/meeting',
   orchestration: '/orchestration',
   presales: '/presales',
@@ -115,6 +115,7 @@ const visibleNavItems = computed(() =>
     if ('adminOnly' in item && (item as any).adminOnly) {
       return authStore.user?.role === 'admin'
     }
+    if (item.path === '/wiki') return true
     const mod = Object.entries(moduleRouteMap).find(([, path]) => item.path === path)
     if (!mod) return true
     const globallyEnabled =

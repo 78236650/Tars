@@ -821,43 +821,7 @@ async def set_meeting_model(request: MeetingModelRequest):
         raise HTTPException(status_code=500, detail=f"模型切换失败: {e}")
 
 
-# ========== 入库知识库 ==========
-
-MEETING_KB_NAME = "会议纪要"
-MEETING_KB_LEGACY_NAME = "meeting_notes_kb"
-
-
-def _ensure_meeting_collection(cursor, org_id: str | None = None) -> str:
-    """Get or create the org-scoped meeting notes collection."""
-    from ..knowledge.schema import ensure_knowledge_schema
-
-    org_id = org_id or ORG_ID
-    if _db is not None:
-        ensure_knowledge_schema(_db)
-    for name in (MEETING_KB_NAME, MEETING_KB_LEGACY_NAME):
-        cursor.execute(
-            "SELECT id FROM document_collections WHERE name = ? AND tenant_id = ?",
-            (name, org_id),
-        )
-        row = cursor.fetchone()
-        if row:
-            return row[0]
-
-    collection_id = str(uuid.uuid4())
-    now = _now()
-    cursor.execute(
-        "INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (collection_id, org_id, MEETING_KB_NAME, "会议助手确认入库的纪要", now, now),
-    )
-    return collection_id
-
-
-def _index_failure_detail(result1: dict, result2: dict) -> Optional[str]:
-    if result1.get("status") != "indexed":
-        return result1.get("error") or str(result1.get("status"))
-    if result2.get("status") not in (None, "indexed", "empty"):
-        return result2.get("error") or str(result2.get("status"))
-    return None
+# ========== 入库 Wiki ==========
 
 
 class ApproveToKnowledgeRequest(BaseModel):
@@ -870,11 +834,10 @@ async def approve_to_knowledge(
     transcription_id: str,
     request: ApproveToKnowledgeRequest,
 ):
-    """确认会议纪要并入库知识库"""
+    """确认会议纪要并存入 Wiki"""
     if _db is None:
         raise HTTPException(status_code=500, detail="会议 API 未初始化")
 
-    org_id = get_current_org_id()
     summary = (request.summary or "").strip()
     if not summary:
         raise HTTPException(status_code=400, detail="摘要不能为空，请先生成或填写会议纪要摘要")
@@ -885,79 +848,61 @@ async def approve_to_knowledge(
     if transcription.approved_at:
         raise HTTPException(status_code=400, detail="该记录已入库")
 
-    # 更新摘要和要点
     _db.update_transcription(
         transcription_id,
         summary=summary,
         key_points=json.dumps(request.key_points, ensure_ascii=False),
     )
 
-    if _vector_store is None or _embedding_provider is None:
-        raise HTTPException(status_code=500, detail="知识库组件未初始化")
+    # 直接写入 Wiki
+    from ..wiki.store import WikiStore
+    from pathlib import Path as _Path
+    import os as _os
 
-    from ..knowledge.indexer import KnowledgeIndexer
+    created = transcription.created_at
+    date_str = created.strftime("%Y-%m-%d") if created else ""
+    time_str = created.strftime("%H%M%S") if created else ""
+    page_name = f"meeting-{created.strftime('%Y%m%d')}-{time_str}" if created else f"meeting-{transcription_id[:8]}"
 
-    conn = _db._get_conn()
-    cursor = conn.cursor()
-    collection_id = _ensure_meeting_collection(cursor, org_id)
-    conn.commit()
-
-    date_str = transcription.created_at.strftime("%Y-%m-%d") if transcription.created_at else ""
-    key_points_text = "\n".join(f"- {p}" for p in request.key_points) if request.key_points else ""
-    summary_doc = f"[会议] {transcription.file_name or ''} {date_str}\n\n{summary}\n\n要点:\n{key_points_text}"
-
-    indexer = KnowledgeIndexer(_vector_store, _embedding_provider, db=_db)
-    doc_id = str(uuid.uuid4())
-
-    title_base = summary[:20].replace("\n", " ").strip() or (transcription.file_name or "会议纪要")
-    doc_title = f"{title_base}({date_str})" if date_str else title_base
-
-    result1 = indexer.index_document(
-        text=summary_doc,
-        doc_id=f"{doc_id}_summary",
-        collection_id=collection_id,
-        file_name=doc_title,
-        file_type="meeting_summary",
-        tenant_id=org_id,
+    kp_text = "\n".join(f"- {p}" for p in request.key_points) if request.key_points else ""
+    wiki_content = (
+        f"# {transcription.file_name or '会议纪要'} ({date_str})\n\n"
+        f"> 转录ID: {transcription_id[:8]}\n\n"
+        f"{summary}\n\n"
+        f"## 要点\n\n{kp_text}\n\n"
+        f"## 原始转录\n\n{transcription.transcript or '（无）'}"
     )
 
-    result2: Dict[str, Any] = {"chunk_count": 0, "status": "indexed"}
-    if transcription.transcript:
-        result2 = indexer.index_document(
-            text=transcription.transcript,
-            doc_id=f"{doc_id}_transcript",
-            collection_id=collection_id,
-            file_name=doc_title + "_原文",
-            file_type="meeting_transcript",
-            tenant_id=org_id,
-        )
+    wiki_dir = _Path(_os.path.dirname(_os.path.dirname(_os.path.dirname(__file__)))) / "data" / "wiki"
+    store = WikiStore(wiki_dir=wiki_dir)
+    store.write_page(page_name, wiki_content)
 
-    err = _index_failure_detail(result1, result2)
-    if err:
-        raise HTTPException(status_code=422, detail=f"知识库索引失败: {err}")
-
-    total_chunks = result1.get("chunk_count", 0) + result2.get("chunk_count", 0)
-    if total_chunks <= 0:
-        raise HTTPException(status_code=422, detail="知识库索引失败: 未生成任何可检索分块")
+    # 更新 index
+    existing = store.read_index()
+    summaries: dict = {}
+    for line in existing.splitlines():
+        if line.startswith("- **["):
+            try:
+                n = line.split("[")[1].split("]")[0]
+                s = line.split("—")[-1].strip()
+                summaries[n] = s
+            except (IndexError, ValueError):
+                pass
+    summaries[page_name] = summary[:80]
+    store.update_index(summaries)
 
     now = _now()
-    cursor.execute(
-        "INSERT INTO document_files (id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (doc_id, collection_id, doc_title, "", "meeting", total_chunks, "indexed", now),
-    )
+    cursor = _db._get_conn().cursor()
     cursor.execute(
         "UPDATE transcriptions SET approved_at = ?, knowledge_doc_id = ? WHERE id = ?",
-        (now, doc_id, transcription_id),
+        (now, page_name, transcription_id),
     )
-    conn.commit()
+    _db._get_conn().commit()
 
     return {
         "success": True,
-        "message": "会议纪要已入库知识库",
-        "knowledge_doc_id": doc_id,
-        "collection_id": collection_id,
-        "collection_name": MEETING_KB_NAME,
-        "chunk_count": total_chunks,
+        "message": "会议纪要已存入 Wiki",
+        "wiki_page_name": page_name,
     }
 
 

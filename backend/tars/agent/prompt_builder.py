@@ -201,31 +201,10 @@ def build_memory_prompt(agent, memory_context: str, knowledge_context: str = "")
 
 async def build_knowledge_context(agent, user_content: str, tenant_id: str,
                                    channel, session_id: str) -> str:
-    """Proactively retrieve knowledge base snippets for the user message."""
-    if not agent.knowledge_retriever or not agent.db:
-        return ""
-    try:
-        from ..knowledge.access import search_knowledge
-        from datetime import datetime, timezone, timedelta
+    """Deprecated: legacy knowledge-base retrieval removed in v5.0.4.
 
-        await channel.send(session_id, {
-            "type": "thinking_step",
-            "session_id": session_id,
-            "step": "📚",
-            "title": "检索知识库",
-            "detail": user_content[:30] + ("..." if len(user_content) > 30 else ""),
-            "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(),
-        })
-        text, results = search_knowledge(
-            agent.db,
-            agent.knowledge_retriever,
-            query=user_content,
-            tenant_id=tenant_id,
-            top_k=5,
-        )
-        if results:
-            return text
-        return ""
-    except Exception as e:
-        print(f"[Agent] 知识库自动检索失败: {e}")
-        return ""
+    The standalone knowledge module was removed; proactive retrieval now goes
+    through the ``wiki_search`` tool driven by the model, so this hook is a
+    no-op kept only for call-site compatibility (agent.py).
+    """
+    return ""

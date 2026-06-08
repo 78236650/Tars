@@ -9,39 +9,8 @@ from typing import List, Optional
 from ..org import ORG_ID
 
 
-CHAT_KB_NAME = "对话精华"
-CHAT_KB_DESCRIPTION = "从聊天记忆中升格合成的技术笔记（非碎片直写）"
-
-
 def _now() -> str:
     return datetime.now(timezone(timedelta(hours=8))).isoformat()
-
-
-def ensure_chat_knowledge_collection(db, tenant_id: str = ORG_ID) -> str:
-    from ..knowledge.schema import ensure_knowledge_schema
-
-    ensure_knowledge_schema(db)
-    conn = db._get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id FROM document_collections WHERE name = ? AND tenant_id = ?",
-        (CHAT_KB_NAME, tenant_id),
-    )
-    row = cursor.fetchone()
-    if row:
-        return row[0]
-
-    collection_id = str(uuid.uuid4())
-    now = _now()
-    cursor.execute(
-        """
-        INSERT INTO document_collections (id, tenant_id, name, description, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (collection_id, tenant_id, CHAT_KB_NAME, CHAT_KB_DESCRIPTION, now, now),
-    )
-    conn.commit()
-    return collection_id
 
 
 def publish_synthesized_note(
@@ -54,52 +23,65 @@ def publish_synthesized_note(
     markdown: str,
     source_memory_ids: Optional[List[str]] = None,
 ) -> Optional[str]:
-    """索引一篇合成笔记到知识库，返回 doc_id。"""
+    """写入合成笔记到 Wiki，返回 page_name。"""
     text = (markdown or "").strip()
-    if not text or db is None or embedding_provider is None:
+    if not text or db is None:
         return None
 
-    from ..knowledge.indexer import KnowledgeIndexer
-
-    collection_id = ensure_chat_knowledge_collection(db, tenant_id)
-    doc_id = str(uuid.uuid4())
     doc_title = title.strip() or f"对话精华({datetime.now().strftime('%Y-%m-%d')})"
 
-    if source_memory_ids:
-        footer = "\n\n---\n来源记忆 ID: " + ", ".join(source_memory_ids[:20])
-        text = text + footer
+    # 直接写入 Wiki
+    try:
+        import os as _os
+        from pathlib import Path as _Path
+        from tars.wiki.store import WikiStore
 
-    indexer = KnowledgeIndexer(vector_store, embedding_provider, db=db)
-    result = indexer.index_document(
-        text=text,
-        doc_id=doc_id,
-        collection_id=collection_id,
-        file_name=doc_title,
-        file_type="chat_remember",
-        tenant_id=tenant_id,
-    )
-    if not (result.get("chunk_count", 0) > 0 or result.get("status") == "indexed"):
+        wiki_dir = _Path(_os.path.dirname(_os.path.dirname(_os.path.dirname(__file__)))) / "data" / "wiki"
+        store = WikiStore(wiki_dir=wiki_dir)
+        page_name = f"memory-{uuid.uuid4().hex[:8]}"
+        # 避免重复标题：如果 text 已经以 h1 开头则不重复加
+        if text.startswith("# "):
+            store.write_page(page_name, text)
+        else:
+            store.write_page(page_name, f"# {doc_title}\n\n{text}")
+
+        # 更新 index
+        existing = store.read_index()
+        summaries = {}
+        for line in existing.splitlines():
+            if line.startswith("- **["):
+                try:
+                    n = line.split("[")[1].split("]")[0]
+                    s = line.split("—")[-1].strip()
+                    summaries[n] = s
+                except (IndexError, ValueError):
+                    pass
+        summaries[page_name] = title.strip()[:80]
+        store.update_index(summaries)
+
+        now = _now()
+        conn = db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO document_files (id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (page_name, "wiki_chat", doc_title, "", "chat_remember", 1, "indexed", now),
+        )
+        conn.commit()
+
+        # 结构化双向链接：wiki_pages 表存源记忆引用，供反查（不再依赖正文文本解析）。
+        try:
+            db.upsert_wiki_page(
+                page_name,
+                title=doc_title,
+                summary=(title.strip()[:80] if title else doc_title[:80]),
+                source_memory_ids=list(source_memory_ids or []),
+                source_type="chat_remember",
+                tenant_id=tenant_id,
+            )
+        except Exception as link_err:
+            print(f"[TurnKnowledgePublisher] wiki_pages link failed: {link_err}")
+
+        return page_name
+    except Exception as e:
+        print(f"[TurnKnowledgePublisher] wiki write failed: {e}")
         return None
-
-    conn = db._get_conn()
-    cursor = conn.cursor()
-    now = _now()
-    cursor.execute(
-        """
-        INSERT INTO document_files
-        (id, collection_id, file_name, file_path, file_type, chunk_count, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            doc_id,
-            collection_id,
-            doc_title,
-            "",
-            "chat_remember",
-            int(result.get("chunk_count") or 0),
-            "indexed",
-            now,
-        ),
-    )
-    conn.commit()
-    return doc_id

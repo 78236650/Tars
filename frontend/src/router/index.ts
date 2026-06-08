@@ -164,15 +164,18 @@ const router = createRouter({
       }
     },
     {
-      path: '/knowledge',
-      name: 'knowledge',
+      path: '/wiki',
+      name: 'wiki',
       component: () => import('@/views/KnowledgeView.vue'),
       meta: {
         requiresAuth: true,
-        module: 'knowledge',
-        desktopTitleKey: 'desktop.knowledge.title',
-        desktopSubtitleKey: 'desktop.knowledge.subtitle',
+        desktopTitleKey: 'desktop.wiki.title',
+        desktopSubtitleKey: 'desktop.wiki.subtitle',
       }
+    },
+    {
+      path: '/knowledge',
+      redirect: '/wiki',
     },
     {
       path: '/orchestration',

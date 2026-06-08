@@ -14,7 +14,7 @@ import type { InsightMetricAnswer } from '@/api'
 import { getErrorDetail } from '@/utils/errorExtractor'
 import BaseIcon from '@/components/common/BaseIcon.vue'
 import ActiveSkillsBar from '@/components/chat/ActiveSkillsBar.vue'
-import KnowledgeCitationPanel from '@/components/chat/KnowledgeCitationPanel.vue'
+
 import QueueStatus from '@/components/chat/QueueStatus.vue'
 import WarningBanner from '@/components/chat/WarningBanner.vue'
 import ApprovalDialog from '@/components/chat/ApprovalDialog.vue'
@@ -49,7 +49,6 @@ const insightWorkflowEnabled = ref(false)
 const INSIGHT_ASK_RE = /^\/(问数|metric)\s+(.+)/is
 const INSIGHT_DS_STORAGE = 'tars_insight_ask_datasource_id'
 const inputRef = ref<HTMLTextAreaElement | null>(null)
-const citationOpen = ref(false)
 const citationDocId = ref('')
 const citationTitleHint = ref('')
 const artifactsOpen = ref(false)
@@ -318,18 +317,6 @@ onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
 })
 
-const openCitation = (payload: { docId: string; title?: string }) => {
-  citationDocId.value = payload.docId
-  citationTitleHint.value = payload.title || ''
-  citationOpen.value = true
-}
-
-const closeCitation = () => {
-  citationOpen.value = false
-  citationDocId.value = ''
-  citationTitleHint.value = ''
-}
-
 watch(insightDatasourceId, (id) => {
   if (id) localStorage.setItem(INSIGHT_DS_STORAGE, id)
 })
@@ -392,17 +379,10 @@ const onInsightClarify = async (payload: {
         :is-generating="isGenerating"
         :loading-history="messagesLoading"
         @quick-start="quickStart"
-        @citation-click="openCitation"
         @insight-clarify="onInsightClarify"
         @stop="stopGeneration"
       />
 
-      <KnowledgeCitationPanel
-        :open="citationOpen"
-        :doc-id="citationDocId"
-        :title-hint="citationTitleHint"
-        @close="closeCitation"
-      />
 
       <SessionArtifactsDialog
         :open="artifactsOpen"
