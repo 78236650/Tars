@@ -31,7 +31,11 @@ class LLMRateLimiter:
         self._lock = threading.Lock()
 
     async def acquire(self, user_id: str, pool_key: str = "default") -> bool:
-        """Try to acquire a slot. Returns True on success, False on timeout."""
+        """Try to acquire a slot. Returns True on success, False on timeout.
+
+        v5.0.5/A7: pool_key 现真正生效 —— per-user 配额按 (pool_key, user_id)
+        独立计数,使不同池(如交互 vs 后台批处理)互不挤占对方的用户配额。
+        """
         try:
             acquired = await asyncio.wait_for(
                 self._semaphore.acquire(),
@@ -43,22 +47,24 @@ class LLMRateLimiter:
         if not acquired:
             return False
 
+        count_key = (pool_key, user_id)
         with self._lock:
-            if self._user_counts.get(user_id, 0) >= self._per_user_max:
+            if self._user_counts.get(count_key, 0) >= self._per_user_max:
                 self._semaphore.release()
                 return False
-            self._user_counts[user_id] += 1
+            self._user_counts[count_key] += 1
 
         return True
 
     def release(self, user_id: str, pool_key: str = "default"):
-        """Release a slot. Thread-safe user count decrement."""
+        """Release a slot. Thread-safe per-(pool,user) count decrement."""
         self._semaphore.release()
+        count_key = (pool_key, user_id)
         with self._lock:
-            if self._user_counts.get(user_id, 0) > 0:
-                self._user_counts[user_id] -= 1
-                if self._user_counts[user_id] <= 0:
-                    self._user_counts.pop(user_id, None)
+            if self._user_counts.get(count_key, 0) > 0:
+                self._user_counts[count_key] -= 1
+                if self._user_counts[count_key] <= 0:
+                    self._user_counts.pop(count_key, None)
 
     def stats(self) -> dict:
         """Return current limiter statistics."""
@@ -68,7 +74,7 @@ class LLMRateLimiter:
             "queue_timeout": self._queue_timeout,
             "available_slots": self._semaphore._value,
             "active_users": len(self._user_counts),
-            "user_counts": dict(self._user_counts),
+            "user_counts": {f"{pool}:{uid}": c for (pool, uid), c in self._user_counts.items()},
         }
 
     @property

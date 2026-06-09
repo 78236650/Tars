@@ -45,6 +45,11 @@ class AgentV2:
         self.db = db or Database()
         self.workspace = workspace or WorkspaceManager()
         self.current_model: str = os.getenv("OLLAMA_MODEL", "llama3.2")
+        # v5.0.5/A1: 工具循环最大轮次(可配),默认 10 防止长任务上下文溢出/死循环。
+        self.max_tool_rounds: int = int(os.getenv("TARS_MAX_TOOL_ROUNDS", "10"))
+        # v5.0.5/A4: 按会话跟踪后台任务(反思/场景分析),取消会话时一并取消,
+        # 任务完成自动从集合移除,避免连接/任务泄漏。
+        self._session_bg_tasks: Dict[str, set] = {}
         self.subagent_manager = SubAgentManager(self)
         self.handoff_manager = HandoffManager()
         from .follow_up_queue import FollowUpQueue
@@ -135,6 +140,40 @@ class AgentV2:
         except Exception:
             return []
 
+    def _spawn_session_task(self, session_id: str, coro) -> "asyncio.Task":
+        """创建受跟踪的会话后台任务(v5.0.5/A4)。
+
+        任务登记到 self._session_bg_tasks[session_id];完成时通过 done_callback
+        自动移除,避免集合无限增长。取消会话时由 _cancel_session_tasks 统一取消。
+        """
+        import asyncio
+        task = asyncio.create_task(coro)
+        self._session_bg_tasks.setdefault(session_id, set()).add(task)
+
+        def _cleanup(t, sid=session_id):
+            tasks = self._session_bg_tasks.get(sid)
+            if tasks is not None:
+                tasks.discard(t)
+                if not tasks:
+                    self._session_bg_tasks.pop(sid, None)
+
+        task.add_done_callback(_cleanup)
+        return task
+
+    def _cancel_session_tasks(self, session_id: str) -> int:
+        """取消某会话的全部后台任务(v5.0.5/A4)。返回取消的任务数。"""
+        tasks = self._session_bg_tasks.get(session_id)
+        if not tasks:
+            return 0
+        count = 0
+        for task in list(tasks):
+            if not task.done():
+                task.cancel()
+                count += 1
+        if count:
+            print(f"[Agent] 取消会话 {session_id} 的 {count} 个后台任务")
+        return count
+
     async def _abort_if_cancelled(
         self,
         channel: Channel,
@@ -144,6 +183,8 @@ class AgentV2:
     ) -> bool:
         if not self.follow_up_queue.is_cancelled(session_id):
             return False
+        # v5.0.5/A4: 取消会话被中止时,一并取消其后台反思/场景分析任务。
+        self._cancel_session_tasks(session_id)
         if partial_response.strip():
             self.db.add_message(session_id, "assistant", partial_response)
         await channel.send(session_id, {
@@ -403,6 +444,22 @@ class AgentV2:
             memory_context = "\n\n".join(p for p in [core_render, router_injection] if p)
             if wc:
                 memory_context = f"## 当前意图: {wc.get('current_intent','unknown')}\n\n{memory_context}"
+            # v5.0.5/A6: 记录记忆检索决策(含 trace_id),best-effort。
+            try:
+                from .decision_trace import record_decision, MEMORY_RETRIEVE
+                hit_count = len(ctx) if hasattr(ctx, "__len__") else None
+                record_decision(
+                    self.db,
+                    decision_type=MEMORY_RETRIEVE,
+                    session_id=session_id,
+                    tenant_id=tenant_id,
+                    user_id=(request_context or {}).get("user_id", "default"),
+                    decision_input={"query": user_content[:200]},
+                    decision_output={"injection_chars": len(router_injection or ""), "hits": hit_count},
+                    reasoning="memory_router.retrieve",
+                )
+            except Exception:
+                pass
         else:
             memory_context = scoped_memory_manager.get_context_for_query(user_content)
 
@@ -428,6 +485,21 @@ class AgentV2:
             scene_keywords=scene_keywords,
         ) or []
         self._current_matched_skills = matched_skills
+        # v5.0.5/A6: 记录技能路由决策(含 trace_id),best-effort 不阻断主流程。
+        try:
+            from .decision_trace import record_decision, SKILL_ROUTE
+            record_decision(
+                self.db,
+                decision_type=SKILL_ROUTE,
+                session_id=session_id,
+                tenant_id=tenant_id,
+                user_id=(request_context or {}).get("user_id", "default"),
+                decision_input={"intent": scene_intent, "keywords": scene_keywords},
+                decision_output=[{"id": s.id, "name": s.name, "score": round(sc, 4)} for s, sc in matched_skills],
+                reasoning=f"routed {len(matched_skills)} skill(s)",
+            )
+        except Exception:
+            pass
         skills_payload = [{"id": s.id, "name": s.name} for s, _ in matched_skills]
         if not skills_payload and getattr(self, "_active_skill_id", None):
             active_skill = self.skill_registry.get(self._active_skill_id, tenant_id)
@@ -615,10 +687,10 @@ class AgentV2:
             )
         try:
             _stream = self.dispatcher.chat_with_tools(
-                messages=messages,
+                messages=self._fit_context(messages),
                 model_name=self.current_model,
                 stream=True,
-                max_rounds=None,
+                max_rounds=self.max_tool_rounds,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 tools=self._get_allowed_tool_schemas(),
@@ -936,7 +1008,7 @@ class AgentV2:
                     "timestamp": now_iso(),
                 })
 
-        asyncio.create_task(_reflect_background())
+        self._spawn_session_task(session_id, _reflect_background())
 
         # 11. 完成
         await channel.send(session_id, {
@@ -953,11 +1025,78 @@ class AgentV2:
 
         # 12. v2.2: 异步 Scene Analyzer（不阻塞对话）
         if scoped_wc_manager:
-            asyncio.create_task(self._run_scene_analyzer(session_id, user_content, full_response, tenant_id))
+            self._spawn_session_task(
+                session_id,
+                self._run_scene_analyzer(session_id, user_content, full_response, tenant_id),
+            )
 
     # ========= v4.0.0: System Prompt 构建（可缓存） =========
 
     # ============ Prompt building (delegated to prompt_builder.py) ============
+
+    def _estimate_tokens(self, text: str) -> int:
+        """粗略 token 估算(v5.0.5/A1)。无 tiktoken,按字符启发式:
+        中文约 1 char≈1 token,英文约 4 char≈1 token,取保守折中 ~2.5。"""
+        if not text:
+            return 0
+        return max(1, int(len(text) / 2.5))
+
+    def _model_context_length(self) -> int:
+        """当前模型 context 窗口,取不到时回退默认。
+
+        provider 基类不强制暴露 model info;若某 provider 实现了
+        get_model_info 则用之,否则用 TARS_DEFAULT_CONTEXT_LENGTH。"""
+        getter = getattr(self.provider, "get_model_info", None)
+        if callable(getter):
+            try:
+                info = getter(self.current_model)
+                if info and getattr(info, "context_length", 0):
+                    return int(info.context_length)
+            except Exception:
+                pass
+        return int(os.getenv("TARS_DEFAULT_CONTEXT_LENGTH", "4096"))
+
+    def _fit_context(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """累计 token 超过 context 窗口 70% 时,摘要折叠早期对话消息(v5.0.5/A1)。
+
+        保留 system(首条)与最近若干轮原文,中间历史压成一条摘要,避免长会话
+        撑爆上下文。纯启发式、无 LLM 调用,失败时原样返回不影响主流程。
+        """
+        try:
+            if not messages or len(messages) <= 4:
+                return messages
+            budget = int(self._model_context_length() * 0.7)
+            total = sum(self._estimate_tokens(str(m.get("content") or "")) for m in messages)
+            if total <= budget:
+                return messages
+
+            system_msgs = [m for m in messages[:1] if m.get("role") == "system"]
+            body = messages[len(system_msgs):]
+            # 保留最近 4 条原文,其余折叠
+            keep_recent = 4
+            if len(body) <= keep_recent:
+                return messages
+            older, recent = body[:-keep_recent], body[-keep_recent:]
+            digest_lines = []
+            for m in older:
+                role = m.get("role", "?")
+                content = str(m.get("content") or "").replace("\n", " ")
+                if content:
+                    digest_lines.append(f"- [{role}] {content[:200]}")
+            digest = "（以下为早期对话摘要，已折叠以控制上下文长度）\n" + "\n".join(digest_lines)
+            summary_msg = {"role": "system", "content": digest}
+            fitted = system_msgs + [summary_msg] + recent
+            try:
+                import logging
+                logging.getLogger("tars.agent").info(
+                    "context fit: %s msgs (~%s tok) -> %s msgs (budget %s)",
+                    len(messages), total, len(fitted), budget,
+                )
+            except Exception:
+                pass
+            return fitted
+        except Exception:
+            return messages
 
     def _build_system_prompt(self, user_content: str, session_id: str,
                                tenant_id: str, memory_context: str,

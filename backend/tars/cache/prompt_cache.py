@@ -3,6 +3,21 @@
 Component-level TTL cache for system prompt assembly.
 Caches immutable prompt fragments (persona, tool descriptions, skill list)
 and rebuilds only the components that change.
+
+多 worker 一致性说明 (v5.0.5/A7)
+--------------------------------
+本缓存是 **进程内** 的(普通 dict + threading.Lock),不跨进程共享。在
+gunicorn/uvicorn 以 ``-w N`` (N>1) 多 worker 运行时,每个 worker 持有
+**各自独立** 的 PromptCache 实例:
+
+- 安全性:缓存内容是确定性派生(persona/工具/技能的内容哈希),各 worker
+  各自计算得到相同结果,不会串数据。
+- 一致性:某 worker 调用 ``invalidate()`` 只清自己的副本;其他 worker 的
+  过期由 TTL(默认 300s)兜底。因此改了 persona/技能后,最坏需等一个 TTL
+  周期才在所有 worker 生效 —— 这是可接受的最终一致。
+
+若将来需要强一致或即时失效,应换成 Redis 等共享后端;当前进程内实现是有意
+为之(零依赖、低延迟),TTL 已限定不一致窗口。
 """
 import time
 import hashlib

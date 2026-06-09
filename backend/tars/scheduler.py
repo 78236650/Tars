@@ -94,6 +94,8 @@ class ScheduledTask:
     last_run: Optional[datetime] = None
     next_run: Optional[datetime] = None
     created_at: datetime = field(default_factory=_local_now)
+    # v5.0.5/A7: 单任务执行超时(秒),防止卡死任务占用调度器。默认 30 分钟。
+    timeout_seconds: float = 1800.0
 
 
 class TaskScheduler:
@@ -207,11 +209,13 @@ class TaskScheduler:
                     pass
 
     async def _run_task(self, task: ScheduledTask):
-        """执行单个任务"""
+        """执行单个任务(v5.0.5/A7:带超时保护,避免卡死任务拖垮调度)"""
         try:
             print(f"[Scheduler] _run_task 开始: {task.name}")
-            await task.task()
+            await asyncio.wait_for(task.task(), timeout=task.timeout_seconds)
             print(f"[Scheduler] _run_task 完成: {task.name}")
+        except asyncio.TimeoutError:
+            print(f"[Scheduler] 任务 {task.name} 超时(>{task.timeout_seconds:.0f}s),已中止")
         except Exception as e:
             print(f"[Scheduler] 任务 {task.name} 执行失败: {e}")
     

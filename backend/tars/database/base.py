@@ -217,6 +217,12 @@ class Database:
     def add_dead_letter(self, *args, **kwargs):
         return self.memories.add_dead_letter(*args, **kwargs)
 
+    def list_dead_letters(self, *args, **kwargs):
+        return self.memories.list_dead_letters(*args, **kwargs)
+
+    def mark_dead_letter(self, *args, **kwargs):
+        return self.memories.mark_dead_letter(*args, **kwargs)
+
     def create_transcription(self, *args, **kwargs):
         return self.transcriptions.create_transcription(*args, **kwargs)
 

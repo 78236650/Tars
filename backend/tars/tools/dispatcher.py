@@ -55,6 +55,11 @@ class ToolDispatcher:
     def __init__(self, registry: ToolRegistry, provider=None):
         self.registry = registry
         self.provider = provider
+        # v5.0.5/A1: 单工具执行兜底超时与输出截断阈值(可经环境变量配置)。
+        # 兜底超时取较大值,避免误杀合法长任务;真正的细粒度超时仍在各工具内部。
+        import os
+        self.tool_timeout = float(os.getenv("TARS_TOOL_TIMEOUT", "120"))
+        self.max_tool_output = int(os.getenv("TARS_MAX_TOOL_OUTPUT", "8000"))
 
     def set_provider(self, provider):
         self.provider = provider
@@ -154,7 +159,9 @@ class ToolDispatcher:
                     self._record_evolution_feedback(context, tool_name, False)
                     return result
                 try:
-                    approved = await approval_service.request_approval(tool_name, arguments, context)
+                    outcome = await approval_service.request_approval_detailed(
+                        tool_name, arguments, context
+                    )
                 except Exception as exc:
                     try:
                         from ..security.audit import safe_audit
@@ -175,15 +182,28 @@ class ToolDispatcher:
                         success=False,
                         output="",
                         error=f"审批服务异常，已拒绝执行: {exc}",
+                        recoverable=False,
                     )
                     self._record_evolution_feedback(context, tool_name, False)
                     return result
-                if not approved:
-                    result = ToolResult(
-                        success=False,
-                        output="",
-                        error="工具执行被拒绝或审批超时",
-                    )
+                if outcome != "approved":
+                    # v5.0.5/A2: 区分超时与拒绝 —— 超时可重试,拒绝不可。
+                    if outcome == "timeout":
+                        result = ToolResult(
+                            success=False,
+                            output="",
+                            error="审批超时未响应,已中止(可稍后重试)",
+                            recoverable=True,
+                            retry_suggested=True,
+                        )
+                    else:
+                        result = ToolResult(
+                            success=False,
+                            output="",
+                            error="工具执行被拒绝",
+                            recoverable=False,
+                            retry_suggested=False,
+                        )
                     self._record_evolution_feedback(context, tool_name, False)
                     return result
         except Exception as exc:
@@ -226,12 +246,18 @@ class ToolDispatcher:
                 return result
 
         import time as _time
+        import asyncio as _asyncio
         _t0 = _time.perf_counter()
         try:
             merged_arguments = dict(arguments)
             for key, value in (context or {}).items():
                 merged_arguments.setdefault(key, value)
-            result = await tool.execute(**merged_arguments)
+            # v5.0.5/A1: 兜底超时 —— 工具内部超时失效时,避免控制流永不返回。
+            result = await _asyncio.wait_for(
+                tool.execute(**merged_arguments), timeout=self.tool_timeout
+            )
+            # v5.0.5/A1: 超长输出截断 + 标记,防止撑爆下游 context。
+            result = self._truncate_output(result)
             try:
                 from ..security.audit import audit_logger
                 if audit_logger:
@@ -252,6 +278,21 @@ class ToolDispatcher:
                 pass
             self._record_evolution_feedback(context, tool_name, result.success)
             return result
+        except _asyncio.TimeoutError:
+            try:
+                from ..metrics import record_tool_execution
+                record_tool_execution(tool_name, False, _time.perf_counter() - _t0)
+            except Exception:
+                pass
+            self._record_evolution_feedback(context, tool_name, False)
+            # 超时是可恢复的:建议 agent 重试或换路径,区别于代码级失败。
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"工具 '{tool_name}' 执行超时(>{self.tool_timeout:.0f}s),已中止",
+                recoverable=True,
+                retry_suggested=True,
+            )
         except Exception as e:
             try:
                 from ..security.audit import audit_logger
@@ -271,9 +312,31 @@ class ToolDispatcher:
                 record_tool_execution(tool_name, False, _time.perf_counter() - _t0)
             except Exception:
                 pass
-            result = ToolResult(success=False, output="", error=f"工具执行失败: {e}")
+            # 代码级异常通常不可自动恢复:不建议盲目重试。
+            result = ToolResult(
+                success=False,
+                output="",
+                error=f"工具执行失败: {e}",
+                recoverable=False,
+                retry_suggested=False,
+            )
             self._record_evolution_feedback(context, tool_name, False)
             return result
+
+    def _truncate_output(self, result: ToolResult) -> ToolResult:
+        """截断超长工具输出并打标记(v5.0.5/A1)。"""
+        try:
+            output = result.output
+            if isinstance(output, str) and len(output) > self.max_tool_output:
+                head = output[: self.max_tool_output]
+                omitted = len(output) - self.max_tool_output
+                result.output = (
+                    f"{head}\n\n[... 输出过长,已截断 {omitted} 字符 ...]"
+                )
+                result.truncated = True
+        except Exception:
+            pass
+        return result
 
     async def chat_with_tools(
         self,
@@ -421,7 +484,23 @@ class ToolDispatcher:
                 working_messages.append({"role": "assistant", "content": f'```json\n{{"tool_call": {{"name": "{tool_name}", "arguments": {json.dumps(arguments, ensure_ascii=False)}}}}}\n```'})
                 working_messages.append({"role": "user", "content": f"[系统] {tool_msg}\n\n请根据工具结果回答用户的消息。"})
 
-        # 不限制工具调用轮次，由模型自主决定何时完成
+        # v5.0.5/A1: 达到 max_rounds 上限仍未收敛 —— 不再静默结束,而是请模型
+        # 基于已有工具结果给出总结,避免长任务无任何输出。
+        if tools_called:
+            try:
+                alt_msgs = list(working_messages)
+                alt_msgs.append({
+                    "role": "user",
+                    "content": f"已达到工具调用轮次上限({max_rounds})。请基于以上工具执行结果,用简短中文总结当前进展与结论。",
+                })
+                final = await self._call_with_prompt_fallback(alt_msgs, stream)
+                final_text = self._extract_text(final, False)
+                if final_text and len(final_text) > 5:
+                    yield final_text
+                    return
+            except Exception:
+                pass
+            yield f"已执行 {len(tools_called)} 步工具调用(达到轮次上限 {max_rounds}),部分任务可能未完成: " + ", ".join(tools_called)
 
     def _inject_tool_prompt(self, messages: List[Dict]) -> List[Dict]:
         """为不支持 function calling 的模型注入工具提示到 system prompt"""

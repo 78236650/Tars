@@ -1,5 +1,6 @@
 """多 Agent 编排记忆：一次调度任务的产出与共享黑板落库。"""
 import json
+import threading
 import uuid
 from datetime import datetime
 
@@ -12,6 +13,18 @@ class OrchestrationMemory:
     def __init__(self, db, tenant_id: str = "default"):
         self.db = db
         self.tenant_id = tenant_id
+        # v5.0.5/A5: per-task 锁,串行化同一任务下并发子 Agent 的产出/黑板写,
+        # 避免读-改-写竞态。锁按 task_id 惰性创建,_locks_guard 保护字典本身。
+        self._task_locks: dict = {}
+        self._locks_guard = threading.Lock()
+
+    def _lock_for(self, task_id: str) -> threading.Lock:
+        with self._locks_guard:
+            lock = self._task_locks.get(task_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._task_locks[task_id] = lock
+            return lock
 
     def start_task(self, session_id: str, goal: str, orchestrator: str = "master") -> str:
         tid = str(uuid.uuid4())
@@ -24,11 +37,12 @@ class OrchestrationMemory:
         return tid
 
     def record_output(self, task_id: str, agent_type: str, subtask: str, output: str, status: str = "done"):
-        self.db.execute(
-            "INSERT INTO agent_task_outputs (id,task_id,agent_type,subtask,output,status,created_at)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), task_id, agent_type, subtask, output, status, _now()),
-        )
+        with self._lock_for(task_id):
+            self.db.execute(
+                "INSERT INTO agent_task_outputs (id,task_id,agent_type,subtask,output,status,created_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (str(uuid.uuid4()), task_id, agent_type, subtask, output, status, _now()),
+            )
 
     def get_outputs(self, task_id: str) -> list:
         return self.db.fetch_all(
@@ -37,12 +51,13 @@ class OrchestrationMemory:
         )
 
     def set_shared(self, task_id: str, key: str, value, by: str):
-        self.db.execute(
-            "INSERT INTO agent_collaboration_ctx (task_id,key,value,updated_by,updated_at)"
-            " VALUES (?,?,?,?,?) ON CONFLICT(task_id,key) DO UPDATE SET value=excluded.value,"
-            " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-            (task_id, key, json.dumps(value, ensure_ascii=False), by, _now()),
-        )
+        with self._lock_for(task_id):
+            self.db.execute(
+                "INSERT INTO agent_collaboration_ctx (task_id,key,value,updated_by,updated_at)"
+                " VALUES (?,?,?,?,?) ON CONFLICT(task_id,key) DO UPDATE SET value=excluded.value,"
+                " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                (task_id, key, json.dumps(value, ensure_ascii=False), by, _now()),
+            )
 
     def get_shared(self, task_id: str) -> dict:
         rows = self.db.fetch_all(

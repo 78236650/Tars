@@ -91,6 +91,9 @@ class Reflector:
             web_status="本轮使用了 web 搜索" if used_web else "本轮未使用 web 搜索",
         )
 
+        # v5.0.5/A3: 三层降级 —— LLM 不可用时记忆仍写入,不丢反思机会。
+        # 第一层:LLM 反思
+        text = None
         try:
             from ..models import ChatMessage
             messages = [
@@ -100,10 +103,16 @@ class Reflector:
             response = await self.provider.chat(messages, stream=False, temperature=0.1)
             text = response.content if hasattr(response, "content") else str(response)
         except Exception as e:
-            print(f"[Reflector] LLM 调用失败: {e}")
-            return []
+            print(f"[Reflector] LLM 调用失败: {e} —— 降级到启发式")
 
-        ops = self._parse_ops(text)
+        ops = self._parse_ops(text) if text else []
+
+        # 第二层:LLM 失败或未产出有效 ops 时,用启发式规则提取
+        if not ops:
+            ops = self._heuristic_ops(user_msg, assistant_msg)
+            if ops:
+                print(f"[Reflector] 启发式降级产出 {len(ops)} 个 op")
+
         applied = []
         for op in ops:
             try:
@@ -111,6 +120,17 @@ class Reflector:
                     applied.append(op)
             except Exception as e:
                 print(f"[Reflector] op 应用失败 {op}: {e}")
+
+        # 第三层:前两层都没写入任何东西时,做最小归档,确保对话不被完全遗忘
+        if not applied:
+            try:
+                min_op = self._minimal_archive_op(user_msg, assistant_msg)
+                if min_op and await self._apply_op(min_op):
+                    applied.append(min_op)
+                    print("[Reflector] 最小归档降级:已存 1 条 episode")
+            except Exception as e:
+                print(f"[Reflector] 最小归档失败: {e}")
+
         if applied:
             print(f"[Reflector] ops={len(ops)} applied={len(applied)}")
 
@@ -118,6 +138,49 @@ class Reflector:
         self._derive_project_context()
 
         return applied
+
+    def _heuristic_ops(self, user_msg: str, assistant_msg: str) -> List[Dict[str, Any]]:
+        """第二层降级:无 LLM 时用启发式规则产出记忆 op(v5.0.5/A3)。
+
+        保守策略 —— 只在对话看起来含可记忆信息(足够长/含决策类信号词)时
+        产出一条 log_episode,避免噪声。"""
+        try:
+            u = (user_msg or "").strip()
+            a = (assistant_msg or "").strip()
+            if len(u) < 8 or len(a) < 8:
+                return []
+            signals = (
+                "决定", "选择", "采用", "改为", "偏好", "喜欢", "记住",
+                "以后", "规则", "约定", "方案", "用", "配置",
+            )
+            if not any(s in u or s in a for s in signals):
+                return []
+            content = f"用户: {u[:120]}; 回应要点: {a[:120]}"
+            return [{
+                "op": "log_episode",
+                "content": content[:240],
+                "event_time": "",
+                "entity_refs": [],
+                "importance": 0.3,  # 启发式置信低,重要性减半
+            }]
+        except Exception:
+            return []
+
+    def _minimal_archive_op(self, user_msg: str, assistant_msg: str) -> Optional[Dict[str, Any]]:
+        """第三层降级:最小归档(v5.0.5/A3)。
+
+        前两层都没写入时,把本轮对话压成一条低重要性 episode,保证不彻底丢失。"""
+        u = (user_msg or "").strip()
+        a = (assistant_msg or "").strip()
+        if not u or not a:
+            return None
+        return {
+            "op": "log_episode",
+            "content": f"[未反思归档] 用户: {u[:120]}; 回应: {a[:120]}"[:240],
+            "event_time": "",
+            "entity_refs": [],
+            "importance": 0.2,
+        }
 
     def _derive_project_context(self):
         """从 entities/relations/decisions 派生 project_context 快照"""

@@ -212,3 +212,84 @@ def trigger_db_backup(
     if proc.returncode != 0:
         raise HTTPException(status_code=500, detail=f"备份失败: {proc.stderr.strip()[:500]}")
     return {"success": True, "output": proc.stdout.strip()}
+
+
+# ============ v5.0.5/A7: 运行时策略 reload + 死信队列处理 ============
+
+
+@router.post("/execution-policy/reload")
+def reload_execution_policy(
+    http_request: Request,
+    principal: Principal = Depends(require_admin),
+):
+    """重新加载 execution_policy.yaml(v5.0.5/A7),免重启生效。"""
+    from ..security.execution_policy import execution_policy
+
+    new_config = execution_policy.reload()
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id="execution_policy",
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
+            detail="reloaded execution_policy.yaml",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
+    return {
+        "success": True,
+        "enabled": execution_policy.enabled,
+        "timeout_seconds": execution_policy.timeout_seconds,
+        "require_for_tools": new_config.get("require_for_tools", []),
+    }
+
+
+@router.get("/dead-letters")
+def list_dead_letters(
+    status: str = Query("pending", max_length=32),
+    limit: int = Query(100, ge=1, le=500),
+    principal: Principal = Depends(require_admin),
+):
+    """列出死信队列(v5.0.5/A7)。status 传空字符串则返回全部。"""
+    db = _require_db()
+    items = db.list_dead_letters(status=status, limit=limit)
+    return {"success": True, "count": len(items), "dead_letters": items}
+
+
+class DeadLetterActionRequest(BaseModel):
+    action: str  # "retry" | "discard"
+
+
+@router.post("/dead-letters/{dl_id}/action")
+def act_on_dead_letter(
+    dl_id: str,
+    body: DeadLetterActionRequest,
+    http_request: Request,
+    principal: Principal = Depends(require_admin),
+):
+    """处理死信(v5.0.5/A7):retry 标记为待重放(retry_count+1),discard 丢弃。
+
+    实际重放由对应业务消费者依据 status='retrying' 拉取执行 —— 此端点负责
+    状态流转与审计,不直接执行任意 op(避免无差别重放带来的副作用风险)。
+    """
+    db = _require_db()
+    action = (body.action or "").lower()
+    if action == "retry":
+        ok = db.mark_dead_letter(dl_id, status="retrying", increment_retry=True)
+        new_status = "retrying"
+    elif action == "discard":
+        ok = db.mark_dead_letter(dl_id, status="discarded")
+        new_status = "discarded"
+    else:
+        raise HTTPException(status_code=400, detail="action 必须是 retry 或 discard")
+    if not ok:
+        raise HTTPException(status_code=404, detail="死信不存在")
+    safe_audit(
+        lambda lg: lg.log_config_change(
+            resource_id=f"dead_letter:{dl_id}",
+            tenant_id=ORG_ID,
+            user_id=principal.user_id,
+            detail=f"dead_letter action={action}",
+            client_ip=client_ip_from_request(http_request),
+        )
+    )
+    return {"success": True, "dead_letter_id": dl_id, "status": new_status}

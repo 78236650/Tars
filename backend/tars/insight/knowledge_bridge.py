@@ -34,4 +34,15 @@ class KnowledgeBridge:
         return None
 
     def enrich_definition(self, definition, citations):
-        return definition or ""
+        # v5.0.5/A8: 恢复被 cefa55c(删 knowledge 模块)误删的引用拼接。
+        # 本函数是纯格式化,不依赖已移除的检索系统 —— 把指标定义的引用注脚
+        # 拼回定义串,供 MetricAnswerCard 展示来源。
+        if not citations:
+            return definition or ""
+        refs = " ".join(f"[ref:{c.doc_id}|{c.title}]" for c in citations[:3])
+        base = (definition or "").strip()
+        if refs in base:
+            return base
+        if base:
+            return f"{base}\n\n参考：{refs}"
+        return f"参考：{refs}"

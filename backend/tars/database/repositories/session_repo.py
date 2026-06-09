@@ -483,7 +483,13 @@ class SessionRepo:
         *,
         status: str,
         resolved_by: str = "",
+        expected_status: str = "pending",
     ) -> Optional[ApprovalRequest]:
+        """更新审批请求状态。
+
+        默认仅允许从 pending 转出(防并发双重处理)。v5.0.5/A2 宽限窗口的
+        迟到决策需从 timeout 转出,故 expected_status 可显式指定。
+        """
         conn = self._get_conn()
         cursor = conn.cursor()
         now = get_local_now()
@@ -491,9 +497,9 @@ class SessionRepo:
             """
             UPDATE approval_requests
             SET status = ?, resolved_at = ?, resolved_by = ?
-            WHERE id = ? AND status = 'pending'
+            WHERE id = ? AND status = ?
             """,
-            (status, now, resolved_by, request_id),
+            (status, now, resolved_by, request_id, expected_status),
         )
         conn.commit()
         if cursor.rowcount == 0:

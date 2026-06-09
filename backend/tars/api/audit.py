@@ -39,6 +39,34 @@ def _format_resource(log) -> str:
     return log.resource_type or ""
 
 
+@router.get("/decisions")
+def list_agent_decisions(
+    trace_id: str = Query("", max_length=128),
+    session_id: str = Query("", max_length=128),
+    decision_type: str = Query("", max_length=64),
+    limit: int = Query(100, ge=1, le=500),
+    principal: Principal = Depends(require_admin),
+):
+    """查询 Agent 决策链(v5.0.5/A6)。
+
+    按 trace_id 可回放一次请求的完整决策序列(技能路由→记忆检索→升格等)。
+    需 admin。至少应提供 trace_id 或 session_id 之一以缩小范围。
+    """
+    db = _require_db()
+    if not trace_id and not session_id and not decision_type:
+        raise HTTPException(status_code=400, detail="请至少提供 trace_id 或 session_id")
+    from ..agent.decision_trace import query_decisions
+
+    rows = query_decisions(
+        db,
+        trace_id=trace_id,
+        session_id=session_id,
+        decision_type=decision_type,
+        limit=limit,
+    )
+    return {"success": True, "count": len(rows), "decisions": rows}
+
+
 @router.get("/logs")
 def list_audit_logs(
     action: str = Query("", max_length=255),

@@ -995,15 +995,57 @@ class MemoryRepo:
         return results
 
     # ============ CronJob 定时任务方法 ============
-    def add_dead_letter(self, op: str, error: str, session_id: str = None):
+    def add_dead_letter(self, op: str, error: str, session_id: str = None, payload: str = None) -> str:
+        """写入死信(v5.0.5/A7修正:表名 dead_letters + 补 id/payload)。返回死信 id。"""
+        import uuid as _uuid
         conn = self._get_conn()
         cur = conn.cursor()
         now = get_local_now().isoformat()
+        dl_id = str(_uuid.uuid4())
         cur.execute(
-            "INSERT INTO dead_letter_queue (op, error, session_id, created_at) VALUES (?, ?, ?, ?)",
-            (op, error, session_id, now),
+            "INSERT INTO dead_letters (id, op, error, session_id, payload, status, retry_count, created_at)"
+            " VALUES (?, ?, ?, ?, ?, 'pending', 0, ?)",
+            (dl_id, op, error, session_id, payload, now),
         )
         conn.commit()
+        return dl_id
+
+    def list_dead_letters(self, status: str = "pending", limit: int = 100) -> list:
+        """列出死信(v5.0.5/A7)。status 为空则返回全部。"""
+        conn = self._get_conn()
+        cur = conn.cursor()
+        if status:
+            cur.execute(
+                "SELECT id, op, error, session_id, payload, status, retry_count, created_at, last_retry_at"
+                " FROM dead_letters WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                (status, int(limit)),
+            )
+        else:
+            cur.execute(
+                "SELECT id, op, error, session_id, payload, status, retry_count, created_at, last_retry_at"
+                " FROM dead_letters ORDER BY created_at DESC LIMIT ?",
+                (int(limit),),
+            )
+        cols = ["id", "op", "error", "session_id", "payload", "status", "retry_count", "created_at", "last_retry_at"]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def mark_dead_letter(self, dl_id: str, status: str, increment_retry: bool = False) -> bool:
+        """更新死信状态(v5.0.5/A7)。increment_retry 时 retry_count+1 并记录时间。"""
+        conn = self._get_conn()
+        cur = conn.cursor()
+        now = get_local_now().isoformat()
+        if increment_retry:
+            cur.execute(
+                "UPDATE dead_letters SET status = ?, retry_count = retry_count + 1, last_retry_at = ? WHERE id = ?",
+                (status, now, dl_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE dead_letters SET status = ? WHERE id = ?",
+                (status, dl_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
 
     # ============ Meeting Voice Recognition ============
 

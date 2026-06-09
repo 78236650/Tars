@@ -55,9 +55,95 @@ def _m1_encrypt_api_keys(cursor) -> None:
             )
 
 
+def _m2_agent_decisions(cursor) -> None:
+    """v5.0.5/A6: agent_decisions 表 —— 记录技能路由/记忆检索/升格等决策,
+    带 trace_id 以便按请求链回溯。建表幂等;索引按 trace_id 与 session 检索。
+
+    用 TEXT/TIMESTAMP 等方言无关类型,sqlite 与 postgres 均可。
+    """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_decisions (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL DEFAULT '',
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            user_id TEXT NOT NULL DEFAULT 'default',
+            trace_id TEXT,
+            decision_type TEXT NOT NULL,
+            decision_input TEXT,
+            decision_output TEXT,
+            reasoning TEXT,
+            created_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_decisions_trace ON agent_decisions(trace_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_decisions_session ON agent_decisions(session_id, created_at)"
+    )
+
+
+def _m3_dead_letter_retry(cursor) -> None:
+    """v5.0.5/A7: dead_letters 增加重试追踪列(status/retry_count/last_retry_at)。
+
+    幂等:列已存在则跳过。老库可能尚无 dead_letters 表(由 init_schema 建),
+    故先确保表存在。
+    """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dead_letters (
+            id TEXT PRIMARY KEY,
+            op TEXT NOT NULL,
+            error TEXT NOT NULL,
+            session_id TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    for col, ddl in (
+        ("status", "ALTER TABLE dead_letters ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"),
+        ("retry_count", "ALTER TABLE dead_letters ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"),
+        ("last_retry_at", "ALTER TABLE dead_letters ADD COLUMN last_retry_at TEXT"),
+        ("payload", "ALTER TABLE dead_letters ADD COLUMN payload TEXT"),
+    ):
+        try:
+            cursor.execute(ddl)
+        except Exception:
+            # 列已存在(重复迁移或老库已手工加过)——幂等跳过
+            pass
+
+
+def _m4_document_collections(cursor) -> None:
+    """v5.0.5/A8: 补回 document_collections 表。
+
+    commit 528d4ac(移除 knowledge 模块)误删了 SQLite 端 connection.py 的此表,
+    但 connection_pg.py(Postgres)仍保留,且 insight/knowledge_publisher.py 与
+    search/gateway.py 仍在使用 —— 导致 SQLite 部署跑 insight 发布/搜索时
+    'no such table: document_collections' 崩溃。此迁移幂等补回,列与 PG 端对齐。
+    """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS document_collections (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            default_doc_type TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
 # Ordered list of migrations. Append new ones with the next integer version.
 MIGRATIONS: List[Migration] = [
     (1, "encrypt api_key at rest + backfill api_key_hash", _m1_encrypt_api_keys),
+    (2, "add agent_decisions table for decision tracing", _m2_agent_decisions),
+    (3, "add dead_letters retry tracking columns", _m3_dead_letter_retry),
+    (4, "restore document_collections table (sqlite)", _m4_document_collections),
 ]
 
 

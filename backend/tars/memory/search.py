@@ -38,10 +38,28 @@ class HybridSearch:
         self.tenant_id = tenant_id
         self.vector_store = vector_store
         self.reranker = reranker
+        # v5.0.5/A3: 最近一次检索的降级深度,供调用方/调试观测。
+        #   0 = Chroma 向量;1 = SQLite BLOB 向量;2 = 仅关键词;3 = 确定性向量兜底
+        self.last_fallback_depth: int = 0
+        self._deterministic_provider = None  # 懒加载
+
+    def _ensure_embedding_provider(self):
+        """无可用 embedding provider 时,惰性回退到确定性向量(v5.0.5/A3),
+        保证离线/降级环境下语义路径不被完全跳过。"""
+        if self.embedding_provider is not None:
+            return self.embedding_provider
+        if self._deterministic_provider is None:
+            try:
+                from .embeddings import DeterministicEmbeddingProvider
+                self._deterministic_provider = DeterministicEmbeddingProvider()
+            except Exception:
+                return None
+        return self._deterministic_provider
 
     def search(self, query: str, limit: int = 5) -> list:
         """混合搜索 + 衰减加权 + 命中强化"""
         scored: dict = {}  # mem_id -> (mem, score)
+        fallback_depth = 0
 
         # 1. 语义搜索（优先使用 Chroma 向量数据库）
         semantic_hits = 0
@@ -49,6 +67,7 @@ class HybridSearch:
             try:
                 self._chroma_semantic_score(query, scored)
                 semantic_hits = len(scored)
+                fallback_depth = 0
             except Exception as e:
                 print(f"[HybridSearch] Chroma search failed: {e}, fallback to SQLite")
                 # Chroma 失败时回退到 SQLite BLOB
@@ -56,14 +75,33 @@ class HybridSearch:
                     try:
                         self._sqlite_semantic_score(query, scored)
                         semantic_hits = len(scored)
+                        fallback_depth = 1
                     except Exception as e2:
                         print(f"[HybridSearch] {_semantic_skip_reason(e2)}")
+                        fallback_depth = 2
+                else:
+                    fallback_depth = 2
         elif self.embedding_provider:
             try:
                 self._sqlite_semantic_score(query, scored)
                 semantic_hits = len(scored)
+                fallback_depth = 1
             except Exception as e:
                 print(f"[HybridSearch] {_semantic_skip_reason(e)}")
+                fallback_depth = 2
+        else:
+            # 无任何 embedding provider:尝试确定性向量兜底
+            provider = self._ensure_embedding_provider()
+            if provider is not None:
+                try:
+                    self._sqlite_semantic_score(query, scored, provider=provider)
+                    semantic_hits = len(scored)
+                    fallback_depth = 3
+                except Exception as e:
+                    print(f"[HybridSearch] {_semantic_skip_reason(e)}")
+                    fallback_depth = 2
+            else:
+                fallback_depth = 2
 
         # 2. FTS 关键词搜索作为补充
         kw_hits = 0
@@ -90,13 +128,15 @@ class HybridSearch:
             except Exception:
                 pass
 
-        # 5. 检索日志
+        # 5. 记录降级深度 + 检索日志
+        self.last_fallback_depth = fallback_depth
         top_preview = ", ".join(
             f"[{m.category}]{m.content[:30]}" for m in results[:3]
         ) if results else "无命中"
         print(
             f"[HybridSearch] query=\"{query[:40]}\" "
             f"semantic={semantic_hits} keyword={kw_hits} "
+            f"fallback_depth={fallback_depth} "
             f"top={len(results)} | {top_preview}"
         )
 
@@ -139,9 +179,13 @@ class HybridSearch:
             score = decay_score(sim, importance, age_h)
             scored[mem_id] = (mem, score)
 
-    def _sqlite_semantic_score(self, query: str, scored: dict):
-        """使用 SQLite BLOB 进行语义搜索（回退方案）"""
-        query_vec = self.embedding_provider.encode([query])[0]
+    def _sqlite_semantic_score(self, query: str, scored: dict, provider=None):
+        """使用 SQLite BLOB 进行语义搜索（回退方案）。
+
+        provider 显式传入时用之(确定性向量兜底),否则用实例的 embedding_provider。
+        """
+        emb = provider or self.embedding_provider
+        query_vec = emb.encode([query])[0]
         all_memories = self.db.get_all_memories_with_metadata(tenant_id=self.tenant_id)
         for mem, embedding_blob, last_accessed_iso, importance, _source in all_memories:
             if not embedding_blob:

@@ -11,6 +11,7 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" /
 
 class ExecutionPolicy:
     def __init__(self, config_path: Optional[Path] = None):
+        self._config_path = config_path
         self._config = self._load_config(config_path)
 
     def _load_config(self, config_path: Optional[Path] = None) -> dict[str, Any]:
@@ -19,6 +20,14 @@ class ExecutionPolicy:
             with open(path, encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
         return {}
+
+    def reload(self) -> dict[str, Any]:
+        """运行时重新加载策略配置(v5.0.5/A7),返回新的 approval 配置摘要。
+
+        允许管理员改 config/execution_policy.yaml 后免重启生效。
+        """
+        self._config = self._load_config(self._config_path)
+        return self.approval_config
 
     @property
     def approval_config(self) -> dict[str, Any]:

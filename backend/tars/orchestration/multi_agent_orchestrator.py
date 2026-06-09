@@ -8,6 +8,7 @@ from typing import List, Optional
 from ..memory.manager import MemoryManager
 from ..agent.subagent_manager import SubAgentManager
 from .orchestration_memory import OrchestrationMemory
+from .dag import validate_acyclic, CyclicDependencyError
 
 
 def decompose_goal(goal: str) -> List[dict]:
@@ -46,6 +47,27 @@ class MultiAgentOrchestrator:
 
     def _decompose(self, goal: str) -> List[dict]:
         return decompose_goal(goal)
+
+    @staticmethod
+    def _validate_no_cycles(subtasks: List[dict]) -> None:
+        """检测 subtasks 间 depends_on 循环(v5.0.5/A5)。
+
+        节点 id 优先取显式 'id',否则用列表下标。无 depends_on 字段时图无边,
+        天然无环 —— 仅当调用方提供依赖关系时才有意义。
+        """
+        deps: dict = {}
+        # 先建立 下标/id → 规范 id 的映射
+        id_of = {}
+        for idx, st in enumerate(subtasks or []):
+            nid = st.get("id", idx)
+            id_of[idx] = nid
+            id_of[nid] = nid
+        for idx, st in enumerate(subtasks or []):
+            nid = id_of[idx]
+            raw_deps = st.get("depends_on") or []
+            deps[nid] = [id_of.get(d, d) for d in raw_deps]
+        if any(deps.get(n) for n in deps):
+            validate_acyclic(deps)
 
     def _enrich_subtasks(self, subtasks: List[dict], domain_ctx: str) -> List[dict]:
         enriched = []
@@ -111,6 +133,11 @@ class MultiAgentOrchestrator:
         subtasks: Optional[List[dict]] = None,
     ) -> dict:
         plan = subtasks if subtasks is not None else self._decompose(goal)
+        # v5.0.5/A5: 编排前检测 DAG 循环依赖,有环则 fail-fast,避免死锁/空转。
+        try:
+            self._validate_no_cycles(plan)
+        except CyclicDependencyError as e:
+            return {"task_id": None, "status": "rejected", "error": str(e)}
         task_id = self.mem.start_task(session_id=session_id, goal=goal)
         try:
             try:
