@@ -21,10 +21,97 @@ _endpoint_store: Optional[EndpointStore] = None
 _current_provider: Literal["ollama", "openai_compatible"] = "ollama"
 _current_endpoint_id: Optional[str] = None
 
+# global_state key under which the active chat-model selection is persisted so
+# it survives a backend restart (otherwise current_model resets to OLLAMA_MODEL,
+# which may not exist in the local Ollama and silently breaks chat).
+_SELECTION_STATE_KEY = "chat_model_selection"
+
 
 def init_endpoint_store(store: EndpointStore) -> None:
     global _endpoint_store
     _endpoint_store = store
+
+
+def _persist_selection(provider: str, model: str, endpoint_id: Optional[str]) -> None:
+    """Save the active chat-model selection to global_state (best-effort)."""
+    import json
+
+    try:
+        agent = get_agent()
+        conn = agent.db._get_conn()
+        cursor = conn.cursor()
+        payload = json.dumps(
+            {"provider": provider, "model": model, "endpoint_id": endpoint_id},
+            ensure_ascii=False,
+        )
+        cursor.execute(
+            "INSERT INTO global_state (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_SELECTION_STATE_KEY, payload),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning("persist chat model selection failed: %s", e)
+
+
+def restore_model_selection(agent: Agent) -> None:
+    """Reapply the persisted chat-model selection at startup.
+
+    No-op when nothing was persisted, when the saved endpoint is gone/disabled,
+    or when restoration fails — in those cases the default provider set up by
+    main.py stays in effect.
+    """
+    global _current_provider, _current_endpoint_id
+    import json
+
+    try:
+        conn = agent.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT value FROM global_state WHERE key = ?", (_SELECTION_STATE_KEY,)
+        )
+        row = cursor.fetchone()
+    except Exception as e:
+        logger.warning("restore chat model selection: read failed: %s", e)
+        return
+    if not row or not row[0]:
+        return
+
+    try:
+        sel = json.loads(row[0])
+    except Exception:
+        return
+
+    provider = sel.get("provider")
+    model = sel.get("model") or ""
+    endpoint_id = sel.get("endpoint_id")
+
+    try:
+        if provider == "openai_compatible" and endpoint_id:
+            store = get_endpoint_store()
+            ep = store.get_by_id(endpoint_id)
+            if not ep or not ep.enabled:
+                logger.warning(
+                    "restore chat model selection: endpoint %s missing/disabled; keeping default",
+                    endpoint_id,
+                )
+                return
+            agent.provider = CustomProvider(
+                base_url=ep.base_url, model=model, api_key=ep.api_key
+            )
+            agent.current_model = model
+            agent.dispatcher.set_provider(agent.provider)
+            _current_provider = "openai_compatible"
+            _current_endpoint_id = endpoint_id
+            _sync_llm_chain(agent)
+            logger.info("restored chat model: %s / %s", ep.name, model)
+        elif provider == "ollama" and model:
+            _switch_agent_to_ollama(agent, model)
+            _current_provider = "ollama"
+            _current_endpoint_id = None
+            logger.info("restored chat model: Ollama / %s", model)
+    except Exception as e:
+        logger.warning("restore chat model selection: apply failed: %s", e)
 
 
 def get_endpoint_store() -> EndpointStore:
@@ -267,6 +354,7 @@ async def switch_model(request: SwitchModelRequest):
             raise HTTPException(status_code=400, detail=f"无法切换到模型: {request.model}") from e
         _current_provider = "ollama"
         _current_endpoint_id = None
+        _persist_selection("ollama", agent.current_model, None)
         return {
             "success": True,
             "message": f"已切换到 Ollama: {request.model}",
@@ -299,6 +387,7 @@ async def switch_model(request: SwitchModelRequest):
         _current_provider = "openai_compatible"
         _current_endpoint_id = request.endpoint_id
         _sync_llm_chain(agent)
+        _persist_selection("openai_compatible", agent.current_model, request.endpoint_id)
         return {
             "success": True,
             "message": f"已切换到 {ep.name}: {request.model}",

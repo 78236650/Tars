@@ -467,6 +467,12 @@ memory_scheduler.ensure_started()
 # 注入 LLM provider 到会议识别工具（用于摘要生成）
 meeting_tool.provider = agent.provider
 
+# 恢复上次持久化的聊天模型选择（重启后 current_model 不再回退到可能不存在的
+# OLLAMA_MODEL）。须在 agent/provider/memory_manager/meeting_tool 都就绪之后调用，
+# 因为它会经 _sync_llm_chain 同步这些组件的 provider。
+from tars.models.config import restore_model_selection
+restore_model_selection(agent)
+
 # ========= 挂载路由 =========
 app.include_router(model_config_router)
 app.include_router(tools_router)

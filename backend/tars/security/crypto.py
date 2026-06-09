@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import logging
 import os
+from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -59,6 +60,16 @@ def _get_fernet() -> Fernet:
 _TOKEN_PREFIX = "enc::"
 
 
+class DecryptionError(Exception):
+    """Raised when a value carries the ``enc::`` prefix but cannot be decrypted.
+
+    This means the encryption secret is wrong/missing or the ciphertext is
+    corrupt. Callers must treat this as "the value is unavailable" — never fall
+    back to the ciphertext itself, which would leak a non-functional token into
+    places that expect plaintext (e.g. an API key sent to an LLM provider).
+    """
+
+
 def encrypt(value: str) -> str:
     """Encrypt a plaintext value. Returns a prefixed token for round-tripping."""
     if value is None:
@@ -70,17 +81,37 @@ def encrypt(value: str) -> str:
 def decrypt(token: str) -> str:
     """Decrypt a token produced by ``encrypt``.
 
-    A value without the prefix (legacy plaintext) is returned unchanged so the
-    migration can run lazily and old rows keep working.
+    A value without the ``enc::`` prefix (legacy plaintext) is returned
+    unchanged so the migration can run lazily and old rows keep working.
+
+    A prefixed value that fails to decrypt raises :class:`DecryptionError`
+    rather than returning the ciphertext as-is — returning the unusable token
+    silently is worse than failing loudly, because it gets mistaken for a real
+    plaintext secret downstream.
     """
     if token is None or not token.startswith(_TOKEN_PREFIX):
         return token
     raw = token[len(_TOKEN_PREFIX):]
     try:
         return _get_fernet().decrypt(raw.encode("ascii")).decode("utf-8")
-    except InvalidToken:
-        logger.warning("[crypto] decrypt failed; returning value as-is")
-        return token
+    except InvalidToken as e:
+        logger.error("[crypto] decrypt failed: wrong secret or corrupt ciphertext")
+        raise DecryptionError(
+            "failed to decrypt value: wrong encryption secret or corrupt data"
+        ) from e
+
+
+def decrypt_or_none(token: str) -> Optional[str]:
+    """Like :func:`decrypt`, but returns ``None`` on decryption failure.
+
+    For call sites that prefer a missing value over an exception (e.g. listing
+    users where one bad row shouldn't fail the whole query). The result is
+    never the ciphertext.
+    """
+    try:
+        return decrypt(token)
+    except DecryptionError:
+        return None
 
 
 def is_encrypted(value: str) -> bool:

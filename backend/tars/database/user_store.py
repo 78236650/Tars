@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from dataclasses import dataclass
 from ..gateway.permission import UserRole
-from ..security.crypto import encrypt, decrypt, lookup_hash
+from ..security.crypto import encrypt, decrypt, decrypt_or_none, lookup_hash
 
 
 @dataclass
@@ -19,7 +19,7 @@ class User:
     username: str
     email: str
     role: UserRole
-    api_key: str
+    api_key: Optional[str]
     created_at: datetime
     last_login: Optional[datetime] = None
     role_template_id: Optional[str] = None
@@ -223,7 +223,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=decrypt(row[4]),
+                api_key=decrypt_or_none(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
@@ -251,7 +251,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=decrypt(row[4]),
+                api_key=decrypt_or_none(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
@@ -271,7 +271,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=decrypt(row[4]),
+                api_key=decrypt_or_none(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
@@ -291,7 +291,7 @@ class UserStore:
                 username=row[1],
                 email=row[2],
                 role=UserRole(row[3]),
-                api_key=decrypt(row[4]),
+                api_key=decrypt_or_none(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
                 last_login=datetime.fromisoformat(row[6]) if row[6] else None,
                 role_template_id=row[8] if len(row) > 8 else None,
