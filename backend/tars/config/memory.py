@@ -29,6 +29,9 @@ class MemoryConfig:
 
         # v4.4.0 垂直模式：周边降级开关（默认关，需要时设 env=true 打开）
         self.compressor_enabled = get_bool_env("TARS_MEMORY_COMPRESSOR", False)
+        # v5.0.5/A3: 定时调度独立开关。compressor_enabled 只控制 API 是否可用，
+        # 定时任务需显式开启 TARS_MEMORY_COMPRESSOR_SCHEDULED=true。
+        self.compressor_scheduled = get_bool_env("TARS_MEMORY_COMPRESSOR_SCHEDULED", False)
         self.kb_promotion_enabled = get_bool_env("TARS_KB_PROMOTION", False)
         self.tree_builder_enabled = get_bool_env("TARS_MEMORY_TREE_BUILDER", True)
         self.turn_publisher_enabled = get_bool_env("TARS_TURN_PUBLISHER", False)

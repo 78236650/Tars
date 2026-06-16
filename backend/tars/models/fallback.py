@@ -49,6 +49,7 @@ def _record_usage(
     model: str,
     tokens_in: int = 0,
     tokens_out: int = 0,
+    user_id: str = "",
 ) -> None:
     if not db:
         return
@@ -59,6 +60,7 @@ def _record_usage(
             model=model,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            user_id=user_id,
         )
     except Exception:
         pass
@@ -82,6 +84,7 @@ async def chat_with_fallback(
     stream: bool = False,
     model: str | None = None,
     tenant_id: str = "default",
+    user_id: str = "",
     db=None,
     primary_name: str = "default",
     **kwargs,
@@ -89,7 +92,7 @@ async def chat_with_fallback(
     """Try primary provider, then configured fallback chain."""
     if not fallback_cfg.get("enabled"):
         response = await primary.chat(messages, stream=stream, model=model, **kwargs)
-        _record_usage(db, tenant_id, primary_name, model or getattr(primary, "model", "") or "")
+        _record_usage(db, tenant_id, primary_name, model or getattr(primary, "model", "") or "", user_id=user_id)
         return response
 
     retry_on = fallback_cfg.get("retry_on")
@@ -121,6 +124,17 @@ async def chat_with_fallback(
                 use_model or model or getattr(prov, "model", "") or "",
                 int(usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0),
                 int(usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0),
+                user_id=user_id,
+            )
+            return response
+            _record_usage(
+                db,
+                tenant_id,
+                name,
+                use_model or model or getattr(prov, "model", "") or "",
+                int(usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0),
+                int(usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0),
+                user_id=user_id,
             )
             return response
         except Exception as exc:
@@ -153,7 +167,7 @@ class FallbackProviderWrapper:
         self._primary_name = primary_name
         self._db = db
 
-    async def chat(self, messages, stream=False, model=None, tenant_id: str = "default", **kwargs):
+    async def chat(self, messages, stream=False, model=None, tenant_id: str = "default", user_id: str = "", **kwargs):
         return await chat_with_fallback(
             primary=self._primary,
             providers=self._providers,
@@ -162,6 +176,7 @@ class FallbackProviderWrapper:
             stream=stream,
             model=model,
             tenant_id=tenant_id,
+            user_id=user_id,
             db=self._db,
             primary_name=self._primary_name,
             **kwargs,

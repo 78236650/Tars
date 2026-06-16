@@ -285,6 +285,30 @@ export function createChatMessageState(
               timestamp: data.timestamp || new Date().toISOString(),
             })
           }
+        } else if (data.type === 'run_started') {
+          // v5.1.0: store run_id for the current execution
+          if (!sessionId) return
+          const runData = { run_id: data.run_id, started_at: data.timestamp }
+          updateMessages(sessionId, msgs => {
+            const lastMsg = msgs[msgs.length - 1]
+            if (lastMsg?.id?.startsWith('streaming-')) {
+              ;(lastMsg as any)._run = runData
+            }
+          })
+        } else if (data.type === 'run_completed' || data.type === 'run_failed') {
+          // v5.1.0: run finished — update the streaming message with run status
+          if (!sessionId) return
+          updateMessages(sessionId, msgs => {
+            const lastMsg = msgs[msgs.length - 1]
+            if (lastMsg?.id?.startsWith('streaming-')) {
+              ;(lastMsg as any)._run = {
+                ...((lastMsg as any)._run || {}),
+                run_id: data.run_id,
+                status: data.type === 'run_completed' ? 'completed' : 'failed',
+                error: data.error,
+              }
+            }
+          })
         } else if (data.type === 'error') {
           if (!sessionId) return
           appendMessage(sessionId, {

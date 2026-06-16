@@ -1,16 +1,28 @@
-# TARS AI Agent v5.0.3
+# TARS AI Agent v5.2.0
 
 面向港航企业内网的 **AI Agent 平台**：**单组织多用户协作**（组织共享池 + 个人会话私有）、JWT、Postgres、技能生态、知识库 + **Wiki**、记忆图谱、BI / 鉴数（InsightForge）、会议助手、港航作业调度、Admin 与审计。
 
 | 项 | 值 |
 |----|-----|
-| **当前稳定版** | **v5.0.3** |
-| **Git Tag** | `v5.0.3`（建议） |
-| **OpenAPI** | `5.0.3`（`/docs`） |
+| **当前版本** | **v5.2.0** |
+| **Git Tag** | `v5.2.0`（建议） |
+| **CHANGELOG** | [CHANGELOG.md](CHANGELOG.md) |
+| **OpenAPI** | `5.0.5`（`/docs`） |
 | **InsightForge** | `INS-2.1.0`（`GET /api/insight/version`） |
 | **版本真相源** | [docs/01-项目概览/VERSION.md](docs/01-项目概览/VERSION.md) |
 | **发布说明** | [v5.0.0-release-notes.md](docs/01-项目概览/v5.0.0-release-notes.md) |
 | **升级指南** | [UPGRADE_GUIDE_v5.0.0.md](docs/UPGRADE_GUIDE_v5.0.0.md)（从 v4.x） |
+
+---
+
+## v5.2.0 核心变更
+
+- **休眠期记忆管理** — `MemorySleepAgent` 异步去重/冲突解决/衰减，通过 Cron 定时调度
+- **MCP 客户端** — 支持 Stdio/SSE 传输，`MCPToolAdapter` 将外部工具适配为 TARS 原生工具
+- **分层工具发现** — `ToolRanker` 按查询相关性动态 Top-K 工具注入，缓解 Token 压力
+- **置信度声明** — System Prompt 注入 LLM 不确定性声明规则，减少幻觉
+- **Run 生命周期** — `runs` 表记录每次 Agent 执行状态，WebSocket 新增 `run_started`/`run_completed`/`run_failed` 事件
+- **用户维度 Token 用量** — `provider_usage` 添加 `user_id` 列，新增 `/api/user/usage` 端点
 
 ---
 

@@ -20,6 +20,8 @@ def _normalize_openai_response(data: dict, default_model: str) -> dict:
     reasoning_content = message.get("reasoning_content")  # DeepSeek 推理模型的推理过程
 
     result = {"content": content, "model": data.get("model", default_model)}
+    if "usage" in data:
+        result["usage"] = data["usage"]
     if tool_calls:
         result["tool_calls"] = tool_calls
     if reasoning_content:

@@ -173,6 +173,91 @@ def get_schema_version(principal: Principal = Depends(require_admin)):
     return {"schema_version": current_version(db._get_conn())}
 
 
+@router.get("/llm-usage")
+def get_llm_usage(
+    days: int = Query(7, ge=1, le=90),
+    principal: Principal = Depends(require_admin),
+):
+    """LLM 用量统计（v5.0.5/A4）。返回按 provider/model 拆分的 Token 消耗和请求数。"""
+    db = _require_db()
+    rows = db.aggregate_provider_usage(tenant_id=ORG_ID, days=days)
+    total_tokens = sum(r["tokens_in"] + r["tokens_out"] for r in rows)
+    return {
+        "days": days,
+        "total_tokens": total_tokens,
+        "by_provider_model": rows,
+    }
+
+
+@router.get("/dashboard")
+def get_dashboard(principal: Principal = Depends(require_admin)):
+    """运维仪表盘聚合数据（v5.0.5/A4）。LLM 用量 + 预警 + 记忆统计。"""
+    db = _require_db()
+    conn = db._get_conn()
+    cur = conn.cursor()
+
+    # LLM 用量
+    cur.execute(
+        "SELECT provider, model, COUNT(*) AS calls, "
+        "COALESCE(SUM(tokens_in), 0) AS tokens_in, "
+        "COALESCE(SUM(tokens_out), 0) AS tokens_out "
+        "FROM provider_usage "
+        "WHERE tenant_id = ? "
+        "GROUP BY provider, model ORDER BY calls DESC",
+        (ORG_ID,),
+    )
+    llm_rows = [
+        {"provider": r[0], "model": r[1], "calls": r[2], "tokens_in": r[3], "tokens_out": r[4]}
+        for r in cur.fetchall()
+    ]
+    llm_total = sum(r["tokens_in"] + r["tokens_out"] for r in llm_rows)
+
+    # 记忆统计
+    cur.execute("SELECT COUNT(*) FROM memories WHERE tenant_id = ?", (ORG_ID,))
+    total_memories = cur.fetchone()[0]
+    cur.execute(
+        "SELECT COUNT(*) FROM memories WHERE tenant_id = ? AND category = 'correction'",
+        (ORG_ID,),
+    )
+    correction_count = cur.fetchone()[0]
+    cur.execute(
+        "SELECT COUNT(*) FROM memories WHERE tenant_id = ? AND category = 'solution'",
+        (ORG_ID,),
+    )
+    solution_count = cur.fetchone()[0]
+
+    # 预警扫描
+    alerts = []
+    try:
+        from ..evolution.alerting import AlertEngine
+        engine = AlertEngine(db)
+        raw_alerts = engine.scan(ORG_ID)
+        alerts = [
+            {"type": a.type, "severity": a.severity, "title": a.title, "description": a.description}
+            for a in raw_alerts
+        ]
+    except Exception:
+        pass
+
+    # 实体统计
+    cur.execute("SELECT COUNT(*) FROM entities")
+    entity_count = cur.fetchone()[0]
+
+    return {
+        "llm": {
+            "total_tokens_7d": llm_total,
+            "by_model": llm_rows,
+        },
+        "memory": {
+            "total": total_memories,
+            "corrections": correction_count,
+            "solutions": solution_count,
+        },
+        "alerts": alerts,
+        "entities": entity_count,
+    }
+
+
 @router.post("/db/backup")
 def trigger_db_backup(
     http_request: Request,

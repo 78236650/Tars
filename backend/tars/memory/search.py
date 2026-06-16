@@ -177,6 +177,7 @@ class HybridSearch:
             last_accessed = getattr(mem, "last_accessed", None)
             age_h = hours_since(last_accessed) if last_accessed else 0
             score = decay_score(sim, importance, age_h)
+            score = self._adjust_score(score, mem)
             scored[mem_id] = (mem, score)
 
     def _sqlite_semantic_score(self, query: str, scored: dict, provider=None):
@@ -196,7 +197,27 @@ class HybridSearch:
             sim = cosine_similarity(query_vec, mem_vec)
             age_h = hours_since(last_accessed_iso)
             score = decay_score(sim, importance, age_h)
+            score = self._adjust_score(score, mem)
             scored[mem.id] = (mem, score)
+    @staticmethod
+    def _adjust_score(base_score: float, mem) -> float:
+        """检索后微调：solution/procedural boost，pinned boost，compressed discount。
+
+        solution 类记忆是结构化的解决思路，乘以 1.15 提升排名；
+        procedural 记忆是步骤/SOP，同样提升；
+        pinned 记忆是用户标记的重要记忆，乘以 1.2；
+        compressed 记忆是合并产物，已丢失细节，乘以 0.9 轻度降权。
+        """
+        score = base_score
+        category = (getattr(mem, "category", "") or "").lower()
+        memory_type = (getattr(mem, "memory_type", "") or "").lower()
+        if category in ("solution", "correction", "lesson_learned") or memory_type == "procedural":
+            score *= 1.15
+        if getattr(mem, "pinned", 0):
+            score *= 1.2
+        if memory_type == "compressed":
+            score *= 0.9
+        return min(max(score, 0.0), 1.0)
 
     def _keyword_score(self, query: str, scored: dict):
         keyword_results = self.db.search_memories(query, limit=10, tenant_id=self.tenant_id)
@@ -206,4 +227,5 @@ class HybridSearch:
             # 关键词命中给固定基础分，再叠加衰减/重要性
             importance = getattr(mem, "importance", 0.5) or 0.5
             score = decay_score(0.5, importance, 0)  # 假设 last_accessed=now
+            score = self._adjust_score(score, mem)
             scored[mem.id] = (mem, score)

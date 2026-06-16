@@ -112,7 +112,17 @@ const uploadFile = async (file: File) => {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const resp = await fetch('/api/files/upload', { method: 'POST', body: formData })
+    const headers: Record<string, string> = {}
+    const accessToken = localStorage.getItem('tars_access_token')
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`
+    } else {
+      const apiKey = localStorage.getItem('apiKey')
+      if (apiKey) {
+        headers['X-API-Key'] = apiKey
+      }
+    }
+    const resp = await fetch('/api/files/upload', { method: 'POST', body: formData, headers })
     if (resp.ok) {
       const data = await resp.json()
       attachments.value.push(data.file)

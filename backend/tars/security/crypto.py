@@ -29,6 +29,34 @@ logger = logging.getLogger("tars.crypto")
 
 _DEV_FALLBACK = "dev-only-insecure-encryption-secret-change-me"
 
+# A rotated or lost secret turns *every* stored token into a permanent
+# decryption failure with one shared root cause. Without throttling, a single
+# ``get_all_users`` scan emits one ERROR per row (hundreds of identical lines
+# that look like hundreds of distinct problems). We log the first failure once
+# per process, then suppress and count the rest so the signal stays "the secret
+# is wrong" rather than a flood.
+_decrypt_failure_state: dict[str, int | bool] = {"logged": False, "suppressed": 0}
+
+
+def _reset_decrypt_failure_log_state() -> None:
+    """Reset throttle state. For tests asserting on log volume."""
+    _decrypt_failure_state["logged"] = False
+    _decrypt_failure_state["suppressed"] = 0
+
+
+def _log_decrypt_failure_once() -> None:
+    if _decrypt_failure_state["logged"]:
+        _decrypt_failure_state["suppressed"] = int(
+            _decrypt_failure_state["suppressed"]
+        ) + 1
+        return
+    _decrypt_failure_state["logged"] = True
+    logger.error(
+        "[crypto] decrypt failed: wrong secret or corrupt ciphertext. This "
+        "usually means TARS_ENCRYPTION_KEY/TARS_JWT_SECRET changed after data "
+        "was encrypted. Further identical failures this process are suppressed."
+    )
+
 
 def _secret() -> str:
     secret = (
@@ -95,7 +123,7 @@ def decrypt(token: str) -> str:
     try:
         return _get_fernet().decrypt(raw.encode("ascii")).decode("utf-8")
     except InvalidToken as e:
-        logger.error("[crypto] decrypt failed: wrong secret or corrupt ciphertext")
+        _log_decrypt_failure_once()
         raise DecryptionError(
             "failed to decrypt value: wrong encryption secret or corrupt data"
         ) from e

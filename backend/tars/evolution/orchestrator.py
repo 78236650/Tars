@@ -26,6 +26,8 @@ class EvolutionOrchestrator:
         prompt_tuner,
         evaluator,
         case_distiller: CaseDistiller | None = None,
+        memory_analyzer=None,
+        memory_bridge=None,
         min_events: int = 20,
         confidence_threshold: float = 0.05,
     ):
@@ -38,10 +40,11 @@ class EvolutionOrchestrator:
         self.evaluator = evaluator
         self.skill_optimizer = SkillOptimizer(db)
         self.case_distiller = case_distiller
+        self.memory_analyzer = memory_analyzer
+        self.memory_bridge = memory_bridge
         self.eval_runner = EvalRunner()
         self.min_events = min_events
         self.confidence_threshold = confidence_threshold
-
     def _insight_burst_metrics(self, tenant_id: str) -> List[str]:
         burst_cfg = get_evolution_config().insight_burst
         return self.db.count_insight_downvote_burst_metrics(
@@ -201,5 +204,31 @@ class EvolutionOrchestrator:
                 results["case_distillation"] = distill_result
             except Exception as exc:
                 logger.exception("case distillation failed: %s", exc)
+
+        # ── v5.0.5/A3: Memory-Aware Evolution ──
+        # 从 Memory 分析用户纠正模式和解决方案模式，反馈到行为调整
+        if self.memory_analyzer and self.memory_bridge:
+            try:
+                patterns = self.memory_analyzer.analyze(tenant_id)
+                results["memory_patterns"] = {
+                    "correction_count": patterns.correction_count,
+                    "solution_count": patterns.solution_count,
+                    "avoidance_rules": len(patterns.avoidance_rules),
+                    "recommendations": len(patterns.recommendations),
+                }
+                if patterns.has_insights:
+                    bridge_stats = self.memory_bridge.apply_patterns(patterns, tenant_id)
+                    results["memory_bridge"] = bridge_stats
+
+                    # 如果超过 3 条同类纠正，生成 lesson_learned
+                    for rule in patterns.avoidance_rules:
+                        if rule.get("correction_count", 0) >= 3:
+                            mid = self.memory_bridge.publish_lesson_learned(
+                                tenant_id, rule["description"]
+                            )
+                            if mid:
+                                results.setdefault("lessons_learned", []).append(mid)
+            except Exception as exc:
+                logger.exception("memory-aware analysis failed: %s", exc)
 
         return results

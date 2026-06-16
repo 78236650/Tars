@@ -47,6 +47,14 @@ class EvolutionManager:
             self._apply_engine = ApplyEngine(db)
             self._case_capture = CaseCapture(db)
             self._case_distiller = CaseDistiller(db, self._case_capture)
+
+            # v5.0.5/A3: Memory ↔ Evolution 桥梁
+            from .memory_analyzer import MemoryAwareAnalyzer
+            from .memory_feedback_bridge import MemoryFeedbackBridge
+
+            self._memory_analyzer = MemoryAwareAnalyzer(db)
+            self._memory_bridge = MemoryFeedbackBridge(db)
+
             self._orchestrator = EvolutionOrchestrator(
                 db,
                 feedback_collector=self._feedback_collector,
@@ -56,6 +64,8 @@ class EvolutionManager:
                 prompt_tuner=self.prompt_tuner,
                 evaluator=self.evaluator,
                 case_distiller=self._case_distiller,
+                memory_analyzer=self._memory_analyzer,
+                memory_bridge=self._memory_bridge,
             )
         else:
             self._case_capture = CaseCapture(db) if db else None

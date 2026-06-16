@@ -100,6 +100,11 @@ const router = createRouter({
           component: () => import('@/views/admin/InsightLlmAdminView.vue'),
           meta: { module: 'insight' },
         },
+        {
+          path: 'dashboard',
+          name: 'admin-dashboard',
+          component: () => import('@/components/admin/AdminDashboard.vue')
+        },
       ]
     },
     {

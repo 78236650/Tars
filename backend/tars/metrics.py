@@ -41,6 +41,21 @@ if _ENABLED:
         "Tool execution latency",
         ["tool"],
     )
+    LLM_REQUESTS = Counter(
+        "tars_llm_requests_total",
+        "LLM requests",
+        ["model", "provider"],
+    )
+    LLM_TOKENS = Counter(
+        "tars_llm_tokens_total",
+        "LLM tokens",
+        ["model", "provider", "type"],
+    )
+    LLM_LATENCY = Histogram(
+        "tars_llm_duration_seconds",
+        "LLM request latency",
+        ["model", "provider"],
+    )
 
 
 def metrics_enabled() -> bool:
@@ -88,6 +103,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 pass
 
 
+
 def record_tool_execution(tool: str, success: bool, elapsed_seconds: float) -> None:
     """Called from the dispatcher after each tool run."""
     if not _ENABLED:
@@ -98,3 +114,26 @@ def record_tool_execution(tool: str, success: bool, elapsed_seconds: float) -> N
     except Exception:
         pass
 
+
+def record_llm_call(
+    model: str,
+    provider: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    latency_s: float = 0.0,
+) -> None:
+    """Called after each LLM request. Records counters and latency histogram."""
+    if not _ENABLED:
+        return
+    try:
+        safe_model = (model or "unknown").replace('"', '_')
+        safe_provider = (provider or "unknown").replace('"', '_')
+        LLM_REQUESTS.labels(safe_model, safe_provider).inc()
+        if prompt_tokens > 0:
+            LLM_TOKENS.labels(safe_model, safe_provider, "prompt").inc(prompt_tokens)
+        if completion_tokens > 0:
+            LLM_TOKENS.labels(safe_model, safe_provider, "completion").inc(completion_tokens)
+        if latency_s > 0:
+            LLM_LATENCY.labels(safe_model, safe_provider).observe(latency_s)
+    except Exception:
+        pass

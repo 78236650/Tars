@@ -2,26 +2,31 @@
 
 > **单一真相源**：对外说明「当前是什么版本」以本文件为准；`changelog` / `release-notes` / 根 `README` 均引用此处。
 
-## 规划中（未发布）
-
-| 项 | 值 |
-|----|-----|
-| **v5.0.5** 「安全加固 + 企业级就绪」 | 文档就绪、代码待启动 |
-| 由来 | v5.0.4 企业级审计（49 agent，39 条确认问题）|
-| 文档入口 | [v5.0.5-README](./v5.0.5-README.md) · [设计](../superpowers/plans/2026-06-07-tars-v5.0.5-security-hardening-design.md) · [开发步骤](../03-实施计划/v5.0.5-development-steps.md) · [执行计划](../03-实施计划/v5.0.5-execution-plan.md) |
-
-> ⚠️ **SSOT 校准待办**：本文件标当前为 v5.0.3，但 `backend/tars/main.py` OpenAPI 已是 `5.0.4`（changelog 亦缺 v5.0.4 条目）。发版 v5.0.5 时需一并补齐 v5.0.4 记录并校准版本号。
-
 ## 当前（稳定版）
 
 | 项 | 值 |
 |----|-----|
-| **平台版本** | **v5.0.3** 「多用户隔离 + DeepSeek + 安全加固」 |
-| **OpenAPI** | `backend/tars/main.py` → `5.0.3` |
+| **平台版本** | **v5.2.0** 「记忆管理 + MCP 客户端 + 工具发现 + 多用户增强」 |
+| **OpenAPI** | `backend/tars/main.py` → `5.0.5` |
 | **InsightForge 能力** | **INS-2.1.0**（`GET /api/insight/version`） |
-| **上一平台 major** | v5.0.1（售前管理模块）；v5.0.0（多用户协作 + 并发底座） |
-| **推荐 Git tag** | `v5.0.3` |
+| **上一平台 major** | v5.0.3（多用户隔离 + 安全加固） |
+| **推荐 Git tag** | `v5.2.0` |
 | **生产数据库** | **PostgreSQL**（`DATABASE_URL`）；开发可继续 SQLite |
+
+## v5.2.0 要点（2026-06-16）
+
+| 维度 | 内容 |
+|------|------|
+| 记忆管理 | `MemorySleepAgent` 异步去重/冲突解决/衰减，Cron 定时调度 |
+| MCP 客户端 | JSON-RPC 2.0 + Stdio/SSE，`MCPToolAdapter` 适配外部工具 |
+| 工具发现 | `ToolRanker` 按查询相关性 Top-K 工具注入 |
+| 置信度 | System Prompt 注入不确定性声明规则 |
+| Run 生命周期 | `runs` 表 + WebSocket `run_started`/`run_completed`/`run_failed` 事件 |
+| 用户用量 | `provider_usage.user_id` + `/api/user/usage` 端点 |
+| Session 修复 | 新 session WebSocket 路由断裂修复 |
+
+发布说明：[v5.2.0 实施计划](../../.trae/documents/tars_v5.2.0_implementation_plan.md)
+变更日志：[CHANGELOG.md](../../CHANGELOG.md)
 
 ## v5.0.0 要点（2026-05-30）
 
@@ -38,6 +43,7 @@
 
 | 版本 | 主题 |
 |------|------|
+| **v5.0.5** | 安全加固 + 企业级就绪 |
 | **v4.5.0** | 进出港计划 + Agent/OR 协同 |
 | **v4.4.0** | 港航垂直 + 作业调度 MVP |
 | **v4.3.4** | Superpowers + Wiki + 加固 |
@@ -49,8 +55,8 @@
 
 | 名称 | 含义 |
 |------|------|
-| **产品版本** | v5.0.3（本文件、OpenAPI、发布说明） |
-| **开发分支** | 以仓库当前分支为准；发版打 tag `v5.0.3` |
+| **产品版本** | v5.2.0（本文件、OpenAPI、发布说明） |
+| **开发分支** | 以仓库当前分支为准；发版打 tag `v5.2.0` |
 
 勿用 Git 分支名推断功能归属；以 changelog 与对应 release-notes 为准。
 
@@ -58,7 +64,8 @@
 
 | TARS 平台 | InsightForge | 说明 |
 |-----------|--------------|------|
-| **v5.0.3** | INS-2.1.0 | 当前（多用户隔离 + DeepSeek + 安全加固） |
+| **v5.2.0** | INS-2.1.0 | 当前（记忆管理 + MCP + 工具发现） |
+| v5.0.3 | INS-2.1.0 | 多用户隔离 + 安全加固 |
 | v5.0.1 | INS-2.1.0 | 售前管理模块 |
 | v5.0.0 | INS-2.1.0 | 多用户协作 + 并发底座 |
 | v4.4.0 | INS-2.1.0 | 港航编排 MVP |
@@ -71,6 +78,7 @@
 | 场景 | 文档 |
 |------|------|
 | 版本变更全文 | [changelog.md](./changelog.md) |
+| **v5.2.0 实施** | [../../.trae/documents/tars_v5.2.0_implementation_plan.md](../../.trae/documents/tars_v5.2.0_implementation_plan.md) |
 | **v5.0.0 发布** | [v5.0.0-release-notes.md](./v5.0.0-release-notes.md) |
 | **从 v4.x 升级到 v5.0** | [UPGRADE_GUIDE_v5.0.0.md](../UPGRADE_GUIDE_v5.0.0.md) |
 | v5.0 设计 | [multiuser-design.md](../superpowers/plans/2026-05-30-tars-v5.0.0-multiuser-design.md) |
@@ -82,4 +90,4 @@
 
 ---
 
-*更新日期：2026-06-03*
+*更新日期：2026-06-16*

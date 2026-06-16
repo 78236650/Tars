@@ -740,6 +740,32 @@ class ConnectionManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_usage_tenant ON provider_usage(tenant_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_usage_created ON provider_usage(created_at DESC)")
 
+        # v5.1.0: per-user usage tracking
+        try:
+            cursor.execute("ALTER TABLE provider_usage ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+
+        # v5.1.0: Run 生命周期 — 一次 Agent 执行过程的状态管理
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                status TEXT NOT NULL DEFAULT 'queued',
+                trace_id TEXT,
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                error_message TEXT,
+                tool_calls_count INTEGER NOT NULL DEFAULT 0,
+                tokens_in INTEGER NOT NULL DEFAULT 0,
+                tokens_out INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id, started_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_user ON runs(user_id, tenant_id, started_at DESC)")
+
         # v4.2.0: Evolution events + apply audit
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS evolution_events (

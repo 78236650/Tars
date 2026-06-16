@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from tars.database.models import (
     get_local_now, _parse_db_datetime,
-    Session, Message, Memory, CronJob,
+    Session, Message, Memory, CronJob, Run,
     ReminderNotification, Transcription, AuditLog, ApprovalRequest,
 )
 from tars.database.connection import ConnectionManager
@@ -67,6 +67,22 @@ class Database:
     def update_session_title(self, *args, **kwargs):
         return self.sessions.update_session_title(*args, **kwargs)
 
+    # ── v5.1.0: Run 生命周期 ──
+    def create_run(self, *args, **kwargs):
+        return self.sessions.create_run(*args, **kwargs)
+
+    def get_run(self, *args, **kwargs):
+        return self.sessions.get_run(*args, **kwargs)
+
+    def update_run_status(self, *args, **kwargs):
+        return self.sessions.update_run_status(*args, **kwargs)
+
+    def increment_run_tool_calls(self, *args, **kwargs):
+        return self.sessions.increment_run_tool_calls(*args, **kwargs)
+
+    def list_runs(self, *args, **kwargs):
+        return self.sessions.list_runs(*args, **kwargs)
+
     def add_memory(self, *args, **kwargs):
         return self.memories.add_memory(*args, **kwargs)
 
@@ -87,6 +103,9 @@ class Database:
 
     def get_recent_memories(self, *args, **kwargs):
         return self.memories.get_recent_memories(*args, **kwargs)
+
+    def get_recent_memories_for_entity(self, *args, **kwargs):
+        return self.memories.get_recent_memories_for_entity(*args, **kwargs)
 
     def update_memory(self, *args, **kwargs):
         return self.memories.update_memory(*args, **kwargs)

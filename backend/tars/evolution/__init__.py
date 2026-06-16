@@ -7,6 +7,8 @@ from .evaluator import ResponseEvaluator, EvaluationResult
 from .optimizer import PersonalityOptimizer, SubAgentOptimizer
 from .prompt_tuner import PromptTuner
 from .manager import EvolutionManager
+from .memory_analyzer import MemoryAwareAnalyzer, MemoryPatterns
+from .memory_feedback_bridge import MemoryFeedbackBridge
 
 __all__ = [
     "ResponseEvaluator",

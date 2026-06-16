@@ -235,6 +235,30 @@ tool_registry.register(WebFetchTool())
 tool_registry.register(PythonExecTool(workspace_dir=str(project_dir.parent)))
 tool_registry.register(ArchivalInsertTool(db=db))
 
+# 图像生成 & 视频生成工具（Agnes AI）
+_gen_api_key = os.environ.get("AGNES_API_KEY", "")
+if _gen_api_key:
+    from tars.generation import AgnesProvider
+    from tars.tools.builtin.image_gen import ImageGenTool, init_image_gen
+    from tars.tools.builtin.video_gen import VideoGenTool, init_video_gen
+
+    gen_provider = AgnesProvider(api_key=_gen_api_key)
+    image_gen_tool = ImageGenTool()
+    video_gen_tool = VideoGenTool()
+    init_image_gen(gen_provider)
+    init_video_gen(gen_provider)
+    tool_registry.register(image_gen_tool)
+    tool_registry.register(video_gen_tool)
+
+    # 注册视频状态查询 API
+    from tars.api.generation import router as gen_router, init_generation_api
+    init_generation_api(gen_provider)
+    app.include_router(gen_router)
+
+    print(f"[Startup] 图像/视频生成已启用 (Agnes AI: agnes-image-2.1-flash + agnes-video-v2.0)")
+else:
+    print("[Startup] 图像/视频生成未启用（设置 AGNES_API_KEY 环境变量以启用）")
+
 # 会议语音识别工具（provider 在 agent 初始化后注入）
 meeting_tool = MeetingRecognizerTool()
 tool_registry.register(meeting_tool)
@@ -407,6 +431,11 @@ agent = AgentV2(
 )
 agent.skill_loader = skill_loader
 _init_wiki_after_agent()
+
+# v5.2.0: 分层工具发现 - CrossEncoder reranker 暂时禁用（节省内存）
+# 启用时取消注释下方代码并 pip install sentence-transformers
+agent._reranker = None
+print("[Startup] CrossEncoder Reranker 未加载 (分层工具发现将使用 FTS 降级)")
 
 if default_provider:
     wrapped = wrap_provider_with_fallback(
@@ -1482,30 +1511,137 @@ async def websocket_endpoint_legacy(websocket: WebSocket, _legacy_tenant: str):
 @app.get("/api/providers/usage")
 async def get_provider_usage(
     provider: str = "",
+    user_id: str = "",
     limit: int = 100,
     principal: Principal = Depends(require_admin),
 ):
-    """Provider token usage stats (v4.1.0). Admin only."""
+    """Provider token usage stats (v4.1.0). Admin only. v5.1.0: optional user_id filter."""
     from tars.org import ORG_ID
 
     rows, total = db.list_provider_usage(tenant_id=ORG_ID, provider=provider, limit=limit)
+    if user_id:
+        rows = [r for r in rows if r.get("user_id") == user_id]
+        total = len(rows)
     return {"items": rows, "total": total}
 
 
 @app.get("/api/providers/usage/summary")
 async def get_provider_usage_summary(
+    user_id: str = "",
     principal: Principal = Depends(require_admin),
 ):
-    """Aggregated token usage grouped by provider/model (v5.0.5/P3). Admin only."""
+    """Aggregated token usage grouped by provider/model (v5.0.5/P3). Admin only. v5.1.0: optional user_id filter."""
     from tars.org import ORG_ID
 
     summary = db.aggregate_provider_usage(tenant_id=ORG_ID)
+    if user_id:
+        # For per-user aggregation, fall back to the detailed list
+        rows, _ = db.list_provider_usage(tenant_id=ORG_ID, limit=10000)
+        rows = [r for r in rows if r.get("user_id") == user_id]
+        totals = {
+            "calls": len(rows),
+            "tokens_in": sum(r["tokens_in"] for r in rows),
+            "tokens_out": sum(r["tokens_out"] for r in rows),
+        }
+        return {"items": summary, "totals": totals}
     totals = {
         "calls": sum(r["calls"] for r in summary),
         "tokens_in": sum(r["tokens_in"] for r in summary),
         "tokens_out": sum(r["tokens_out"] for r in summary),
     }
     return {"items": summary, "totals": totals}
+
+
+# ================ v5.1.0: Run API + User Usage ================
+
+@app.get("/api/user/usage")
+async def get_user_usage(
+    days: int = 7,
+    principal: Principal = Depends(require_authenticated_user),
+):
+    """当前用户的 Token 用量概览（v5.1.0）。"""
+    from tars.org import ORG_ID
+    from datetime import datetime, timezone, timedelta
+
+    since = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=days)
+    rows, _ = db.list_provider_usage(tenant_id=ORG_ID, limit=10000)
+    user_rows = [r for r in rows if r.get("user_id") == principal.user_id and r["created_at"] >= since.isoformat()]
+    # Group by day
+    daily_map: dict = {}
+    total_tokens = 0
+    for r in user_rows:
+        day = r["created_at"][:10] if r.get("created_at") else ""
+        if day not in daily_map:
+            daily_map[day] = {"date": day, "tokens_in": 0, "tokens_out": 0, "calls": 0}
+        daily_map[day]["tokens_in"] += r["tokens_in"]
+        daily_map[day]["tokens_out"] += r["tokens_out"]
+        daily_map[day]["calls"] += 1
+        total_tokens += r["tokens_in"] + r["tokens_out"]
+    return {
+        "daily": sorted(daily_map.values(), key=lambda d: d["date"]),
+        "total_tokens": total_tokens,
+        "total_calls": len(user_rows),
+    }
+
+
+@app.get("/api/sessions/{session_id}/runs")
+def list_session_runs(
+    session_id: str,
+    limit: int = 20,
+    principal: Principal = Depends(require_authenticated_user),
+):
+    """列出某个 session 的 Run 历史（v5.1.0）。"""
+    from tars.org import ORG_ID
+
+    runs = db.list_runs(
+        session_id=session_id,
+        user_id=principal.user_id,
+        tenant_id=ORG_ID,
+        limit=limit,
+    )
+    return {
+        "runs": [
+            {
+                "id": r.id,
+                "session_id": r.session_id,
+                "status": r.status,
+                "trace_id": r.trace_id,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "error_message": r.error_message,
+                "tool_calls_count": r.tool_calls_count,
+                "tokens_in": r.tokens_in,
+                "tokens_out": r.tokens_out,
+            }
+            for r in runs
+        ]
+    }
+
+
+@app.get("/api/runs/{run_id}")
+def get_run_detail(
+    run_id: str,
+    principal: Principal = Depends(require_authenticated_user),
+):
+    """获取单个 Run 详情（v5.1.0）。"""
+    run = db.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.user_id != principal.user_id and not principal.is_admin:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return {
+        "id": run.id,
+        "session_id": run.session_id,
+        "user_id": run.user_id,
+        "status": run.status,
+        "trace_id": run.trace_id,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "error_message": run.error_message,
+        "tool_calls_count": run.tool_calls_count,
+        "tokens_in": run.tokens_in,
+        "tokens_out": run.tokens_out,
+    }
 
 
 @app.get("/api/providers")

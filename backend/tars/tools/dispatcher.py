@@ -258,6 +258,27 @@ class ToolDispatcher:
             )
             # v5.0.5/A1: 超长输出截断 + 标记,防止撑爆下游 context。
             result = self._truncate_output(result)
+            
+            # v5.0.6: 执行结果轻量级验证层 (防幻觉)
+            try:
+                from .validators import ToolResultValidator
+                is_valid, correction = ToolResultValidator.validate(tool_name, arguments, result)
+                if not is_valid and correction:
+                    # 如果工具执行本身被标记为成功，但验证未通过（例如 python_exec 没输出）
+                    if result.success:
+                        result.success = False
+                        result.error = f"执行异常:\n输出: {result.output}\n建议: {correction}"
+                        result.output = ""
+                        result.recoverable = True
+                        result.retry_suggested = True
+                    else:
+                        # 如果工具执行本身失败，追加修正建议
+                        result.error = f"{result.error}\n建议: {correction}"
+                        result.recoverable = True
+                        result.retry_suggested = True
+            except Exception:
+                pass  # 验证层异常不应阻塞主流程
+                
             try:
                 from ..security.audit import audit_logger
                 if audit_logger:
@@ -360,6 +381,9 @@ class ToolDispatcher:
         # 清空上次推理内容
         self.last_reasoning_content = None
 
+        _ctx = tool_context or {}
+        _user_id = _ctx.get("user_id", "")
+
         tools_schemas = tools if tools is not None else self.registry.get_function_schemas()
         use_native = self.supports_native_tools(model_name) and tools_schemas
 
@@ -374,11 +398,11 @@ class ToolDispatcher:
             round_num += 1
             if use_native:
                 response = await self._call_with_native_tools(
-                    working_messages, tools_schemas, stream, response_format=response_format
+                    working_messages, tools_schemas, stream, response_format=response_format, user_id=_user_id
                 )
             else:
                 response = await self._call_with_prompt_fallback(
-                    working_messages, stream, response_format=response_format
+                    working_messages, stream, response_format=response_format, user_id=_user_id
                 )
 
             # DeepSeek 推理模型：先提取 reasoning_content（无论是否有工具调用）
@@ -529,7 +553,7 @@ class ToolDispatcher:
         return result
 
     async def _call_with_native_tools(
-        self, messages: List[Dict], tools: List[Dict], stream: bool, response_format: Optional[Dict[str, Any]] = None
+        self, messages: List[Dict], tools: List[Dict], stream: bool, response_format: Optional[Dict[str, Any]] = None, user_id: str = ""
     ) -> Any:
         from ..models import ChatMessage
         chat_messages = []
@@ -550,11 +574,12 @@ class ToolDispatcher:
             stream=False,
             tools=tools,
             response_format=response_format,
+            user_id=user_id,
         )
         return response
 
     async def _call_with_prompt_fallback(
-        self, messages: List[Dict], stream: bool, response_format: Optional[Dict[str, Any]] = None
+        self, messages: List[Dict], stream: bool, response_format: Optional[Dict[str, Any]] = None, user_id: str = ""
     ) -> Any:
         from ..models import ChatMessage
         working_messages = list(messages)
@@ -575,6 +600,7 @@ class ToolDispatcher:
             chat_messages,
             stream=False,
             response_format=response_format,
+            user_id=user_id,
         )
         return response
 

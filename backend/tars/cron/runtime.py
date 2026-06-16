@@ -7,6 +7,7 @@ from .executors.base import CronExecutionContext
 from .executors.delegate import DelegateExecutor
 from .executors.prompt import PromptExecutor
 from .executors.reminder import ReminderExecutor
+from .executors.memory_manage import MemoryManageExecutor
 
 
 def _now_local() -> datetime:
@@ -28,6 +29,7 @@ class CronRuntime:
             ReminderExecutor.task_type: ReminderExecutor(),
             DelegateExecutor.task_type: DelegateExecutor(),
             PromptExecutor.task_type: PromptExecutor(),
+            MemoryManageExecutor.task_type: MemoryManageExecutor(),
         }
 
     async def load_from_db(self) -> None:

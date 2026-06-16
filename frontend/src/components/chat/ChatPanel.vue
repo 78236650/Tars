@@ -376,11 +376,47 @@ onMounted(() => {
                         :title="tc.metadata.chart.title"
                       />
                     </div>
-                    <!-- 风电配载可视化 -->
-                    <div v-if="tc.metadata?.placements" class="mt-2">
-                      <StowageViz :result="tc.metadata" />
-                    </div>
-                  </div>
+                     <!-- 风电配载可视化 -->
+                     <div v-if="tc.metadata?.placements" class="mt-2">
+                       <StowageViz :result="tc.metadata" />
+                     </div>
+                     <!-- 图像生成结果 -->
+                     <div v-if="tc.metadata?.image_base64 || tc.metadata?.image_url" class="mt-2">
+                       <img
+                         :src="tc.metadata.image_base64 || tc.metadata.image_url"
+                         :alt="tc.tool + ' 生成结果'"
+                         class="max-w-full rounded-lg border border-amber-100/10"
+                         style="max-height:512px"
+                       />
+                       <div v-if="tc.metadata.image_url" class="mt-1 text-xs text-stone-500">
+                         <a :href="tc.metadata.image_url" target="_blank" class="text-amber-400 underline">查看原图</a>
+                       </div>
+                     </div>
+                     <!-- 视频生成结果 -->
+                     <div v-if="tc.metadata?.video_url" class="mt-2">
+                       <video
+                         :src="tc.metadata.video_url"
+                         controls
+                         class="max-w-full rounded-lg border border-amber-100/10"
+                         style="max-height:480px"
+                       />
+                       <div class="mt-1 text-xs text-stone-500">
+                         <a :href="tc.metadata.video_url" target="_blank" class="text-amber-400 underline">查看视频</a>
+                       </div>
+                     </div>
+                     <!-- 视频生成中 -->
+                     <div v-if="tc.metadata?.status === 'processing'" class="mt-2 p-3 rounded-lg border border-amber-400/30 bg-amber-500/5">
+                       <div class="flex items-center gap-2 mb-2">
+                         <span class="w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
+                         <span class="text-sm text-amber-300 font-medium">🎬 视频生成中</span>
+                       </div>
+                       <div class="text-xs text-stone-400 space-y-1">
+                         <div>任务 ID: <code class="text-amber-400/80">{{ tc.metadata.task_id }}</code></div>
+                         <div v-if="tc.metadata.prompt">描述: {{ tc.metadata.prompt }}</div>
+                         <div class="mt-1">预计 3-10 分钟，完成后 Agent 可查询: <code class="text-amber-400/60">GET /api/generation/video/{{ tc.metadata.task_id }}</code></div>
+                       </div>
+                     </div>
+                   </div>
                 </div>
               </div>
 

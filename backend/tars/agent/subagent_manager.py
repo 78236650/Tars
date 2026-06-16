@@ -162,8 +162,28 @@ class SubAgentManager:
         if self.master_agent and self.master_agent.provider:
             agent.llm_provider = self.master_agent.provider
 
+        # v5.0.5/A4: 子Agent 记忆上下文注入
+        memory_context = self._build_subagent_memory_context(task, context)
+        if memory_context:
+            context["memory_context"] = memory_context
+
         return await agent.execute(task, context)
-    
+
+    def _build_subagent_memory_context(self, task: str, context: Dict[str, Any]) -> str:
+        """为子Agent构建记忆上下文（≤1500字）。"""
+        if not self.master_agent:
+            return ""
+        try:
+            mm = getattr(self.master_agent, "memory_manager", None)
+            if not mm:
+                return ""
+            mem_ctx = mm.get_context_for_query(task, limit=3)
+            if len(mem_ctx) > 1500:
+                mem_ctx = mem_ctx[:1500] + "\n..."
+            return mem_ctx
+        except Exception:
+            return ""
+
     async def _handle_direct(self, task: str, context: Dict[str, Any] = None) -> str:
         """
         直接处理任务（当没有合适的子代理时）

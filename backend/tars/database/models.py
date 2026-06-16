@@ -134,6 +134,23 @@ class AuditLog:
 
 
 @dataclass
+class Run:
+    """一次 Agent 执行过程 — v5.1.0 (多用户 Run 生命周期)"""
+    id: str
+    session_id: str
+    user_id: str
+    tenant_id: str = "default"
+    status: str = "queued"  # queued | running | completed | failed | cancelled
+    trace_id: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    tool_calls_count: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+
+
+@dataclass
 class ApprovalRequest:
     id: str
     tenant_id: str = "default"

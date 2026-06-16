@@ -423,6 +423,40 @@ class MemoryRepo:
 
         return memories
 
+    def get_recent_memories_for_entity(
+        self,
+        entity_ids: List[str],
+        *,
+        limit: int = 20,
+        tenant_id: str = ORG_ID,
+        user_id: Optional[str] = None,
+    ) -> List[Memory]:
+        """返回与指定 entity_id 列表中任一匹配的最近 N 条记忆。
+
+        entity_refs 是 JSON 数组，用 LIKE 做模糊匹配。用于写入前去重。
+        """
+        if not entity_ids:
+            return []
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        visibility, vis_params = self._visibility_clause(user_id)
+
+        # 为每个 entity_id 构建一个 LIKE 条件
+        like_clauses = " OR ".join(["entity_refs LIKE ?"] * len(entity_ids))
+        like_params = [f"%{eid}%" for eid in entity_ids]
+
+        cursor.execute(f"""
+            SELECT {_MEMORY_SELECT}
+            FROM memories
+            WHERE {visibility}
+              AND ({like_clauses})
+              AND entity_refs IS NOT NULL
+            ORDER BY updated_at DESC
+            LIMIT ?
+        """, (*vis_params, *like_params, limit))
+
+        return [self._memory_from_row(row) for row in cursor.fetchall()]
+
     def update_memory(
         self,
         memory_id: str,
@@ -1096,14 +1130,15 @@ class MemoryRepo:
         model: str = "",
         tokens_in: int = 0,
         tokens_out: int = 0,
+        user_id: str = "",
     ) -> None:
         conn = self._get_conn()
         cursor = conn.cursor()
         now = get_local_now()
         cursor.execute(
-            "INSERT INTO provider_usage (tenant_id, provider, model, tokens_in, tokens_out, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (tenant_id, provider, model, tokens_in, tokens_out, now),
+            "INSERT INTO provider_usage (tenant_id, provider, model, tokens_in, tokens_out, user_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (tenant_id, provider, model, tokens_in, tokens_out, user_id, now),
         )
         conn.commit()
 
@@ -1129,7 +1164,7 @@ class MemoryRepo:
         total = cursor.fetchone()[0]
 
         cursor.execute(
-            f"SELECT id, tenant_id, provider, model, tokens_in, tokens_out, created_at "
+            f"SELECT id, tenant_id, provider, model, tokens_in, tokens_out, created_at, user_id "
             f"FROM provider_usage{where} ORDER BY created_at DESC LIMIT ?",
             params + [limit],
         )
@@ -1143,6 +1178,7 @@ class MemoryRepo:
                 "tokens_in": row[4],
                 "tokens_out": row[5],
                 "created_at": row[6].isoformat() if hasattr(row[6], "isoformat") else str(row[6]),
+                "user_id": row[7] or "" if len(row) > 7 else "",
             })
         return rows, total
 

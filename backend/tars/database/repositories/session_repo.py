@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from tars.database.models import (
     get_local_now, _parse_db_datetime,
-    Session, Message, Memory, CronJob,
+    Session, Message, Memory, CronJob, Run,
     ReminderNotification, Transcription, AuditLog, ApprovalRequest,
 )
 from tars.database.connection import ConnectionManager
@@ -607,5 +607,130 @@ class SessionRepo:
             client_ip=row[7],
             created_at=_parse_db_datetime(row[8]),
         )
+
+    # ── v5.1.0: Run 生命周期管理 ──────────────────────────────────
+
+    def create_run(
+        self,
+        session_id: str,
+        user_id: str,
+        tenant_id: str = ORG_ID,
+        trace_id: Optional[str] = None,
+    ) -> Run:
+        run_id = str(uuid.uuid4())
+        now = get_local_now()
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO runs (id, session_id, user_id, tenant_id, status, trace_id, started_at)
+            VALUES (?, ?, ?, ?, 'queued', ?, ?)
+            """,
+            (run_id, session_id, user_id, tenant_id, trace_id, now),
+        )
+        conn.commit()
+        return Run(
+            id=run_id,
+            session_id=session_id,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            status="queued",
+            trace_id=trace_id,
+            started_at=now,
+        )
+
+    def get_run(self, run_id: str) -> Optional[Run]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, session_id, user_id, tenant_id, status, trace_id, "
+            "started_at, completed_at, error_message, tool_calls_count, "
+            "tokens_in, tokens_out FROM runs WHERE id = ?",
+            (run_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return Run(
+            id=row[0], session_id=row[1], user_id=row[2], tenant_id=row[3],
+            status=row[4], trace_id=row[5],
+            started_at=_parse_db_datetime(row[6]),
+            completed_at=_parse_db_datetime(row[7]),
+            error_message=row[8], tool_calls_count=row[9] or 0,
+            tokens_in=row[10] or 0, tokens_out=row[11] or 0,
+        )
+
+    def update_run_status(
+        self,
+        run_id: str,
+        status: str,
+        **kwargs,
+    ) -> Optional[Run]:
+        """Update run status and optional fields (error_message, tool_calls_count,
+        tokens_in, tokens_out). Sets completed_at when status is terminal."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        sets = ["status = ?"]
+        params: list = [status]
+
+        now = get_local_now()
+        if status in ("completed", "failed", "cancelled"):
+            sets.append("completed_at = ?")
+            params.append(now)
+
+        for key in ("error_message", "tool_calls_count", "tokens_in", "tokens_out", "trace_id"):
+            if key in kwargs and kwargs[key] is not None:
+                sets.append(f"{key} = ?")
+                params.append(kwargs[key])
+
+        params.append(run_id)
+        cursor.execute(
+            f"UPDATE runs SET {', '.join(sets)} WHERE id = ?", params,
+        )
+        conn.commit()
+        return self.get_run(run_id) if cursor.rowcount > 0 else None
+
+    def increment_run_tool_calls(self, run_id: str) -> None:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE runs SET tool_calls_count = tool_calls_count + 1 WHERE id = ?",
+            (run_id,),
+        )
+        conn.commit()
+
+    def list_runs(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+        tenant_id: str = ORG_ID,
+        limit: int = 20,
+    ) -> List[Run]:
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        conditions = ["session_id = ?", "tenant_id = ?"]
+        params: list = [session_id, tenant_id]
+        if user_id:
+            conditions.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(conditions)
+        cursor.execute(
+            f"SELECT id, session_id, user_id, tenant_id, status, trace_id, "
+            f"started_at, completed_at, error_message, tool_calls_count, "
+            f"tokens_in, tokens_out FROM runs WHERE {where} "
+            f"ORDER BY started_at DESC LIMIT ?",
+            params + [limit],
+        )
+        return [
+            Run(
+                id=r[0], session_id=r[1], user_id=r[2], tenant_id=r[3],
+                status=r[4], trace_id=r[5],
+                started_at=_parse_db_datetime(r[6]),
+                completed_at=_parse_db_datetime(r[7]),
+                error_message=r[8], tool_calls_count=r[9] or 0,
+                tokens_in=r[10] or 0, tokens_out=r[11] or 0,
+            )
+            for r in cursor.fetchall()
+        ]
 
 

@@ -59,7 +59,7 @@ class MemoryManager:
         return scoped
 
     def get_context_for_query(self, query: str, limit: int = 5) -> str:
-        """构建注入 system prompt 的记忆上下文：core memory + 检索到的 archival"""
+        """构建注入 system prompt 的记忆上下文：core memory + 检索 + 实体图关联发现"""
         parts = []
 
         # Core memory（始终注入）
@@ -69,13 +69,136 @@ class MemoryManager:
 
         # Archival memory（语义+关键词检索）
         memories = self.search.search(query, limit)
+        seen_ids: set = set()
         if memories:
             parts.append("\n## 相关长期记忆")
             for mem in memories:
                 parts.append(f"- [{mem.category}] {mem.content}")
+                seen_ids.add(mem.id)
 
+        # ── v5.0.5/A3: 实体图关联发现 ──
+        cross_memories = self._cross_entity_discovery(memories, seen_ids, limit=max(2, limit // 2))
+        if cross_memories:
+            parts.append("\n## 关联发现")
+            for mem in cross_memories:
+                parts.append(f"- [{mem.category}] {mem.content}")
+
+        # ── v5.0.5/A3: 主动记忆提醒 ──
+        proactive = self._proactive_reminders(query, seen_ids, limit=2)
+        if proactive:
+            parts.append("\n## 主动提醒\n以下是你可能需要的相关历史：")
+            parts.append(proactive)
         return "\n".join(parts)
 
+    def _cross_entity_discovery(self, source_memories, seen_ids: set, limit: int = 2):
+        """通过实体关系图发现关联记忆。"""
+        if not source_memories or not self.db:
+            return []
+
+        import json
+        entity_ids: set = set()
+        for mem in source_memories:
+            refs = getattr(mem, "entity_refs", None)
+            if not refs:
+                continue
+            if isinstance(refs, str):
+                try:
+                    refs = json.loads(refs)
+                except Exception:
+                    continue
+            for ref in (refs or []):
+                eid = ref if isinstance(ref, str) else (ref.get("name") or str(ref))
+                if eid:
+                    entity_ids.add(str(eid))
+
+        if not entity_ids:
+            return []
+
+        # 查询关联实体
+        related: set = set()
+        try:
+            conn = self.db._get_conn()
+            cur = conn.cursor()
+            for eid in entity_ids:
+                cur.execute(
+                    "SELECT from_entity, to_entity FROM relations "
+                    "WHERE tenant_id = ? AND (from_entity = ? OR to_entity = ?)",
+                    (self.tenant_id, eid, eid),
+                )
+                for from_e, to_e in cur.fetchall():
+                    if from_e and from_e not in entity_ids:
+                        related.add(from_e)
+                    if to_e and to_e not in entity_ids:
+                        related.add(to_e)
+        except Exception:
+            pass
+
+        if not related:
+            return []
+
+        # 用关联实体检索记忆
+        try:
+            return self.db.get_recent_memories_for_entity(
+                list(related), limit=limit, tenant_id=self.tenant_id
+            )
+        except Exception:
+            return []
+
+
+
+    def _proactive_reminders(self, query: str, seen_ids: set, limit: int = 2) -> str:
+        """主动检索高价值历史记忆作为提醒。
+
+        优先检索 solution（解决思路）和 pinned（用户标记重要）类记忆，
+        让 Agent 在对话中主动引用相关历史，而非被动等待用户询问。
+        """
+        parts = []
+        try:
+            # 1. 检索 solution（解决思路）类 — 最高优先级
+            conn = self.db._get_conn()
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT content FROM memories
+                   WHERE tenant_id = ? AND category = 'solution'
+                   ORDER BY importance DESC, updated_at DESC
+                   LIMIT ?""",
+                (self.tenant_id, limit),
+            )
+            for (content,) in cur.fetchall():
+                if content and content not in seen_ids:
+                    parts.append(f"- 💡 解决思路：{content[:120]}")
+                    seen_ids.add(content[:80])
+
+            # 2. 检索 pinned 记忆
+            cur.execute(
+                """SELECT content FROM memories
+                   WHERE tenant_id = ? AND pinned = 1
+                   ORDER BY updated_at DESC
+                   LIMIT ?""",
+                (self.tenant_id, limit),
+            )
+            for (content,) in cur.fetchall():
+                if content and content[:80] not in seen_ids:
+                    parts.append(f"- 📌 重要：{content[:120]}")
+                    seen_ids.add(content[:80])
+
+            # 3. 近期高 importance 决策
+            cur.execute(
+                """SELECT content FROM memories
+                   WHERE tenant_id = ? AND importance >= 0.6
+                   ORDER BY updated_at DESC
+                   LIMIT ?""",
+                (self.tenant_id, limit),
+            )
+            for (content,) in cur.fetchall():
+                if content and content[:80] not in seen_ids:
+                    parts.append(f"- 🔑 关键决策：{content[:120]}")
+                    seen_ids.add(content[:80])
+
+        except Exception:
+            pass
+
+        return "\n".join(parts[:limit * 2]) if parts else ""
     async def reflect(self, user_msg: str, assistant_msg: str, used_web: bool = False):
         """每轮对话后由 Agent 异步调用"""
         return await self.reflector.reflect(user_msg, assistant_msg, used_web)

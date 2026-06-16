@@ -217,12 +217,41 @@ class WebSocketChannel(Channel):
         if queue:
             queue.reset_cancel(session_id)
 
+        # v5.1.0: Run 生命周期
+        user_id = (self._request_context or {}).get("user_id", "default")
+        tenant_id = getattr(self.tenant_context, "tenant_id", None) or "default"
+        trace_id = None
+        try:
+            from tars.context import get_current_trace_id
+            trace_id = get_current_trace_id()
+        except Exception:
+            pass
+
+        db = getattr(self.agent, "db", None)
+        run = None
+        if db:
+            run = db.create_run(
+                session_id=session_id,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                trace_id=trace_id,
+            )
+            await self.send(session_id, {
+                "type": "run_started",
+                "session_id": session_id,
+                "run_id": run.id,
+                "timestamp": now_iso(),
+            })
+            db.update_run_status(run.id, "running")
+
         await self.send(session_id, {
             "type": "generation_start",
             "session_id": session_id,
+            "run_id": run.id if run else None,
             "timestamp": now_iso()
         })
 
+        run_error = None
         try:
             message = await self.receive(raw_message)
             if self.manager and self.connection_id:
@@ -232,6 +261,7 @@ class WebSocketChannel(Channel):
             file_ids = data.get("file_ids")
 
             if self.agent:
+                # v5.1.0: also bind the NEW session_id if agent creates one
                 await self.agent.handle_message(
                     session_id=message.session_id,
                     user_content=message.content,
@@ -249,10 +279,33 @@ class WebSocketChannel(Channel):
                     "code": "agent_not_ready",
                     "timestamp": now_iso()
                 })
+        except Exception as e:
+            run_error = str(e)
+            raise
         finally:
+            if run:
+                if run_error:
+                    db.update_run_status(run.id, "failed", error_message=run_error)
+                    await self.send(session_id, {
+                        "type": "run_failed",
+                        "session_id": session_id,
+                        "run_id": run.id,
+                        "error": run_error,
+                        "timestamp": now_iso(),
+                    })
+                else:
+                    db.update_run_status(run.id, "completed")
+                await self.send(session_id, {
+                    "type": "run_completed" if not run_error else "run_failed",
+                    "session_id": session_id,
+                    "run_id": run.id,
+                    "timestamp": now_iso(),
+                })
+
             await self.send(session_id, {
                 "type": "generation_end",
                 "session_id": session_id,
+                "run_id": run.id if run else None,
                 "timestamp": now_iso()
             })
 

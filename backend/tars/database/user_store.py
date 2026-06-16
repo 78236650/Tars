@@ -330,6 +330,12 @@ class UserStore:
         if 'password_hash' in kwargs:
             updates.append("password_hash = ?")
             params.append(kwargs['password_hash'])
+        if 'api_key' in kwargs:
+            updates.append("api_key = ?")
+            params.append(kwargs['api_key'])
+        if 'api_key_hash' in kwargs:
+            updates.append("api_key_hash = ?")
+            params.append(kwargs['api_key_hash'])
         
         if not updates:
             return False

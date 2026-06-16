@@ -76,6 +76,17 @@ def build_static_prompt(agent, user_content: str, session_id: str,
         "用户拒绝时可说明原因并可选重新委派子代理。"
     )
 
+    # v5.2.0: 置信度声明规则 — 引导 LLM 主动表达不确定性
+    sp += (
+        "\n\n## 置信度声明规则\n"
+        "你的回答中如有以下情形，必须主动标注不确定度：\n"
+        "- 基于推测而非确凿事实的信息，前缀「据我推测」或「可能」；\n"
+        "- 涉及实时数据（股价、天气、新闻）但未实际查询，声明「以下信息基于模型训练数据，可能已过时」；\n"
+        "- 专业领域建议（医疗、法律、金融），声明「我不是专业人士，请咨询相关专家」；\n"
+        "- 代码修复方案无法本地验证时，声明「以下代码未经运行验证，请在执行前审查」。\n"
+        "宁可多声明一次不确定性，也不要给出错误的确定答案。"
+    )
+
     sp += (
         "\n\n## 任务终止规则（DONE / BLOCKED / GO）\n"
         "每一轮结束后你必须做出三个决定之一，不要模糊、不要沉默、不要无意义重复：\n\n"
@@ -106,6 +117,27 @@ def build_static_prompt(agent, user_content: str, session_id: str,
             detector_prompt = build_detector_prompt(user_content, mode)
             if detector_prompt:
                 sp += f"\n\n{detector_prompt}"
+    except ImportError:
+        pass
+
+    # TaskDetector
+    is_slash_plan = user_content.startswith("/plan")
+    try:
+        from ..orchestration.detector import detect_task_intent, build_detector_prompt
+        mode = detect_task_intent(user_content, is_slash_plan=is_slash_plan, session_id=session_id)
+        if mode.value != "none":
+            detector_prompt = build_detector_prompt(user_content, mode)
+            if detector_prompt:
+                sp += f"\n\n{detector_prompt}"
+    except ImportError:
+        pass
+
+    # v5.0.5/A4: PlanExecutor — 复杂任务检测
+    try:
+        from .plan_executor import PlanExecutor
+        plan_prompt = PlanExecutor.build_plan_prompt(user_content)
+        if plan_prompt:
+            sp += f"\n\n{plan_prompt}"
     except ImportError:
         pass
 

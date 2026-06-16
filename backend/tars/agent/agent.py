@@ -258,6 +258,14 @@ class AgentV2:
                 new_session = self.db.create_session(tenant_id=tenant_id, user_id=user_id)
                 new_sid = new_session.id
                 session_id = new_sid
+                # v5.1.0: bind new session to channel
+                try:
+                    mgr = getattr(channel, "manager", None)
+                    cid = getattr(channel, "connection_id", None)
+                    if mgr and cid:
+                        mgr.bind_session(new_sid, cid)
+                except Exception:
+                    pass
                 await channel.send(session_id, {
                     "type": "session_changed",
                     "session_id": session_id,
@@ -413,6 +421,14 @@ class AgentV2:
         if not session:
             session = self.db.create_session(tenant_id=tenant_id, user_id=user_id)
             session_id = session.id
+            # v5.1.0: bind new session_id to WebSocket for event routing
+            try:
+                mgr = getattr(channel, "manager", None)
+                cid = getattr(channel, "connection_id", None)
+                if mgr and cid:
+                    mgr.bind_session(session_id, cid)
+            except Exception:
+                pass
 
         # 2. 保存用户消息
         self.db.add_message(session_id, "user", user_content)
@@ -693,7 +709,10 @@ class AgentV2:
                 max_rounds=self.max_tool_rounds,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
-                tools=self._get_allowed_tool_schemas(),
+                tools=self._get_allowed_tool_schemas(
+                    user_query=user_content,
+                    top_k=0,  # v5.2.0: 0 = 全量注入（关掉分层工具发现，避免误过滤）
+                ),
                 tool_context={
                     "session_id": session_id,
                     "tenant_id": tenant_id,
@@ -1141,11 +1160,42 @@ class AgentV2:
     def _is_readonly_mode(self) -> bool:
         return self._active_mode in ("plan", "brainstorm")
 
-    def _get_allowed_tool_schemas(self) -> Optional[List[Dict]]:
-        """只读模式返回过滤后的工具 schema，正常模式返回全部注册工具"""
+    def _get_allowed_tool_schemas(
+        self,
+        user_query: str = "",
+        top_k: int = 0,
+    ) -> Optional[List[Dict]]:
+        """返回工具 schema 列表。
+
+        v5.2.0: 当提供 user_query 且 top_k > 0 时，使用 ToolRanker 做分层工具发现，
+        仅注入 Top-K 最相关工具以节省 Token。
+        只读模式始终返回过滤后的工具集。
+        """
         all_tools = [t.to_function_schema() for t in self.tool_registry.list_all()]
         if self._is_readonly_mode():
             return [s for s in all_tools if s["function"]["name"] in self.READONLY_TOOLS]
+
+        # v5.2.0: 分层工具发现
+        if top_k > 0 and user_query and len(all_tools) > top_k:
+            try:
+                from tars.tools.tool_ranker import ToolRanker
+                ranker = ToolRanker(reranker=getattr(self, "_reranker", None))
+                if ranker.is_available:
+                    import time
+                    t0 = time.time()
+                    ranked = ranker.rank(user_query, all_tools, top_k=top_k)
+                    elapsed = (time.time() - t0) * 1000
+                    if len(ranked) < len(all_tools):
+                        print(
+                            f"[ToolRanker] {len(all_tools)} → {len(ranked)} tools "
+                            f"(query={user_query[:40]}... top_k={top_k}, {elapsed:.0f}ms)"
+                        )
+                    return ranked
+                else:
+                    return ranker.rank_by_fts(user_query, all_tools, top_k=top_k)
+            except Exception:
+                pass
+
         return all_tools
 
     async def _run_scene_analyzer(self, session_id: str, user_msg: str, assistant_msg: str, tenant_id: str = "default"):

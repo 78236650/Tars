@@ -68,6 +68,8 @@ export const useWsStore = defineStore('ws', () => {
         || data.type === 'generation_start'
         || data.type === 'tool_calling'
         || data.type === 'tool_result'
+        || data.type === 'run_started'
+        || data.type === 'thinking_start'
       ) {
         isGenerating.value = true
       } else if (
@@ -77,6 +79,8 @@ export const useWsStore = defineStore('ws', () => {
         || data.type === 'thinking_complete'
         || data.type === 'error'
         || data.type === 'plan_complete'
+        || data.type === 'run_completed'
+        || data.type === 'run_failed'
       ) {
         isGenerating.value = false
       }
