@@ -13,6 +13,24 @@ interface VersionSection {
 
 const versions: VersionSection[] = [
   {
+    version: 'v5.2.0',
+    subtitle: '记忆管理 + MCP 客户端 + 工具发现',
+    releaseDateKey: 'settings.changelog.v520ReleaseDate',
+    features: [
+      'settings.changelog.v520.feature1',
+      'settings.changelog.v520.feature2',
+      'settings.changelog.v520.feature3',
+      'settings.changelog.v520.feature4',
+      'settings.changelog.v520.feature5',
+      'settings.changelog.v520.feature6',
+    ],
+    improvements: [
+      'settings.changelog.v520.improvement1',
+      'settings.changelog.v520.improvement2',
+      'settings.changelog.v520.improvement3',
+    ],
+  },
+  {
     version: 'v5.0.4',
     subtitle: 'Wiki 知识体系 + 模型升级',
     releaseDateKey: 'settings.changelog.v504ReleaseDate',
