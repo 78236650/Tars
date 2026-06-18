@@ -99,6 +99,8 @@ backend/data/hf-cache/
 # Local workspace
 .superpowers/
 .trae/
+.codegraph/
+.reasonix/
 
 # Test files
 gomoku.html
