@@ -1,24 +1,23 @@
-# TARS v4.0.0: LLM Provider Configuration
+# TARS v5.2.0: LLM Provider Configuration
 # Defines available providers, their endpoints, and default model.
 
-default_provider: ollama-local
+default_provider: deepseek
 
 providers:
+  deepseek:
+    type: openai_compat
+    base_url: https://api.deepseek.com/v1
+    default_model: deepseek-v4-pro
+    api_key: "${DEEPSEEK_API_KEY}"
+    display_name: DeepSeek
+
   ollama-local:
     type: ollama
     base_url: http://localhost:11434
-    default_model: llama3.2
+    default_model: qwen3:4b
     display_name: Ollama (本地)
 
-  # 示例：DeepSeek API（需要配置 API Key）
-  # deepseek:
-  #   type: openai_compat
-  #   base_url: https://api.deepseek.com/v1
-  #   default_model: deepseek-chat
-  #   api_key: "${DEEPSEEK_API_KEY}"
-  #   display_name: DeepSeek
-
-  # 示例：Qwen API
+  # Qwen API（备用）
   # qwen:
   #   type: openai_compat
   #   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -28,8 +27,8 @@ providers:
 
 # v4.1.0: 主 Provider 失败时按 chain 降级
 fallback:
-  enabled: false
+  enabled: true
   chain:
-    - { provider: ollama-local, model: llama3.2 }
+    - { provider: ollama-local, model: qwen3:4b }
   retry_on: [429, 500, 502, 503, 504, timeout]
   max_attempts: 3
