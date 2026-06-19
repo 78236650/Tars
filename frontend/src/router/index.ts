@@ -204,6 +204,39 @@ const router = createRouter({
         desktopSubtitleKey: 'desktop.presales.subtitle',
       }
     },
+    {
+      path: '/governance',
+      name: 'governance',
+      component: () => import('@/views/GovernanceView.vue'),
+      meta: {
+        requiresAuth: true,
+        module: 'governance',
+        desktopTitleKey: 'desktop.governance.title',
+        desktopSubtitleKey: 'desktop.governance.subtitle',
+      }
+    },
+    {
+      path: '/report',
+      name: 'report',
+      component: () => import('@/views/ReportView.vue'),
+      meta: {
+        requiresAuth: true,
+        module: 'report',
+        desktopTitleKey: 'desktop.report.title',
+        desktopSubtitleKey: 'desktop.report.subtitle',
+      }
+    },
+    {
+      path: '/semantic',
+      name: 'semantic',
+      component: () => import('@/views/SemanticView.vue'),
+      meta: {
+        requiresAuth: true,
+        module: 'semantic',
+        desktopTitleKey: 'desktop.semantic.title',
+        desktopSubtitleKey: 'desktop.semantic.subtitle',
+      }
+    },
   ]
 })
 

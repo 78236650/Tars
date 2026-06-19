@@ -16,6 +16,7 @@ from .workflow_service import InsightWorkflowService
 
 _db: Optional[Database] = None
 _knowledge_bridge = None
+_llm_provider = None
 
 
 def _tool_tenant_scope(kwargs: Dict[str, Any]) -> str:
@@ -31,10 +32,11 @@ def _tool_tenant_scope(kwargs: Dict[str, Any]) -> str:
         return "default"
 
 
-def init_insight_agent_tools(db: Database, knowledge_bridge=None) -> List[BaseTool]:
-    global _db, _knowledge_bridge
+def init_insight_agent_tools(db: Database, knowledge_bridge=None, llm_provider=None) -> List[BaseTool]:
+    global _db, _knowledge_bridge, _llm_provider
     _db = db
     _knowledge_bridge = knowledge_bridge
+    _llm_provider = llm_provider
     return [
         InsightGetWorkflowTool(),
         InsightListSourcesTool(),
@@ -194,7 +196,7 @@ class InsightAskMetricTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         db = _require_db()
         tenant_id = _tool_tenant_scope(kwargs)
-        engine = MetricQaEngine(db)
+        engine = MetricQaEngine(db, llm_provider=_llm_provider)
         try:
             answer = await engine.ask(
                 kwargs["datasource_id"],

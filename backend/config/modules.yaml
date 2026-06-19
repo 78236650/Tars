@@ -1,8 +1,7 @@
-# TARS v4.0.0: Module Configuration
-# Controls which optional feature modules are enabled on startup.
+# TARS v5.3.0: Two-layer architecture module configuration
+# Layer1 = Agent Core | Layer2 = Port Data Platform
 
 modules:
-  # Core modules (always enabled)
   core:
     - agent
     - tools
@@ -10,40 +9,73 @@ modules:
     - memory
     - auth
     - security
+    - wiki
 
-  # Optional modules (enable/disable per deployment)
   optional:
     meeting:
       enabled: true
+      layer: 1
       description: "会议助手（录音转写 + 摘要）"
       routes: ["/api/meeting"]
     bi:
       enabled: true
+      layer: 2
       description: "BI 工作台（数据分析 + 可视化）"
       routes: ["/api/bi", "/api/datasources"]
     insight:
       enabled: true
+      layer: 2
       description: "InsightForge 鉴数 — 对话优先 Copilot INS-2.1.0"
-      requires: [bi, knowledge]
+      requires: [bi]
       capability_tag: insight-forge
       version: INS-2.1.0
       routes: ["/api/insight"]
-    knowledge:
+    semantic:
       enabled: true
-      description: "知识库（文档解析 + RAG）"
-      routes: ["/api/knowledge"]
+      layer: 2
+      description: "语义层 — 港航术语库与字段绑定"
+      requires: [bi, insight]
+      routes: ["/api/semantic"]
+    governance:
+      enabled: true
+      layer: 2
+      description: "数据治理 — 双引擎质量规则校验"
+      requires: [bi]
+      routes: ["/api/governance"]
+    report:
+      enabled: true
+      layer: 2
+      description: "数据报表 — ChartSpec 聚合 + 图表渲染"
+      requires: [bi]
+      routes: ["/api/report"]
     skillhub:
       enabled: true
+      layer: 1
       description: "SkillHub 技能市场"
       routes: ["/api/skillhub"]
     orchestration:
       enabled: true
-      description: "多 Agent 调度任务（编排记忆可视）"
+      layer: 1
+      mode: plan_gate_only
+      description: "计划审批门控（DAG 编排已冻结）"
       routes: ["/api/orchestration"]
     presales:
-      enabled: true
-      description: "售前管理 — 需求调研、方案撰写、历史资料库、汇报PPT"
+      enabled: false
+      deprecated: true
+      layer: 1
+      description: "[已冻结] 售前管理"
       routes: ["/api/presales"]
+    vessel_plan:
+      enabled: false
+      deprecated: true
+      layer: 1
+      description: "[已冻结] 船舶计划"
+      routes: ["/api/vessel-plan"]
+    wind_stowage:
+      enabled: false
+      deprecated: true
+      layer: 1
+      description: "[已冻结] 配载计算"
 
 # v4.3.2 Superpowers integration
 skill_routing:
@@ -63,3 +95,7 @@ verification:
   default_mode: strict
   lenient_pass_rate: 0.8
   fail_action: rollback
+
+# Layer1 evolution — feedback only mode
+evolution:
+  mode: feedback_only

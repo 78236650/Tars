@@ -1,5 +1,38 @@
 # TARS Changelog
 
+## v6.0.1 (2026-06-19) — v6 时代：两层架构 + 港航数据平台
+
+### 架构
+
+- **Layer1 Agent Core** — 对话、记忆、工具、Skills、Wiki、会议、Gateway（保留并收敛）
+- **Layer2 Port Data Platform** — BI、鉴数(Insight)、数据治理、数据报表、语义层
+- **`bootstrap/layer1.py` + `layer2.py`** — 可选模块分层初始化；`core/ports.py` Port 契约
+- **`data/spine.py`** — DataSpine 统一只读取数，governance/report 解耦
+
+### 新功能
+
+- **数据治理** — `governance/` 六类质量规则 + check runs（Argus 融入）
+- **数据报表** — `report/` ChartSpec 聚合 + Vue3 ECharts 渲染
+- **语义层** — `semantic/` 港航术语库 seed（30+ 术语）、字段绑定、问数 glossary 增强
+- **前端导航分组** — Agent 核心 / 数据平台；新增 `/semantic` 术语库页
+
+### 收敛
+
+- 默认冻结 `presales`、`vessel_plan`、`wind_stowage`
+- Evolution `feedback_only` 模式，关闭 case distillation 自进化路径
+- `modules.yaml` / `registry.py` 对齐两层模块；`knowledge` phantom core 移除
+
+### 数据库迁移
+
+- v7: `glossary_terms` / `field_semantics`
+- v8: insight INS-2 表（从 `connection.py` 迁至 central migrator）
+
+### 设计文档
+
+- [docs/superpowers/specs/2026-06-19-tars-two-layer-architecture-design.md](docs/superpowers/specs/2026-06-19-tars-two-layer-architecture-design.md)
+
+---
+
 ## v5.2.0 (2026-06-16) — 记忆管理 + MCP 客户端 + 工具发现 + 置信度声明
 
 ### 新功能

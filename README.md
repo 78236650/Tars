@@ -1,17 +1,25 @@
-# TARS AI Agent v5.2.0
+# TARS AI Agent v6.0.1
 
-面向港航企业内网的 **AI Agent 平台**：**单组织多用户协作**（组织共享池 + 个人会话私有）、JWT、Postgres、技能生态、知识库 + **Wiki**、记忆图谱、BI / 鉴数（InsightForge）、会议助手、港航作业调度、Admin 与审计。
+面向港航企业内网的 **AI Agent 平台**：**Layer1 Agent Core + Layer2 港航数据平台**（鉴数 / 治理 / 报表 / 术语库），单组织多用户协作、JWT、Postgres、技能生态、Wiki、记忆图谱、会议助手。
 
 | 项 | 值 |
 |----|-----|
-| **当前版本** | **v5.2.0** |
-| **Git Tag** | `v5.2.0`（建议） |
+| **当前版本** | **v6.0.1** |
+| **Git Tag** | `v6.0.1` |
 | **CHANGELOG** | [CHANGELOG.md](CHANGELOG.md) |
-| **OpenAPI** | `5.0.5`（`/docs`） |
+| **OpenAPI** | `6.0.1`（`/docs`） |
 | **InsightForge** | `INS-2.1.0`（`GET /api/insight/version`） |
 | **版本真相源** | [docs/01-项目概览/VERSION.md](docs/01-项目概览/VERSION.md) |
-| **发布说明** | [v5.0.0-release-notes.md](docs/01-项目概览/v5.0.0-release-notes.md) |
-| **升级指南** | [UPGRADE_GUIDE_v5.0.0.md](docs/UPGRADE_GUIDE_v5.0.0.md)（从 v4.x） |
+
+---
+
+## v6.0.1 核心变更（v6 时代）
+
+- **两层架构** — Layer1 Agent Core（对话/记忆/工具/Wiki/会议）+ Layer2 Port Data Platform（BI/鉴数/治理/报表/语义层）
+- **DataSpine** — `data/spine.py` 统一数据源取数，governance/report/semantic 共享 `datasource_id`
+- **语义层 MVP** — 港航术语库 seed + 字段绑定 + 问数 glossary 增强
+- **模块收敛** — 默认冻结 presales/vessel_plan/wind_stowage；Evolution `feedback_only`
+- **前端** — 导航分组（Agent 核心 / 数据平台）；报表 ECharts；术语库页 `/semantic`
 
 ---
 

@@ -6,12 +6,25 @@
 
 | 项 | 值 |
 |----|-----|
-| **平台版本** | **v5.2.0** 「记忆管理 + MCP 客户端 + 工具发现 + 多用户增强」 |
-| **OpenAPI** | `backend/tars/main.py` → `5.0.5` |
+| **平台版本** | **v6.0.1** 「两层架构 — Agent Core + 港航数据平台」 |
+| **OpenAPI** | `backend/tars/main.py` → `6.0.1` |
 | **InsightForge 能力** | **INS-2.1.0**（`GET /api/insight/version`） |
-| **上一平台 major** | v5.0.3（多用户隔离 + 安全加固） |
-| **推荐 Git tag** | `v5.2.0` |
+| **上一平台 major** | v5.2.0（记忆管理 + MCP + 工具发现） |
+| **推荐 Git tag** | `v6.0.1` |
 | **生产数据库** | **PostgreSQL**（`DATABASE_URL`）；开发可继续 SQLite |
+
+## v6.0.1 要点（2026-06-19）
+
+| 维度 | 内容 |
+|------|------|
+| 架构 | Layer1 Agent Core + Layer2 Port Data Platform |
+| 数据脊柱 | `data/spine.py` — 统一 `fetch_rows`，同一 `datasource_id` 贯穿问数/治理/报表/术语 |
+| 语义层 | `semantic/` 港航术语库 + 字段绑定 + MetricQa glossary 增强 |
+| 治理/报表 | governance + report 模块；ChartSpec + ECharts 前端 |
+| 收敛 | 冻结 presales/vessel_plan/wind_stowage；Evolution feedback_only |
+| Bootstrap | `bootstrap/layer1.py` + `layer2.py` 模块分层初始化 |
+
+设计文档：[2026-06-19-tars-two-layer-architecture-design.md](../superpowers/specs/2026-06-19-tars-two-layer-architecture-design.md)
 
 ## v5.2.0 要点（2026-06-16）
 
@@ -55,8 +68,8 @@
 
 | 名称 | 含义 |
 |------|------|
-| **产品版本** | v5.2.0（本文件、OpenAPI、发布说明） |
-| **开发分支** | 以仓库当前分支为准；发版打 tag `v5.2.0` |
+| **产品版本** | v6.0.1（本文件、OpenAPI、发布说明） |
+| **开发分支** | 以仓库当前分支为准；发版打 tag `v6.0.1` |
 
 勿用 Git 分支名推断功能归属；以 changelog 与对应 release-notes 为准。
 
@@ -64,7 +77,8 @@
 
 | TARS 平台 | InsightForge | 说明 |
 |-----------|--------------|------|
-| **v5.2.0** | INS-2.1.0 | 当前（记忆管理 + MCP + 工具发现） |
+| **v6.0.1** | INS-2.1.0 | 当前（两层架构 + 数据平台） |
+| v5.2.0 | INS-2.1.0 | 记忆管理 + MCP + 工具发现 |
 | v5.0.3 | INS-2.1.0 | 多用户隔离 + 安全加固 |
 | v5.0.1 | INS-2.1.0 | 售前管理模块 |
 | v5.0.0 | INS-2.1.0 | 多用户协作 + 并发底座 |

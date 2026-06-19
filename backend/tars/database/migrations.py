@@ -139,11 +139,160 @@ def _m4_document_collections(cursor) -> None:
 
 
 # Ordered list of migrations. Append new ones with the next integer version.
+def _m5_governance_tables(cursor) -> None:
+    """治理三表: quality_rules / check_runs / rule_results。
+
+    规则按 datasource_id(str UUID)+table_name 归属，带 user_id 对齐单组织多用户。
+    """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS quality_rules (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            datasource_id TEXT NOT NULL,
+            table_name TEXT NOT NULL DEFAULT '',
+            kind TEXT NOT NULL,
+            params TEXT NOT NULL DEFAULT '{}',
+            engine TEXT NOT NULL DEFAULT 'builtin',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            user_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_qrules_ds ON quality_rules(datasource_id, table_name)"
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS check_runs (
+            id TEXT PRIMARY KEY,
+            datasource_id TEXT NOT NULL,
+            table_name TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            total_rows INTEGER NOT NULL DEFAULT 0,
+            truncated INTEGER NOT NULL DEFAULT 0,
+            summary TEXT NOT NULL DEFAULT '{}',
+            error TEXT,
+            user_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rule_results (
+            id TEXT PRIMARY KEY,
+            check_run_id TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            rule_name TEXT NOT NULL DEFAULT '',
+            kind TEXT NOT NULL DEFAULT '',
+            engine TEXT NOT NULL DEFAULT 'builtin',
+            passed_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            sample_violations TEXT NOT NULL DEFAULT '[]'
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_rresults_run ON rule_results(check_run_id)"
+    )
+
+
+def _m6_report_tables(cursor) -> None:
+    """报表三表: charts / dashboards / dashboard_items。"""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS charts (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            datasource_id TEXT NOT NULL,
+            chart_type TEXT NOT NULL DEFAULT 'table',
+            spec TEXT NOT NULL DEFAULT '{}',
+            user_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboards (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            params TEXT NOT NULL DEFAULT '{}',
+            user_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_items (
+            id TEXT PRIMARY KEY,
+            dashboard_id TEXT NOT NULL,
+            chart_id TEXT NOT NULL,
+            layout TEXT NOT NULL DEFAULT '{}',
+            \"order\" INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+
+def _m7_semantic_tables(cursor) -> None:
+    """语义层: glossary_terms / field_semantics。"""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS glossary_terms (
+            id TEXT PRIMARY KEY,
+            term TEXT NOT NULL,
+            definition TEXT NOT NULL DEFAULT '',
+            domain TEXT NOT NULL DEFAULT 'port',
+            aliases_json TEXT NOT NULL DEFAULT '[]',
+            user_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_glossary_domain ON glossary_terms(domain, user_id)"
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS field_semantics (
+            id TEXT PRIMARY KEY,
+            datasource_id TEXT NOT NULL,
+            table_name TEXT NOT NULL DEFAULT '',
+            column_name TEXT NOT NULL DEFAULT '',
+            term_id TEXT,
+            suggested_term TEXT,
+            confidence REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'suggested',
+            user_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_field_sem_ds ON field_semantics(datasource_id, table_name)"
+    )
+
+
+def _m8_insight_ins2_tables(cursor) -> None:
+    """Insight INS-2 migrations (moved from connection.init_schema)."""
+    from tars.insight.migrations import run_insight_ins2_migrations
+    run_insight_ins2_migrations(cursor)
+
+
 MIGRATIONS: List[Migration] = [
     (1, "encrypt api_key at rest + backfill api_key_hash", _m1_encrypt_api_keys),
     (2, "add agent_decisions table for decision tracing", _m2_agent_decisions),
     (3, "add dead_letters retry tracking columns", _m3_dead_letter_retry),
     (4, "restore document_collections table (sqlite)", _m4_document_collections),
+    (5, "governance quality tables", _m5_governance_tables),
+    (6, "report tables (charts/dashboards/dashboard_items)", _m6_report_tables),
+    (7, "semantic glossary and field_semantics tables", _m7_semantic_tables),
+    (8, "insight INS-2 workflow tables", _m8_insight_ins2_tables),
 ]
 
 

@@ -32,7 +32,7 @@ BUILTIN_TEMPLATES = [
     RoleTemplate(
         id="admin", name="系统管理员", description="全部权限，不可修改",
         is_builtin=True, allowed_tools="*", denied_tools=[],
-        allowed_modules=["bi", "knowledge", "meeting", "skillhub", "insight", "orchestration"],
+        allowed_modules=["bi", "wiki", "meeting", "skillhub", "insight", "orchestration", "governance", "report", "semantic"],
         workspace_restriction=False, max_concurrent=5,
     ),
     RoleTemplate(
@@ -43,7 +43,7 @@ BUILTIN_TEMPLATES = [
             "shell", "command", "python_exec", "memory", "knowledge_search", "read_wiki", "write_wiki", "cronjob",
             "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
-        allowed_modules=["bi", "knowledge", "meeting", "skillhub", "insight", "orchestration"],
+        allowed_modules=["bi", "wiki", "meeting", "skillhub", "insight", "orchestration", "governance", "report", "semantic"],
         workspace_restriction=True, max_concurrent=2,
     ),
     RoleTemplate(
@@ -54,7 +54,7 @@ BUILTIN_TEMPLATES = [
             "file_write", "knowledge_search", "read_wiki", "write_wiki",
             "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
-        allowed_modules=["bi", "knowledge", "insight", "orchestration"],
+        allowed_modules=["bi", "wiki", "insight", "orchestration", "governance", "report", "semantic"],
         workspace_restriction=True, max_concurrent=2,
     ),
     RoleTemplate(
@@ -81,7 +81,7 @@ BUILTIN_TEMPLATES = [
             "command",
             "file_write",
         ],
-        allowed_modules=["knowledge", "insight"],
+        allowed_modules=["wiki", "insight", "semantic"],
         workspace_restriction=True,
         max_concurrent=1,
     ),
@@ -106,7 +106,7 @@ BUILTIN_TEMPLATES = [
             "bi_query", "bi_generate_chart", "bi_list_datasources", "bi_schema_explore",
             "shell", "command", "python_exec", "file_write",
         ],
-        allowed_modules=["insight", "knowledge", "meeting", "skillhub", "orchestration"],
+        allowed_modules=["insight", "wiki", "meeting", "skillhub", "orchestration", "governance", "report", "semantic"],
         workspace_restriction=True,
         max_concurrent=1,
     ),
@@ -114,7 +114,7 @@ BUILTIN_TEMPLATES = [
         id="operator", name="运维人员", description="Shell + 进程管理",
         is_builtin=True,
         allowed_tools=["shell", "command", "file", "file_list", "file_write", "process", "network"],
-        allowed_modules=["bi", "knowledge", "meeting", "skillhub", "orchestration"],
+        allowed_modules=["bi", "wiki", "meeting", "skillhub", "orchestration", "governance", "report", "semantic"],
         workspace_restriction=True, max_concurrent=2,
     ),
     RoleTemplate(
@@ -125,7 +125,7 @@ BUILTIN_TEMPLATES = [
             "knowledge_search", "read_wiki", "write_wiki", "meeting_recognizer",
             "bi_list_datasources", "bi_query", "bi_generate_chart", "bi_schema_explore",
         ],
-        allowed_modules=["bi", "knowledge", "skillhub", "meeting", "insight", "orchestration"],
+        allowed_modules=["bi", "wiki", "skillhub", "meeting", "insight", "orchestration", "governance", "report", "semantic"],
         workspace_restriction=True, max_concurrent=1,
     ),
     RoleTemplate(
@@ -154,7 +154,7 @@ BUILTIN_TEMPLATES = [
             "bi_query", "bi_generate_chart",
             "process", "network", "cronjob",
         ],
-        allowed_modules=["presales", "knowledge", "insight", "orchestration"],
+        allowed_modules=["presales", "knowledge", "insight", "orchestration", "governance", "report"],
         workspace_restriction=True,
         max_concurrent=3,
     ),

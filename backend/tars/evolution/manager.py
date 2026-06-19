@@ -39,34 +39,45 @@ class EvolutionManager:
         self._case_capture = None
         self._case_distiller = None
         if db is not None:
+            from .config import get_evolution_config
             from .feedback_collector import FeedbackCollector
-            from .apply_engine import ApplyEngine
-            from .orchestrator import EvolutionOrchestrator
 
+            _evo_cfg = get_evolution_config()
             self._feedback_collector = FeedbackCollector(db)
-            self._apply_engine = ApplyEngine(db)
-            self._case_capture = CaseCapture(db)
-            self._case_distiller = CaseDistiller(db, self._case_capture)
+            self._feedback_only = _evo_cfg.mode == "feedback_only"
 
-            # v5.0.5/A3: Memory ↔ Evolution 桥梁
-            from .memory_analyzer import MemoryAwareAnalyzer
-            from .memory_feedback_bridge import MemoryFeedbackBridge
+            if not self._feedback_only:
+                from .apply_engine import ApplyEngine
+                from .orchestrator import EvolutionOrchestrator
 
-            self._memory_analyzer = MemoryAwareAnalyzer(db)
-            self._memory_bridge = MemoryFeedbackBridge(db)
+                self._apply_engine = ApplyEngine(db)
+                self._case_capture = CaseCapture(db)
+                if _evo_cfg.case_distillation.enabled:
+                    self._case_distiller = CaseDistiller(db, self._case_capture)
 
-            self._orchestrator = EvolutionOrchestrator(
-                db,
-                feedback_collector=self._feedback_collector,
-                apply_engine=self._apply_engine,
-                personality_optimizer=self.personality_optimizer,
-                subagent_optimizer=self.subagent_optimizer,
-                prompt_tuner=self.prompt_tuner,
-                evaluator=self.evaluator,
-                case_distiller=self._case_distiller,
-                memory_analyzer=self._memory_analyzer,
-                memory_bridge=self._memory_bridge,
-            )
+                from .memory_analyzer import MemoryAwareAnalyzer
+                from .memory_feedback_bridge import MemoryFeedbackBridge
+
+                self._memory_analyzer = MemoryAwareAnalyzer(db)
+                self._memory_bridge = MemoryFeedbackBridge(db)
+
+                self._orchestrator = EvolutionOrchestrator(
+                    db,
+                    feedback_collector=self._feedback_collector,
+                    apply_engine=self._apply_engine,
+                    personality_optimizer=self.personality_optimizer,
+                    subagent_optimizer=self.subagent_optimizer,
+                    prompt_tuner=self.prompt_tuner,
+                    evaluator=self.evaluator,
+                    case_distiller=self._case_distiller,
+                    memory_analyzer=self._memory_analyzer,
+                    memory_bridge=self._memory_bridge,
+                )
+            else:
+                self._apply_engine = None
+                self._orchestrator = None
+                self._case_capture = None
+                print("[Startup] Evolution feedback_only 模式 — 自进化路径已禁用")
         else:
             self._case_capture = CaseCapture(db) if db else None
         

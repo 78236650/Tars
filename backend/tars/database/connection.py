@@ -959,10 +959,6 @@ class ConnectionManager:
             "ON agent_cases(tenant_id, distilled, success)"
         )
 
-        from tars.insight.migrations import run_insight_ins2_migrations
-
-        run_insight_ins2_migrations(cursor)
-
         # knowledge schema tables preserved in-place, module removed
 
         conn.commit()

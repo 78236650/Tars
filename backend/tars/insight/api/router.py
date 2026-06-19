@@ -35,7 +35,29 @@ def get_knowledge_bridge():
     return _knowledge_bridge
 
 
-def init_insight_api(db: Database, knowledge_indexer=None, feedback_collector=None) -> None:
+def _glossary_lookup(question: str) -> list[dict]:
+    from ...modules.registry import module_registry
+    if not module_registry.is_enabled("semantic") or _db is None:
+        return []
+    try:
+        from ...semantic.repository import SemanticRepository
+        from ...semantic.service import SemanticService
+        hits = SemanticService(SemanticRepository(_db)).lookup_for_question(question)
+        return [{"term": t.term, "definition": t.definition} for t in hits]
+    except Exception:
+        return []
+
+
+def _metric_qa_engine(**kwargs) -> MetricQaEngine:
+    return MetricQaEngine(
+        _db,
+        knowledge_bridge=_knowledge_bridge,
+        glossary_lookup=_glossary_lookup,
+        **kwargs,
+    )
+
+
+def init_insight_api(db: Database, knowledge_indexer=None, feedback_collector=None, llm_provider=None) -> None:
     global _db, _run_store, _metric_store, _ds_store, _llm_settings_store, _knowledge_bridge, _feedback_collector
     _db = db
     _run_store = InsightProfileRunStore(db)
@@ -69,7 +91,7 @@ def init_insight_api(db: Database, knowledge_indexer=None, feedback_collector=No
     from ..agent_tools import init_insight_agent_tools
     from ...tools import registry as tool_registry
 
-    for tool in init_insight_agent_tools(db, knowledge_bridge=_knowledge_bridge):
+    for tool in init_insight_agent_tools(db, knowledge_bridge=_knowledge_bridge, llm_provider=llm_provider):
         tool_registry.register(tool)
 
     # Recover any runs that were pending/running when the previous process died.
@@ -452,7 +474,7 @@ async def ask_metric(
     """Synchronous metric QA — does not set session asking (H2)."""
     if _db is None:
         raise HTTPException(status_code=500, detail="Insight API 未初始化")
-    engine = MetricQaEngine(_db, knowledge_bridge=_knowledge_bridge)
+    engine = _metric_qa_engine()
     try:
         answer = await engine.ask(
             datasource_id,

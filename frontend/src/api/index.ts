@@ -55,6 +55,8 @@ const api = axios.create({
   timeout: 120000
 })
 
+export { api as apiClient }
+
 api.interceptors.request.use((config) => {
   const accessToken = localStorage.getItem('tars_access_token')
   if (accessToken) {

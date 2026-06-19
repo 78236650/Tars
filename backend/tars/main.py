@@ -85,7 +85,7 @@ from tars.cron import CronRuntime
 # 初始化应用
 app = FastAPI(
     title="PortMeta Agent",
-    version="5.0.4",
+    version="6.0.1",
     description="PortMeta Agent — Miluo Lab | AI Agent 平台",
 )
 
@@ -156,7 +156,7 @@ async def http_exception_handler(request: Request, exc: _StarletteHTTPException)
 # ── Health check (no auth, before middleware) ────────────────────────
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "5.0.5"}
+    return {"status": "ok", "version": "6.0.1"}
 
 
 @app.get("/metrics")
@@ -220,7 +220,8 @@ init_tenant_workspace(extra_allowed_dirs=[str(project_dir / "uploads")])
 workspace_sandbox = WorkspaceSandbox(workspace_dir=str(project_dir.parent))
 
 tool_registry.register(WeatherTool())
-tool_registry.register(WindStowageTool())
+if module_registry.is_enabled("wind_stowage"):
+    tool_registry.register(WindStowageTool())
 tool_registry.register(FileTool(allowed_dirs=[str(project_dir.parent)]))
 tool_registry.register(FileListTool())
 tool_registry.register(FileWriteTool(sandbox=workspace_sandbox))
@@ -522,53 +523,25 @@ app.include_router(roles_router)
 from tars.api import evolution_metrics
 app.include_router(evolution_metrics.router)
 
-# 条件注册可选模块路由
-if module_registry.is_enabled("skillhub"):
-    app.include_router(skillhub_router)
-if module_registry.is_enabled("bi"):
-    app.include_router(bi_router)
-if module_registry.is_enabled("insight"):
-    ok, msg = module_registry.check_dependencies("insight")
-    if ok:
-        app.include_router(insight_router)
-    else:
-        print(f"[Startup] InsightForge 未加载: {msg}")
-if module_registry.is_enabled("meeting"):
-    app.include_router(meeting_router)
-if module_registry.is_enabled("orchestration"):
-    app.include_router(orchestration_router)
-    app.include_router(vessel_plan_router)
-if module_registry.is_enabled("presales"):
-    app.include_router(presales_router)
+# v5.3.0: Layer bootstrap — optional modules via layer1/layer2
+from tars.bootstrap import BootstrapDeps, mount_layer1_optional_routes, mount_layer2_routes
+
+_bootstrap_deps = BootstrapDeps(
+    app=app,
+    db=db,
+    agent=agent,
+    tool_registry=tool_registry,
+    module_registry=module_registry,
+    evolution_manager=evolution_manager,
+    meeting_tool=meeting_tool,
+    vector_store=vector_store,
+    embedding_provider=embedding_provider,
+)
+mount_layer1_optional_routes(_bootstrap_deps)
+mount_layer2_routes(_bootstrap_deps)
 
 init_sessions_api(db)
 init_tasks_api(db, agent)
-if module_registry.is_enabled("bi"):
-    init_bi_api(db)
-else:
-    print("[Startup] BI 分析台模块已禁用 (config/modules.yaml → bi.enabled)")
-if module_registry.is_enabled("insight") and module_registry.check_dependencies("insight")[0]:
-    _insight_indexer = None
-    init_insight_api(db, knowledge_indexer=None, feedback_collector=evolution_manager.feedback_collector)
-    from tars.insight.version import INS_VERSION
-    print(f"[Startup] InsightForge 鉴数已启用 ({INS_VERSION})")
-elif module_registry.is_enabled("insight"):
-    print("[Startup] InsightForge 已配置但依赖未满足 (需要 bi)")
-
-if module_registry.is_enabled("meeting"):
-    init_meeting_api(db, meeting_tool, vector_store, embedding_provider)
-else:
-    print("[Startup] 会议助手模块已禁用 (config/modules.yaml → meeting.enabled)")
-if module_registry.is_enabled("orchestration"):
-    init_orchestration_api(db)
-    init_vessel_plan_api(db)
-else:
-    print("[Startup] 调度编排模块已禁用 (config/modules.yaml → orchestration.enabled)")
-if module_registry.is_enabled("presales"):
-    init_presales_api(db)
-    print("[Startup] 售前管理模块已启用")
-else:
-    print("[Startup] 售前管理模块已禁用 (config/modules.yaml → presales.enabled)")
 init_memory_api(db, memory_manager)
 set_memory_provider_resolver(lambda: agent.provider)
 init_audit_api(db)

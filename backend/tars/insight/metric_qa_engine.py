@@ -52,17 +52,21 @@ class MetricQaEngine:
         config: Optional[InsightConfig] = None,
         route_fn: Optional[RouteFn] = None,
         sql_executor: Optional[SqlExecutor] = None,
+        llm_provider=None,
         knowledge_bridge=None,
+        glossary_lookup=None,
     ):
         self.db = db
         self.config = config or get_insight_config()
         self._sql_executor = sql_executor
+        self._llm_provider = llm_provider
         self.ds_store = DataSourceStore(db)
         self.metric_store = InsightMetricStore(db)
         self.question_log = InsightQuestionLogStore(db)
         self.workflow = InsightWorkflowService(db)
         self._route_fn = route_fn
         self._knowledge_bridge = knowledge_bridge
+        self._glossary_lookup = glossary_lookup
 
     async def ask(
         self,
@@ -173,29 +177,32 @@ class MetricQaEngine:
             )
 
         if decision.branch in ("adhoc", "miss"):
-            return self._finish(
-                datasource_id,
-                tenant_id,
-                user_id,
-                question,
-                MetricAnswer(
-                    value=None,
-                    branch=decision.branch,
-                    caliber_tier="adhoc",
-                    definition="",
-                    sql="",
-                    filters_summary=self._filters_summary(question, as_of_date),
-                    confidence=decision.confidence,
-                    reasoning=decision.reasoning,
-                    open_questions=decision.open_questions
-                    or ["请从已鉴数指标中选择，或补充 metric_key 后重试"],
-                    error=MetricAnswerError(
-                        "INSIGHT_ADHOC_SQL_NOT_AVAILABLE",
-                        "未命中可执行口径，暂不支持自动生成 SQL（请勿将占位结果当作业务数值）",
+            # v5.3.0: 启用 adhoc NL→SQL（需 LLM provider 可用）
+            if not self.config.qa.allow_ad_hoc_sql or self._llm_provider is None:
+                return self._finish(
+                    datasource_id,
+                    tenant_id,
+                    user_id,
+                    question,
+                    MetricAnswer(
+                        value=None,
+                        branch=decision.branch,
+                        caliber_tier="adhoc",
+                        definition="",
+                        sql="",
+                        filters_summary=self._filters_summary(question, as_of_date),
+                        confidence=decision.confidence,
+                        reasoning=decision.reasoning,
+                        open_questions=decision.open_questions
+                        or ["请从已鉴数指标中选择，或补充 metric_key 后重试"],
+                        error=MetricAnswerError(
+                            "INSIGHT_ADHOC_SQL_NOT_AVAILABLE",
+                            "未命中可执行口径，暂不支持自动生成 SQL",
+                        ),
                     ),
-                ),
-                outcome="error",
-            )
+                    outcome="error",
+                )
+            # fall through to _resolve_sql for adhoc generation
 
         sql, metric, tier = await self._resolve_sql(
             datasource_id,
@@ -259,6 +266,7 @@ class MetricQaEngine:
             question=question,
             metric_key=answer.metric_key,
         )
+        answer = self._apply_glossary(answer, question=question)
         finished = self._finish(
             datasource_id,
             tenant_id,
@@ -429,10 +437,19 @@ class MetricQaEngine:
             sql = apply_tables_quoting(sql, metric.tables_json, db_type)
             return sql, metric, tier
 
-        raise InsightQaError(
-            "INSIGHT_ADHOC_SQL_NOT_AVAILABLE",
-            "未命中可执行口径，暂不支持自动生成 SQL",
+        # v5.3.0: adhoc NL→SQL 生成
+        if self._llm_provider is None:
+            raise InsightQaError(
+                "INSIGHT_ADHOC_SQL_NOT_AVAILABLE",
+                "未命中可执行口径，且无可用 LLM 生成 SQL",
+            )
+        sql = await self._build_adhoc_sql(
+            question=question,
+            schema_snapshot=schema_snapshot,
+            db_type=db_type,
+            as_of_date=as_of_date,
         )
+        return sql, None, tier
 
     def _fill_sql_template(self, template: str, as_of_date: Optional[str]) -> str:
         as_of = as_of_date or (date.today() - timedelta(days=1)).isoformat()
@@ -441,6 +458,90 @@ class MetricQaEngine:
         sql = sql.replace("{{date}}", as_of)
         sql = sql.replace("{{yesterday}}", as_of)
         return sql.strip()
+
+    async def _build_adhoc_sql(
+        self,
+        *,
+        question: str,
+        schema_snapshot: Dict[str, Any],
+        db_type: str,
+        as_of_date: Optional[str] = None,
+    ) -> str:
+        """v5.3.0: 用 LLM 从自然语言问题 + Schema 上下文生成 SQL。
+
+        仅用于 adhoc/miss 分支，不涉及预定义指标模板。
+        """
+        if self._llm_provider is None:
+            raise InsightQaError("INSIGHT_ADHOC_NO_LLM", "无可用 LLM 生成 adhoc SQL")
+
+        tables = schema_snapshot.get("tables") or {}
+        if not tables:
+            raise InsightQaError("INSIGHT_NO_SCHEMA", "数据源缺少 Schema 信息，请先完成鉴数")
+
+        # 构建精简 Schema 描述（限制 token 消耗）
+        schema_lines: list[str] = []
+        for tname, tdef in tables.items():
+            cols = tdef.get("columns") or []
+            if not cols:
+                continue
+            col_strs = []
+            for c in cols[:30]:  # 每表最多 30 列
+                cname = c.get("name", "?")
+                ctype = c.get("type", "text")
+                comment = c.get("comment") or ""
+                col_strs.append(f"  {cname} {ctype}" + (f" -- {comment}" if comment else ""))
+            pk = tdef.get("primary_key") or []
+            pk_str = f" PK=({', '.join(pk)})" if pk else ""
+            schema_lines.append(f"CREATE TABLE {tname} ({chr(10)}{chr(10).join(col_strs)}{chr(10)}){pk_str};")
+
+        schema_text = "\n\n".join(schema_lines[:20])  # 最多 20 张表
+        as_of = as_of_date or (date.today() - timedelta(days=1)).isoformat()
+
+        prompt = f"""你是一个 {db_type.upper()} SQL 专家。根据以下 DDL 和业务问题，生成一条**只读 SELECT** 查询。
+
+数据库方言：{db_type.upper()}
+数据日期参考：{as_of}（如问"昨天"用此日期）
+
+DDL:
+{schema_text}
+
+问题：{question}
+
+要求：
+- 只输出 SQL，不要任何解释或 markdown 包裹
+- 仅使用 SELECT/WITH 语句
+- 查询结果尽量简洁（聚合到少数行）
+- 日期过滤优先用 {as_of} 或合理推算
+- 如不确定，输出你能确定的最合理 SQL"""
+
+        try:
+            response = await self._llm_provider.complete(prompt, max_tokens=800)
+            content = response.content if hasattr(response, "content") else str(response)
+        except Exception as e:
+            raise InsightQaError("INSIGHT_LLM_FAILED", f"LLM 调用失败: {e}")
+
+        sql = self._extract_sql(content)
+        if not sql:
+            raise InsightQaError("INSIGHT_SQL_PARSE_FAILED", "LLM 返回的 SQL 无法解析")
+
+        # 引用校正（与 hit 分支一致）
+        sql = apply_tables_quoting(sql, "[]", db_type)
+        logger.info("[InsightForge adhoc] generated SQL: %s", sql[:200])
+        return sql
+
+    @staticmethod
+    def _extract_sql(text: str) -> str:
+        """从 LLM 响应中提取纯 SQL 文本。"""
+        t = text.strip()
+        # 去 markdown 包裹
+        if t.startswith("```"):
+            t = re.sub(r"^```(?:sql)?\s*", "", t)
+            t = re.sub(r"\s*```$", "", t)
+        # 找 SELECT 开头
+        m = re.search(r"(?i)\b(SELECT|WITH)\b[\s\S]*", t)
+        if m:
+            return m.group(0).strip().rstrip(";")
+        return t.strip().rstrip(";")
 
     def _extract_scalar(self, rows: List[Dict[str, Any]]) -> tuple[Any, Optional[str]]:
         if not rows:
@@ -487,6 +588,23 @@ class MetricQaEngine:
             answer.definition = self._knowledge_bridge.enrich_definition(
                 answer.definition, citations
             )
+        return answer
+
+    def _apply_glossary(self, answer: MetricAnswer, *, question: str) -> MetricAnswer:
+        if not self._glossary_lookup:
+            return answer
+        try:
+            hits = self._glossary_lookup(question)
+        except Exception as exc:
+            logger.warning("Glossary lookup failed: %s", exc)
+            return answer
+        if not hits:
+            return answer
+        notes = "; ".join(f"{h.get('term', h.term if hasattr(h, 'term') else '')}: {h.get('definition', getattr(h, 'definition', ''))}" for h in hits)
+        if notes and answer.definition:
+            answer.definition = f"{answer.definition}\n\n[术语] {notes}"
+        elif notes:
+            answer.definition = f"[术语] {notes}"
         return answer
 
     def _finish(

@@ -43,6 +43,7 @@ class CaseDistillationSettings:
 
 @dataclass
 class EvolutionConfig:
+    mode: str = "full"  # full | feedback_only
     eval_gate: EvalGateSettings = field(default_factory=EvalGateSettings)
     prompt_writeback: PromptWritebackSettings = field(default_factory=PromptWritebackSettings)
     insight_burst: InsightBurstSettings = field(default_factory=InsightBurstSettings)
@@ -69,6 +70,7 @@ def load_evolution_config(path: str | Path | None = None) -> EvolutionConfig:
     distillation = raw.get("case_distillation") or {}
 
     return EvolutionConfig(
+        mode=str(raw.get("mode", "full")),
         eval_gate=EvalGateSettings(
             improve_min=float(gate.get("improve_min", 0.10)),
             regress_max=float(gate.get("regress_max", -0.05)),

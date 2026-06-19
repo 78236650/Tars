@@ -11,7 +11,7 @@ class TestModuleRegistry:
 
     def test_core_modules_always_enabled(self):
         self.registry.load()
-        for m in ("auth", "chat", "memory", "skills", "tools", "knowledge"):
+        for m in ("auth", "chat", "memory", "skills", "tools", "wiki"):
             assert self.registry.is_enabled(m) is True
 
     def test_optional_modules_have_default(self, tmp_path):
@@ -29,7 +29,8 @@ class TestModuleRegistry:
         names = [m["name"] for m in modules]
         assert "auth" in names
         assert "meeting" in names
-        assert len(modules) == 12  # 6 core + 6 optional
+        assert "semantic" in names
+        assert len(modules) == len(self.registry.CORE_MODULES) + len(self.registry.OPTIONAL_MODULES)
         for m in modules:
             assert "name" in m
             assert "enabled" in m

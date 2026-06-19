@@ -86,47 +86,74 @@ const isCurrentEndpointModel = (endpointId: string, modelName: string) => {
   )
 }
 
-const navItems = [
-  { name: 'nav.chat', icon: 'message-circle', path: '/' },
-  { name: 'nav.memory', icon: 'database', path: '/memory' },
-  { name: 'nav.models', icon: 'cpu', path: '/models' },
-  { name: 'nav.tools', icon: 'tools', path: '/tools' },
-  { name: 'nav.bi', icon: 'bar-chart', path: '/bi', subtitle: 'nav.bi.subtitle' },
-  { name: 'nav.insight', icon: 'search', path: '/insight', subtitle: 'nav.insight.subtitle' },
-  { name: 'nav.knowledge', icon: 'book', path: '/wiki' },
-  { name: 'nav.meeting', icon: 'mic', path: '/meeting' },
-  { name: 'nav.orchestration', icon: 'git-branch', path: '/orchestration' },
-  { name: 'nav.presales', icon: 'briefcase', path: '/presales' },
-  { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
-  { name: 'nav.settings', icon: 'settings', path: '/settings' }
+const navGroups = [
+  {
+    key: 'core',
+    label: 'nav.group.core',
+    items: [
+      { name: 'nav.chat', icon: 'message-circle', path: '/' },
+      { name: 'nav.memory', icon: 'database', path: '/memory' },
+      { name: 'nav.models', icon: 'cpu', path: '/models' },
+      { name: 'nav.tools', icon: 'tools', path: '/tools' },
+      { name: 'nav.knowledge', icon: 'book', path: '/wiki' },
+      { name: 'nav.meeting', icon: 'mic', path: '/meeting', module: 'meeting' },
+      { name: 'nav.orchestration', icon: 'git-branch', path: '/orchestration', module: 'orchestration' },
+    ],
+  },
+  {
+    key: 'data',
+    label: 'nav.group.data',
+    items: [
+      { name: 'nav.bi', icon: 'bar-chart', path: '/bi', subtitle: 'nav.bi.subtitle', module: 'bi' },
+      { name: 'nav.insight', icon: 'search', path: '/insight', subtitle: 'nav.insight.subtitle', module: 'insight' },
+      { name: 'nav.governance', icon: 'clipboard-check', path: '/governance', module: 'governance' },
+      { name: 'nav.report', icon: 'bar-chart-3', path: '/report', subtitle: 'nav.report.subtitle', module: 'report' },
+      { name: 'nav.semantic', icon: 'tags', path: '/semantic', subtitle: 'nav.semantic.subtitle', module: 'semantic' },
+    ],
+  },
+  {
+    key: 'system',
+    label: '',
+    items: [
+      { name: 'nav.admin', icon: 'shield', path: '/admin', adminOnly: true },
+      { name: 'nav.settings', icon: 'settings', path: '/settings' },
+    ],
+  },
 ]
 
 const moduleRouteMap: Record<string, string> = {
   bi: '/bi',
   insight: '/insight',
-  // wiki is always visible
   meeting: '/meeting',
   orchestration: '/orchestration',
   presales: '/presales',
+  governance: '/governance',
+  report: '/report',
+  semantic: '/semantic',
 }
 
-const visibleNavItems = computed(() =>
-  navItems.filter(item => {
-    if ('adminOnly' in item && (item as any).adminOnly) {
-      return authStore.user?.role === 'admin'
-    }
-    if (item.path === '/wiki') return true
-    const mod = Object.entries(moduleRouteMap).find(([, path]) => item.path === path)
-    if (!mod) return true
-    const globallyEnabled =
-      settingsStore.enabledModules.length === 0 ||
-      settingsStore.enabledModules.includes(mod[0])
-    if (!globallyEnabled) return false
-    if (settingsStore.roleAllowedModules !== null) {
-      return settingsStore.roleAllowedModules.includes(mod[0])
-    }
-    return true
-  })
+const isItemVisible = (item: Record<string, unknown>) => {
+  if (item.adminOnly && authStore.user?.role !== 'admin') return false
+  if (item.path === '/wiki') return true
+  const mod = item.module as string | undefined
+  if (!mod) return true
+  const globallyEnabled =
+    settingsStore.enabledModules.length === 0 ||
+    settingsStore.enabledModules.includes(mod)
+  if (!globallyEnabled) return false
+  if (settingsStore.roleAllowedModules !== null) {
+    return settingsStore.roleAllowedModules.includes(mod)
+  }
+  return true
+}
+
+const visibleNavGroups = computed(() =>
+  navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => isItemVisible(item as Record<string, unknown>)),
+    }))
+    .filter((group) => group.items.length > 0)
 )
 
 const iconMap: Record<string, string> = {
@@ -142,6 +169,9 @@ const iconMap: Record<string, string> = {
   'mic': 'lucide:mic',
   'git-branch': 'lucide:git-branch',
   'briefcase': 'lucide:briefcase',
+  'clipboard-check': 'lucide:clipboard-check',
+  'bar-chart-3': 'lucide:bar-chart-3',
+  'tags': 'lucide:tags',
 }
 
 const isActive = (path: string) => {
@@ -172,31 +202,39 @@ const openReminderNotifications = async () => {
       </button>
     </div>
 
-    <nav class="p-1.5">
-      <ul class="space-y-0.5">
-        <li v-for="item in visibleNavItems" :key="item.path">
-          <button
-            @click="router.push(item.path)"
-            class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors"
-            :class="isActive(item.path)
-              ? 'bg-amber-600 text-stone-950 shadow-[0_10px_30px_rgba(217,119,6,0.25)]'
-              : 'text-stone-400 hover:bg-white/[0.04] hover:text-stone-100'"
-            :title="collapsed ? t(item.name) : undefined"
-          >
-            <BaseIcon :icon="iconMap[item.icon]" :size="16" class="shrink-0" />
-            <div v-if="!collapsed" class="min-w-0 text-left">
-              <span class="text-sm truncate block">{{ t(item.name) }}</span>
-              <span
-                v-if="'subtitle' in item && item.subtitle"
-                class="text-[10px] truncate block opacity-70"
-                :class="isActive(item.path) ? 'text-stone-800' : 'text-stone-500'"
-              >
-                {{ t(item.subtitle) }}
-              </span>
-            </div>
-          </button>
-        </li>
-      </ul>
+    <nav class="p-1.5 flex-1 overflow-y-auto">
+      <div v-for="group in visibleNavGroups" :key="group.key" class="mb-2">
+        <p
+          v-if="group.label && !collapsed"
+          class="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-stone-500"
+        >
+          {{ t(group.label) }}
+        </p>
+        <ul class="space-y-0.5">
+          <li v-for="item in group.items" :key="item.path">
+            <button
+              @click="router.push(item.path)"
+              class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors"
+              :class="isActive(item.path)
+                ? 'bg-amber-600 text-stone-950 shadow-[0_10px_30px_rgba(217,119,6,0.25)]'
+                : 'text-stone-400 hover:bg-white/[0.04] hover:text-stone-100'"
+              :title="collapsed ? t(item.name) : undefined"
+            >
+              <BaseIcon :icon="iconMap[item.icon]" :size="16" class="shrink-0" />
+              <div v-if="!collapsed" class="min-w-0 text-left">
+                <span class="text-sm truncate block">{{ t(item.name) }}</span>
+                <span
+                  v-if="'subtitle' in item && item.subtitle"
+                  class="text-[10px] truncate block opacity-70"
+                  :class="isActive(item.path) ? 'text-stone-800' : 'text-stone-500'"
+                >
+                  {{ t(item.subtitle) }}
+                </span>
+              </div>
+            </button>
+          </li>
+        </ul>
+      </div>
     </nav>
 
     <div class="flex-1"></div>
